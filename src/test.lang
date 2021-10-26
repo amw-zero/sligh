@@ -1,3 +1,7 @@
 schema Transaction do
   x: Int
+
+  def hey
+    x + 5
+  end
 end

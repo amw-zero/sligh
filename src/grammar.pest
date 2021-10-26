@@ -2,10 +2,18 @@ Program = _{ SOI ~ Schema ~ EOI }
 
 WHITESPACE = _{ " " | "\t" }
 
-SchemaType = { ASCII_ALPHANUMERIC+ }
-
-SchemaBody = { ASCII_ALPHANUMERIC ~ ":" ~ SchemaType }
-
 Identifier = @{ ASCII_ALPHANUMERIC+ }
 
-Schema = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ SchemaBody ~ NEWLINE ~ "end" }
+Term = { ASCII_ALPHANUMERIC+ }
+
+Expr = { Term ~ "+" ~ Term }
+
+SchemaType = { ASCII_ALPHANUMERIC+ }
+
+SchemaAttribute = { ASCII_ALPHANUMERIC+ ~ ":" ~ SchemaType }
+
+SchemaMethod = { "def" ~ Identifier ~ NEWLINE ~ Expr ~ NEWLINE ~ "end" }
+
+SchemaBody = { SchemaAttribute | SchemaMethod }
+
+Schema = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ (SchemaBody ~ NEWLINE*)* ~ "end" }
