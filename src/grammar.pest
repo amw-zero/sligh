@@ -1,0 +1,11 @@
+Program = _{ SOI ~ Schema ~ EOI }
+
+WHITESPACE = _{ " " | "\t" }
+
+SchemaType = { ASCII_ALPHANUMERIC+ }
+
+SchemaBody = { ASCII_ALPHANUMERIC ~ ":" ~ SchemaType }
+
+Identifier = @{ ASCII_ALPHANUMERIC+ }
+
+Schema = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ SchemaBody ~ NEWLINE ~ "end" }
