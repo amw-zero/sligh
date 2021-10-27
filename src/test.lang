@@ -1,6 +1,6 @@
-schema Transaction do
-  x: Int
-
+schema Server do
+  comments: [Int]
+  
   def hey
     x + 5
   end

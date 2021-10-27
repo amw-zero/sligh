@@ -8,7 +8,9 @@ Term = { ASCII_ALPHANUMERIC+ }
 
 Expr = { Term ~ "+" ~ Term }
 
-SchemaType = { ASCII_ALPHANUMERIC+ }
+Type = { ASCII_ALPHANUMERIC+ }
+
+SchemaType = { "[" ~ Type ~ "]" | Type }
 
 SchemaAttribute = { ASCII_ALPHANUMERIC+ ~ ":" ~ SchemaType }
 
