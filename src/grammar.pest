@@ -6,7 +6,9 @@ Identifier = @{ ASCII_ALPHANUMERIC+ }
 
 Term = { ASCII_ALPHANUMERIC+ }
 
-Expr = { Term ~ "+" ~ Term }
+Receiver = @{ Identifier }
+
+Expr = { (Term ~ "+" ~ Term) | (Receiver ~ "." ~ Identifier ~ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")") }
 
 Type = { Identifier }
 
