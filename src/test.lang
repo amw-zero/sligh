@@ -5,7 +5,7 @@ schema Server do
     5 + 5
   end
   
-  def add(comment: String)
+  def add(comment: String, d: Int)
     5 + 5 
   end
 end

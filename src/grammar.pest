@@ -16,7 +16,7 @@ SchemaType = { ArrayType | Type }
 
 SchemaAttribute = { Identifier ~ ":" ~ SchemaType }
 
-MethodParams = { Identifier ~ "(" ~ SchemaAttribute ~ ")" }
+MethodParams = { Identifier ~ "(" ~ SchemaAttribute ~ ("," ~ SchemaAttribute)* ~ ")" }
 
 MethodNoParams = { Identifier }
 
