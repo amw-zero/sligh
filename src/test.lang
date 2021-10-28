@@ -1,7 +1,11 @@
 schema Server do
-  comments: [Int]
-  
+  comments: [String]
+
   def hey
-    x + 5
+    5 + 5
+  end
+  
+  def add(comment: String)
+    5 + 5 
   end
 end

@@ -8,13 +8,21 @@ Term = { ASCII_ALPHANUMERIC+ }
 
 Expr = { Term ~ "+" ~ Term }
 
-Type = { ASCII_ALPHANUMERIC+ }
+Type = { Identifier }
 
-SchemaType = { "[" ~ Type ~ "]" | Type }
+ArrayType = { "[" ~ Type ~ "]" }
 
-SchemaAttribute = { ASCII_ALPHANUMERIC+ ~ ":" ~ SchemaType }
+SchemaType = { ArrayType | Type }
 
-SchemaMethod = { "def" ~ Identifier ~ NEWLINE ~ Expr ~ NEWLINE ~ "end" }
+SchemaAttribute = { Identifier ~ ":" ~ SchemaType }
+
+MethodParams = { Identifier ~ "(" ~ SchemaAttribute ~ ")" }
+
+MethodNoParams = { Identifier }
+
+MethodBody = { Expr }
+
+SchemaMethod = { "def" ~ (MethodParams | MethodNoParams) ~ NEWLINE  ~ MethodBody ~ NEWLINE ~ "end" }
 
 SchemaBody = { SchemaAttribute | SchemaMethod }
 
