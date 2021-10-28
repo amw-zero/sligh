@@ -1,4 +1,4 @@
-Program = _{ SOI ~ Schema ~ EOI }
+Program = _{ SOI ~ (Schema ~ NEWLINE*)* ~ EOI }
 
 WHITESPACE = _{ " " | "\t" }
 

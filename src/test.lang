@@ -9,3 +9,7 @@ schema Server do
     5 + 5 
   end
 end
+
+schema Next do
+  i: Int
+end
