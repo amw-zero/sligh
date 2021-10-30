@@ -1,9 +1,5 @@
-schema Server do
+schema Application do
   comments: [String]
-
-  def hey
-    5 + 5
-  end
   
   def add(comment: String)
     comments.push(comment)

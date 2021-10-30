@@ -1,0 +1,40 @@
+schema Server do
+  comments: [Int]
+  
+  def hey
+    x + 5
+  end
+end
+
+
+check do
+  all? do |t: Transaction|
+    t.hey == 5
+  end
+end
+
+refinement FullStack do
+
+end
+
+client, server = FullStack(Application)
+client.add("test")
+
+
+schema Server do
+  comments: [String]
+
+  def hey
+    test.method(5)
+  end
+  
+  def add(comment: String, d: Int)
+    5 + 5 
+  end
+end
+
+schema Next do
+  x: Int
+  y: Int
+  z: Int
+end
