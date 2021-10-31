@@ -13,12 +13,75 @@ check do
   end
 end
 
+schema Application do
+  comments: [String]
+  
+  def add_comment(comment: String)
+    comments.push(comment)
+  end
+end
+
+refinement Fullstack do |schema|
+  def client_attribute_def(attr)
+    "client_#{attribute.name}: #{attribute.type}"
+  end
+
+  quote do
+    schema #{"Fullstack#{schema.name}"}  
+    *#{schema.attributes.map do |attribute|
+      [attribute, client_attribute_def(attribute)]
+    end.flatten}
+
+
+  end
+end
+
+FullstackApplication = Fullstack(Application)
+
+Ast:
+schema(
+  attributes(
+    [
+      attribute(
+        identifier(
+          "comments",
+          type("String")
+        )
+      )
+    ]
+  ),
+  functions(
+    [
+
+    ]
+  )
+)
+
+
 refinement FullStack do
 
 end
 
 client, server = FullStack(Application)
 client.add("test")
+
+refinement FullstackApplication(Application) do |application|
+  split_state([application.comments])
+end
+
+# new state space = { comments: [String], client_comments: [String] }
+refinement FullstackApplication(Application) do
+  state_space' = state_space X client_comments: [String]
+
+  def server(endpoint: Endpoint, fn: StateTransformer)
+    case endpoint do
+    AddComment => fn()
+      
+    end
+  end
+
+  add_comment' = server
+end
 
 
 schema Server do

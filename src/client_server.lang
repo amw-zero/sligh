@@ -1,0 +1,28 @@
+schema Application do
+  comments: [String]
+  
+  def add(comment: String)
+    comments.push(comment)
+  end
+end
+
+refinement ClientServer(schema: Schema) do
+  schema Client#{schema.name} do
+    server: #{schema.name}
+    
+    #{schema.definitions.map do |definition|
+      case definition
+      when SchemaMethod(name, arguments, body) =>
+        quote do
+          def #{name}(#{arguments})
+            server.#{name}(#{arguments.map({ |a| a.name })})
+          end
+        end
+      else
+        quote { definition }
+      end
+    end}
+  end
+end
+
+ClientServer(Application)
