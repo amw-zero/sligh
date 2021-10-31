@@ -26,6 +26,6 @@ MethodBody = { Expr }
 
 SchemaMethod = { "def" ~ (MethodParams | MethodNoParams) ~ NEWLINE  ~ MethodBody ~ NEWLINE ~ "end" }
 
-SchemaBody = { SchemaAttribute | SchemaMethod }
+SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
-Schema = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ (SchemaBody ~ NEWLINE*)* ~ "end" }
+Schema = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ SchemaBody ~ "end" }
