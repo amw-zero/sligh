@@ -20,13 +20,13 @@ SchemaType = { Type | ArrayType }
 
 SchemaAttribute = { Identifier ~ ":" ~ SchemaType }
 
-MethodParams = { Identifier ~ "(" ~ SchemaAttribute ~ ("," ~ SchemaAttribute)* ~ ")" }
+MethodArgs = { Identifier ~ "(" ~ SchemaAttribute ~ ("," ~ SchemaAttribute)* ~ ")" }
 
-MethodNoParams = { Identifier }
+MethodNoArgs = { Identifier }
 
 MethodBody = { Expr }
 
-SchemaMethod = { "def" ~ (MethodParams | MethodNoParams) ~ NEWLINE  ~ MethodBody ~ NEWLINE ~ "end" }
+SchemaMethod = { "def" ~ (MethodArgs | MethodNoArgs) ~ NEWLINE  ~ MethodBody ~ NEWLINE ~ "end" }
 
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
