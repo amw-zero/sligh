@@ -1,5 +1,4 @@
 use pest::{self, Parser};
-use std::collections::HashMap;
 
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
