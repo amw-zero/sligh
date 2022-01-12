@@ -19,11 +19,15 @@ enum AstNode {
     },
     SchemaMethod {
         name: Box<AstNode>,
+        args: Vec<AstNode>,
+        body: Box<AstNode>,
+        return_type: Box<AstNode>,
     },
-    MethodParams {
+    MethodArgs {
         name: Box<AstNode>,
         arguments: Vec<AstNode>,
     },
+    Expr(String),
 }
 
 #[derive(Debug, Clone)]
@@ -87,9 +91,17 @@ fn r#type(pair: pest::iterators::Pair<Rule>) -> AstNode {
 }
 
 fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
-    let name = identifier(pair.into_inner().next().unwrap());
+    // Only handling methods with arguments right now
+    let mut schema_method = pair.into_inner();
 
-    return AstNode::SchemaMethod { name: Box::new(name) };
+    let mut method_args = schema_method.next().unwrap().into_inner();
+    let name = parse(method_args.next().unwrap());
+    let args = method_args.map(parse).collect();
+
+    let schema_body = schema_method.next().unwrap();
+    let body = parse(schema_body);
+    
+    return AstNode::SchemaMethod { name: Box::new(name), args: args, body: Box::new(body), return_type: Box::new(AstNode::InvalidNode) };
 }
 
 fn attribute(pair: pest::iterators::Pair<Rule>) -> AstNode {
@@ -100,13 +112,8 @@ fn attribute(pair: pest::iterators::Pair<Rule>) -> AstNode {
     return AstNode::SchemaAttribute{ name: Box::new(name), r#type: Box::new(r#type) }
 }
 
-// fn parse_statement(pair: pest::iterators::Pair<Rule>) -> AstNode {
-//     match pair.as_rule() {
-//         Rule::Schema,
-//     }
-// }
-
 fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
+    // println!("parse - {:?}", pair.as_rule());
     match pair.as_rule() {
         Rule::Statement => parse(pair.into_inner().next().unwrap()),
         Rule::Schema => {
@@ -127,8 +134,12 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
         Rule::SchemaAttribute => attribute(pair),
         Rule::SchemaMethod => schema_method(pair),
         Rule::Identifier => AstNode::Identifier(pair.as_str().into()),
-        Rule::MethodParams => {
-            return AstNode::MethodParams { name: Box::new(parse(pair.into_inner().next().unwrap())), arguments: vec![] }
+        Rule::MethodArgs => {
+            return AstNode::MethodArgs { name: Box::new(parse(pair.into_inner().next().unwrap())), arguments: vec![] }
+        },
+        Rule::MethodBody => parse(pair.into_inner().next().unwrap()),
+        Rule::Expr => {
+            return AstNode::Expr(pair.as_str().into())
         },
         _ => { 
             println!("Other");
@@ -157,5 +168,6 @@ fn main() {
         Err(e) => println!("Error {:?}", e)
     }
 
+    println!("{:?}", statements);
     println!("{}", js_code[0]);
 }
