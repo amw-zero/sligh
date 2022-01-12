@@ -20,19 +20,15 @@ enum AstNode {
     },
     SchemaMethod {
         name: Box<AstNode>,
-    }
+    },
+    MethodParams {
+        name: Box<AstNode>,
+        arguments: Vec<AstNode>,
+    },
 }
 
 fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
     return AstNode::Identifier(pair.as_str().into());
-}
-
-fn identifier_name(identifier: AstNode) -> String {
-    if let AstNode::Identifier(name) = identifier {
-        return name;
-    }
-
-    return "invalid parse".into();
 }
 
 fn r#type(pair: pest::iterators::Pair<Rule>) -> AstNode {
@@ -46,7 +42,7 @@ fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
     return AstNode::SchemaMethod { name: Box::new(name) };
 }
 
-fn attribute(pair: pest::iterators::Pair<Rule>,) -> AstNode {
+fn attribute(pair: pest::iterators::Pair<Rule>) -> AstNode {
     let mut inner = pair.into_inner();
     let name = identifier(inner.next().unwrap());
     let r#type = r#type(inner.next().unwrap());
@@ -54,8 +50,15 @@ fn attribute(pair: pest::iterators::Pair<Rule>,) -> AstNode {
     return AstNode::SchemaAttribute{ name: Box::new(name), r#type: Box::new(r#type) }
 }
 
+// fn parse_statement(pair: pest::iterators::Pair<Rule>) -> AstNode {
+//     match pair.as_rule() {
+//         Rule::Schema,
+//     }
+// }
+
 fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
     match pair.as_rule() {
+        Rule::Statement => parse(pair.into_inner().next().unwrap()),
         Rule::Schema => {
             let mut inner = pair.into_inner();
             let name = identifier(inner.next().unwrap());
@@ -74,6 +77,9 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
         Rule::SchemaAttribute => attribute(pair),
         Rule::SchemaMethod => schema_method(pair),
         Rule::Identifier => AstNode::Identifier(pair.as_str().into()),
+        Rule::MethodParams => {
+            return AstNode::MethodParams { name: Box::new(parse(pair.into_inner().next().unwrap())), arguments: vec![] }
+        },
         _ => { 
             println!("Other");
             return AstNode::InvalidNode;

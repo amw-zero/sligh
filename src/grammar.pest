@@ -1,4 +1,6 @@
-Program = _{ SOI ~ (Schema ~ NEWLINE*)* ~ EOI }
+Program = _{ SOI ~ (Statement ~ NEWLINE*)* ~ EOI }
+
+Statement = { Schema }
 
 WHITESPACE = _{ " " | "\t" }
 
@@ -14,7 +16,7 @@ Type = { Identifier }
 
 ArrayType = { "[" ~ Type ~ "]" }
 
-SchemaType = { ArrayType | Type }
+SchemaType = { Type | ArrayType }
 
 SchemaAttribute = { Identifier ~ ":" ~ SchemaType }
 
@@ -29,3 +31,4 @@ SchemaMethod = { "def" ~ (MethodParams | MethodNoParams) ~ NEWLINE  ~ MethodBody
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
 Schema = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ SchemaBody ~ "end" }
+
