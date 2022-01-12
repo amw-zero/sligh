@@ -6,6 +6,48 @@ schema Application do
   end
 end
 
+# Maybe a monad / effect type gets implicitly added to each function, i.e.:
+# def add(comment: String): Effect[State, ()]
+
+type Order
+  amount: Natural
+
+type Array[a]
+
+data BakeryBusiness
+  orders: [Order]
+
+  def place_order(o: Order) -> [Order]
+    orders.insert(o)
+  end
+end
+
+# Alternate
+type BakeryBusiness =
+  orders: [Order]
+  
+def BakeryBusiness.place_order(o: Order) -> [Order]
+  ...
+end
+
+expanded:
+
+type BakeryBusinessState:
+  orders: [Order]
+
+# Functions operate on state space given by schema
+# Return value gets placed inside of state monad
+def place_order(o: Order, state: BakeryBusinessState) -> State[BakeryBusinessState, [Order]]
+end
+
+
+refinement Application do
+  # gets existing definitions for free, i.e. add would already be callable
+  def add(comment: String)
+
+  end
+end
+
 refinement ClientServer(schema: Schema) do
   schema Client#{schema.name} do
     server: #{schema.name}
