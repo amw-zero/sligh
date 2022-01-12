@@ -21,22 +21,79 @@ schema Application do
   end
 end
 
+# Creating 2 versions of state and methods 
 refinement Fullstack do |schema|
   def client_attribute_def(attr)
     "client_#{attribute.name}: #{attribute.type}"
   end
 
+  def call_server
+
+  def client_method_def(method)
+    quote do
+      def client_#{method.name}(#{method.arguments})
+        
+      end
+    end
+  end
+
   quote do
-    schema #{"Fullstack#{schema.name}"}  
-    *#{schema.attributes.map do |attribute|
-      [attribute, client_attribute_def(attribute)]
-    end.flatten}
+    schema Fullstack#{schema.name} do  
+      *#{schema.body.definitions.map do |definition|
+        case attribute
+        when SchemaAttribute
+          [definition, client_attribute_def(definition)]
+        when SchemaMethod
+          [definition, client_method_def(definition)]
+        end
+      end.flatten.join("\n")}
+    end
+  end
+end
 
+# Outputs:
 
+schema FullstackApplication do
+  comments: [String]
+  client_comments: [String]
+
+  def add_comment(comment: String)
+    comments.push(comment)
+  end
+
+  def client_add_comment
+end
+
+# Creating two different schemas:
+refinement ClientServer do |schema|
+  def client_attribute_def(attr)
+    "client_#{attribute.name}: #{attribute.type}"
+  end
+
+  quote do
+    [
+      #{schema},
+      schema "Fullstack#{schema.name}" do
+
+      end
+    ]
+
+    schema #{"Fullstack#{schema.name}"} do  
+      *#{schema.body.definitions.map do |definition|
+        case attribute
+        when SchemaAttribute
+          [definition, client_attribute_def(definition)]
+        when SchemaMethod
+          [definition, client_method_def(definition)]
+        end
+      end.flatten.join("\n")}
+    end
   end
 end
 
 FullstackApplication = Fullstack(Application)
+
+Client, Server = ClientServer(Application)
 
 Ast:
 schema(
