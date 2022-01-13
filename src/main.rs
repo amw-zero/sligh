@@ -50,6 +50,7 @@ fn js_gen_string(node: JSAstNode) -> String {
             let class_body = js_gen_class_body(*body);
             format!("class {}\n  {}", class_name, class_body)
         },
+        JSAstNode::Expr(e) => e,
         _ => "".to_string()
     }
 }
@@ -67,8 +68,14 @@ fn js_gen_class_body(node: JSAstNode) -> String {
         JSAstNode::ClassBody{definitions} => {
             for def in definitions {
                 match def {
-                    JSAstNode::ClassMethod{ name, .. } => {
-                        class_body.push_str(format!("{}() {{}}", js_gen_iden_name(*name)).as_str())
+                    JSAstNode::ClassMethod{ name, body,.. } => {
+                        class_body.push_str(
+                            format!(
+                                "{}() {{ {} }}", 
+                                js_gen_iden_name(*name),
+                                js_gen_string(*body),
+                            ).as_str()
+                        )
                     },
                     _ => ()
                 }
