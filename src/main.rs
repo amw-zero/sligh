@@ -43,7 +43,7 @@ enum JSAstNode {
     Identifier(String)
 }
 
-fn js_gen_string_direct(node: JSAstNode) -> String {
+fn js_gen_string(node: JSAstNode) -> String {
     match node {
         JSAstNode::ClassDef { name, body } => {
             let class_name = js_gen_iden_name(*name);
@@ -73,7 +73,7 @@ fn js_gen_class_body(node: JSAstNode) -> String {
                             format!(
                                 "{}() {{ {} }}", 
                                 js_gen_iden_name(*name),
-                                js_gen_string_direct(*body),
+                                js_gen_string(*body),
                             ).as_str()
                         )
                     },
@@ -232,7 +232,7 @@ fn main() {
                 statements.push(parsed.clone());
                 let js_ast = js_translate(parsed);
                 js.push(js_ast.clone());
-                js_code.push(js_gen_string_direct(js_ast));
+                js_code.push(js_gen_string(js_ast));
             }
         },
         Err(e) => println!("Error {:?}", e)
