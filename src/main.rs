@@ -30,56 +30,119 @@ enum AstNode {
     Expr(String),
 }
 
+// JS Translation
+
 #[derive(Debug, Clone)]
 enum JSAstNode {
     InvalidNode,
     ClassDef { name: Box<JSAstNode>, body: Box<JSAstNode>},
-    ClassBody { },
+    ClassBody { definitions: Vec<JSAstNode>},
+    ClassProperty { identifier: Box<JSAstNode> },
+    ClassMethod { name: Box<JSAstNode>, args: Vec<JSAstNode>, body: Box<JSAstNode>},
+    Expr(String),
     Identifier(String)
 }
 
 fn js_gen_string(node: JSAstNode) -> String {
     match node {
         JSAstNode::ClassDef { name, body } => {
-            let class_name = js_iden_name(*name);
-            let class_body = js_class_body(*body);
+            let class_name = js_gen_iden_name(*name);
+            let class_body = js_gen_class_body(*body);
             format!("class {}\n  {}", class_name, class_body)
         },
         _ => "".to_string()
     }
 }
 
-fn js_iden_name(node: JSAstNode) -> String {
+fn js_gen_iden_name(node: JSAstNode) -> String {
     match node {
         JSAstNode::Identifier(name) => name,
         _ => panic!("Invalid JS identifier")
     }
 }
 
-fn js_class_body(node: JSAstNode) -> String {
+fn js_gen_class_body(node: JSAstNode) -> String {
+    let mut class_body = "".to_string();
     match node {
-        JSAstNode::ClassBody{} => "".to_string(),
+        JSAstNode::ClassBody{definitions} => {
+            for def in definitions {
+                match def {
+                    JSAstNode::ClassMethod{ name, .. } => {
+                        class_body.push_str(format!("{}() {{}}", js_gen_iden_name(*name)).as_str())
+                    },
+                    _ => ()
+                }
+            }
+
+            class_body
+        },
         _ => panic!("Invalid JS class body")
     }
 }
 
+// Note: Doesn't handle types
+fn js_translate_attribute(name: AstNode) -> JSAstNode {
+    match name {
+        AstNode::Identifier(n) => JSAstNode::Identifier(n),
+        _ => JSAstNode::InvalidNode
+    }
+}
+
+fn js_translate_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAstNode {
+    let js_name = js_translate_identifier(name);
+    let mut js_args: Vec<JSAstNode> = vec![];
+    for arg in args {
+        js_args.push(js_translate_attribute(arg));
+    }
+    let js_body = js_translate_expr(body);
+
+    JSAstNode::ClassMethod { name: Box::new(js_name), args: js_args, body: Box::new(js_body) }
+}
+
 fn js_translate(ast: AstNode) -> JSAstNode {
     match ast {
-        AstNode::SchemaDef { name, body: _ } => 
+        AstNode::SchemaDef { name, body } => 
             JSAstNode::ClassDef { 
-                name: Box::new(js_translate_identifier(name)), 
-                body: Box::new(JSAstNode::ClassBody{})
+                name: Box::new(js_translate_identifier(*name)), 
+                body: Box::new(js_translate_class_body(*body))
             },
+        AstNode::SchemaAttribute { name, .. } => js_translate_attribute(*name),
+        AstNode::SchemaMethod { name, args, body, .. } => js_translate_method(*name, args, *body),
         _ => JSAstNode::InvalidNode        
     }
 }
 
-fn js_translate_identifier(ast: Box<AstNode>) -> JSAstNode {
-    match *ast {
+fn js_translate_class_body(ast: AstNode) -> JSAstNode {
+    match ast {
+        AstNode::SchemaBody { definitions } => {
+            let mut js_definitions: Vec<JSAstNode> = vec![];
+            for def in definitions {
+                js_definitions.push(js_translate(def));
+//                definitions.map(js_translate) 
+            }
+            JSAstNode::ClassBody { 
+                definitions: js_definitions
+            }
+        }
+        _ => JSAstNode::InvalidNode
+    }
+}
+
+fn js_translate_expr(expr: AstNode) -> JSAstNode {
+    match expr {
+        AstNode::Expr(e) => JSAstNode::Expr(e),
+        _ => JSAstNode::InvalidNode
+    }
+}
+
+fn js_translate_identifier(ast: AstNode) -> JSAstNode {
+    match ast {
         AstNode::Identifier(name) => JSAstNode::Identifier(name),
         _ => JSAstNode::InvalidNode
     }
 }
+
+// Parser
 
 fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
     return AstNode::Identifier(pair.as_str().into());
