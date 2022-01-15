@@ -1,4 +1,5 @@
 use pest::{self, Parser};
+use std::cmp::Ordering;
 
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
@@ -12,13 +13,16 @@ enum AstNode {
         body: Box<AstNode>,
     },
     SchemaBody {
-        definitions: Vec<AstNode>,
+        definitions: Vec<AstNode>, // Vec<SchemaAttribute | SchemaMethod>
     },
     Identifier(String),
+    TypedIdentifier {
+        identifier: Box<AstNode>, // Identifier
+        r#type: Box<AstNode>,     // Identifier
+    },
     Type(Box<AstNode>),
     SchemaAttribute {
-        name: Box<AstNode>,
-        r#type: Box<AstNode>,
+        typedIdentifier: Box<AstNode>, // TypedIdentifier
     },
     SchemaMethod {
         name: Box<AstNode>,
@@ -80,22 +84,36 @@ enum JSAstNode {
     Identifier(String),
 }
 
+// Top level function for converting a JS statement into a string
 fn js_gen_string(node: JSAstNode) -> String {
-    println!("js_gen_string");
     match node {
         JSAstNode::ClassDef { name, body } => {
-            println!("JSAstNode::ClassDef");
             let class_name = js_gen_iden_name(*name);
-            let class_body = js_gen_class_body(*body);
+            let class_body = js_gen_string(*body);
             format!("class {} {{\n  {}\n}}", class_name, class_body)
+        }
+        JSAstNode::ClassBody { definitions } => {
+            let mut class_body = "".to_string();
+            for def in definitions {
+                class_body.push_str(&js_gen_string(def));
+            }
+
+            class_body
+        }
+        JSAstNode::ClassMethod { name, body, .. } => format!(
+            "{}() {{ {} }}\n\n",
+            js_gen_iden_name(*name),
+            js_gen_string(*body),
+        ),
+        JSAstNode::ClassProperty { identifier } => {
+            let name = js_gen_iden_name(*identifier);
+            format!("{};\n", name)
         }
         JSAstNode::CallExpr {
             receiver,
             call_name,
             args,
         } => {
-            println!("JSAstNode::CallExpr");
-
             let receiver_name = js_gen_iden_name(*receiver);
 
             let method_call = js_gen_iden_name(*call_name);
@@ -111,9 +129,7 @@ fn js_gen_string(node: JSAstNode) -> String {
             )
         }
         JSAstNode::FuncCallExpr { call_name, args } => {
-            println!("JSAstNode::FuncCallExpr");
             let method_call = js_gen_iden_name(*call_name);
-            println!("generating arg names");
 
             let mut arg_names: Vec<String> = vec![];
             for arg in args {
@@ -126,8 +142,6 @@ fn js_gen_string(node: JSAstNode) -> String {
         }
         JSAstNode::Identifier(_) => js_gen_iden_name(node),
         JSAstNode::Object { props } => {
-            println!("Generating JSAstNode::Object");
-            println!("{:?}", props);
             let mut key_values: Vec<String> = vec![];
             for prop in props {
                 key_values.push(format!(
@@ -149,44 +163,11 @@ fn js_gen_iden_name(node: JSAstNode) -> String {
         _ => panic!("Invalid JS identifier"),
     }
 }
-
-fn js_gen_class_body(node: JSAstNode) -> String {
-    let mut class_body = "".to_string();
-    match node {
-        JSAstNode::ClassBody { definitions } => {
-            for def in definitions {
-                match def {
-                    JSAstNode::ClassMethod { name, body, .. } => class_body.push_str(
-                        format!(
-                            "{}() {{ {} }}\n\n",
-                            js_gen_iden_name(*name),
-                            js_gen_string(*body),
-                        )
-                        .as_str(),
-                    ),
-                    _ => (),
-                }
-            }
-
-            class_body
-        }
-        _ => panic!("Invalid JS class body"),
-    }
-}
-
-// Note: Doesn't handle types
-fn js_translate_attribute(name: AstNode) -> JSAstNode {
-    match name {
-        AstNode::Identifier(n) => JSAstNode::Identifier(n),
-        _ => JSAstNode::InvalidNode,
-    }
-}
-
 fn js_translate_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAstNode {
     let js_name = js_translate(name);
     let mut js_args: Vec<JSAstNode> = vec![];
     for arg in args {
-        js_args.push(js_translate_attribute(arg));
+        js_args.push(js_translate(arg));
     }
     let js_body = js_translate(body);
 
@@ -203,9 +184,13 @@ fn js_translate(ast: AstNode) -> JSAstNode {
             name: Box::new(js_translate(*name)),
             body: Box::new(js_translate(*body)),
         },
-        AstNode::SchemaAttribute { name, .. } => JSAstNode::ClassProperty {
-            identifier: Box::new(js_translate(*name))
+        AstNode::SchemaAttribute { typedIdentifier } => JSAstNode::ClassProperty {
+            identifier: Box::new(js_translate(*typedIdentifier)),
         },
+        AstNode::TypedIdentifier { identifier, .. } => JSAstNode::Identifier(match *identifier {
+            AstNode::Identifier(n) => n,
+            _ => panic!("Expected Identifier node"),
+        }),
         AstNode::Identifier(n) => JSAstNode::Identifier(n),
         AstNode::SchemaMethod {
             name, args, body, ..
@@ -218,7 +203,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
             JSAstNode::ClassBody {
                 definitions: js_definitions,
             }
-        },
+        }
         AstNode::CallExpr {
             receiver,
             call_name,
@@ -240,15 +225,32 @@ fn js_translate(ast: AstNode) -> JSAstNode {
 
 // Infrastructure expansion
 
-fn js_find_class_methods(node: JSAstNode) -> Vec<JSAstNode> {
+struct PartitionedClassDefinitions {
+    class_methods: Vec<JSAstNode>,
+    other_definitions: Vec<JSAstNode>,
+}
+
+fn js_ast_node_cmp(l: &JSAstNode, r: &JSAstNode) -> Ordering {
+    match (l, r) {
+        (JSAstNode::ClassProperty { .. }, JSAstNode::ClassMethod { .. }) => Ordering::Less,
+        (JSAstNode::ClassMethod { .. }, JSAstNode::ClassProperty { .. }) => Ordering::Greater,
+        (JSAstNode::ClassProperty { .. }, JSAstNode::ClassProperty { .. }) => Ordering::Equal,
+        (JSAstNode::ClassMethod { .. }, JSAstNode::ClassMethod { .. }) => Ordering::Equal,
+        _ => panic!("Should only be sorting class properties and methods"),
+    }
+}
+
+fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinitions {
     let mut class_methods: Vec<JSAstNode> = vec![];
+    let mut other_definitions: Vec<JSAstNode> = vec![];
     match node {
         JSAstNode::ClassDef { body, .. } => match *body {
             JSAstNode::ClassBody { definitions } => {
                 for def in definitions {
                     match def {
                         JSAstNode::ClassMethod { .. } => class_methods.push(def),
-                        _ => (),
+                        JSAstNode::ClassProperty { .. } => other_definitions.push(def),
+                        _ => panic!("Found unknown class body definition"),
                     }
                 }
             }
@@ -257,7 +259,10 @@ fn js_find_class_methods(node: JSAstNode) -> Vec<JSAstNode> {
         _ => (),
     };
 
-    class_methods
+    PartitionedClassDefinitions {
+        class_methods: class_methods,
+        other_definitions: other_definitions,
+    }
 }
 
 fn js_class_method_name_expand(method_name: JSAstNode) -> JSAstNode {
@@ -293,7 +298,6 @@ fn js_expand_state_transition(_: String, state_var: String, args: Vec<String>) -
 
 // Replace class methods (state transitions) with network requests
 fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
-    println!("js_class_method_body_expand");
     match body {
         JSAstNode::CallExpr {
             receiver,
@@ -303,7 +307,6 @@ fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
             let receiver_name = js_gen_iden_name(*receiver);
             let call_name = js_gen_iden_name(*call_name);
             let mut arg_names: Vec<String> = vec![];
-            println!("Pushing arg names");
             for arg in args {
                 arg_names.push(js_gen_iden_name(arg));
             }
@@ -330,15 +333,20 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     }
 }
 
-fn js_make_client(class_methods: &Vec<JSAstNode>) -> JSAstNode {
+fn js_make_client(class_defs: &PartitionedClassDefinitions) -> JSAstNode {
     let mut expanded_class_methods_client: Vec<JSAstNode> = vec![];
-    for cm in class_methods {
+    for cm in &class_defs.class_methods {
         expanded_class_methods_client.push(js_expand_client(cm.clone()))
     }
+    for cm in &class_defs.other_definitions {
+        expanded_class_methods_client.push(cm.clone());
+    }
+
+    expanded_class_methods_client.sort_by(js_ast_node_cmp);
 
     // Quoted macro version:
     // quote: class Client {
-    //   `expanded_class_methods_client`   
+    //   `expanded_class_methods_client`
     // }
     JSAstNode::ClassDef {
         name: Box::new(JSAstNode::Identifier("Client".to_string())),
@@ -348,9 +356,9 @@ fn js_make_client(class_methods: &Vec<JSAstNode>) -> JSAstNode {
     }
 }
 
-fn js_make_server(class_methods: &Vec<JSAstNode>) -> JSAstNode {
+fn js_make_server(class_defs: &PartitionedClassDefinitions) -> JSAstNode {
     let mut expanded_class_methods_server: Vec<JSAstNode> = vec![];
-    for cm in class_methods {
+    for cm in &class_defs.class_methods {
         expanded_class_methods_server.push(js_expand_server(cm.clone()));
     }
     let server_class = JSAstNode::ClassDef {
@@ -365,7 +373,7 @@ fn js_make_server(class_methods: &Vec<JSAstNode>) -> JSAstNode {
 
 fn js_expand_server(class_method: JSAstNode) -> JSAstNode {
     class_method
-}   
+}
 
 // might want to write quoted JS macros here:
 // consider doing macros in MyLang, i.e. write infra in
@@ -373,10 +381,10 @@ fn js_expand_server(class_method: JSAstNode) -> JSAstNode {
 // func call / symbol in MyLang would have to be translated
 // by the backend. I.e. client.request() maps to fetch in JS.
 fn js_infra_expand(node: JSAstNode) -> (JSAstNode, JSAstNode) {
-    let class_methods = js_find_class_methods(node);
-    let client = js_make_client(&class_methods);
-    let server = js_make_server(&class_methods);
-  
+    let partitioned_class_defs = js_partition_class_definitions(node);
+    let client = js_make_client(&partitioned_class_defs);
+    let server = js_make_server(&partitioned_class_defs);
+
     (client, server)
 }
 
@@ -410,22 +418,22 @@ fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
     };
 }
 
-fn attribute(pair: pest::iterators::Pair<Rule>) -> AstNode {
-    let mut inner = pair.into_inner();
-    let name = identifier(inner.next().unwrap());
-    let r#type = r#type(inner.next().unwrap());
-
-    return AstNode::SchemaAttribute {
-        name: Box::new(name),
-        r#type: Box::new(r#type),
-    };
-}
-
 fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
-    // println!("parse - {:?}", pair.as_rule());
+    // Debug
+    println!("Parsing");
+    println!("{}", pair.to_json());
     match pair.as_rule() {
         Rule::Statement => parse(pair.into_inner().next().unwrap()),
-        Rule::Schema => {
+        Rule::TypedIdentifier => {
+            let mut inner = pair.into_inner();
+            AstNode::TypedIdentifier {
+                identifier: Box::new(parse(inner.next().unwrap())),
+                r#type: Box::new(parse(inner.next().unwrap())),
+            }
+        }
+        Rule::SchemaType => AstNode::Identifier(pair.as_str().into()),
+        Rule::Type => AstNode::Type(Box::new(parse(pair.into_inner().next().unwrap()))),
+        Rule::SchemaDef => {
             let mut inner = pair.into_inner();
             let name = identifier(inner.next().unwrap());
             let body = parse(inner.next().unwrap());
@@ -445,7 +453,9 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
                 definitions: definitions,
             }
         }
-        Rule::SchemaAttribute => attribute(pair),
+        Rule::SchemaAttribute => AstNode::SchemaAttribute {
+            typedIdentifier: Box::new(parse(pair.into_inner().next().unwrap())),
+        },
         Rule::SchemaMethod => schema_method(pair),
         Rule::Identifier => AstNode::Identifier(pair.as_str().into()),
         Rule::MethodDefArgs => AstNode::MethodArgs {
@@ -496,15 +506,15 @@ fn main() {
                 println!("generating expanded infra string");
                 js_infra_code.push(js_gen_string(client));
                 js_infra_code.push(js_gen_string(server));
-
             }
         }
         Err(e) => println!("Error {:?}", e),
     }
 
-    for c in js_asts {
-        println!("JS: {:?}", c);
-        println!("Class methods: {:?}\n", js_find_class_methods(c));
+    // Debug
+    println!("Parsed statements");
+    for s in statements {
+        println!("{:?}", s);
     }
 
     println!("JS Translation:\n");
@@ -519,8 +529,8 @@ fn main() {
 
     // must create one endpoint per state var:
     // app.get('/', (req, res) => {
-        // res.send('Hello World!')
-        // })
+    // res.send('Hello World!')
+    // })
 
     let web_requires = "const express = require('express');\n\
         const app = express();\n\
@@ -530,7 +540,10 @@ fn main() {
     let web_listen = "app.listen(port, () => {\n\
         console.log(`Example app listening at http://localhost:${port}`)\n\
       })\n";
-    let web_server = format!("{}{}\n{}{}", web_requires, js_infra_code[1], instantiate_server, web_listen);
+    let web_server = format!(
+        "{}{}\n{}{}",
+        web_requires, js_infra_code[1], instantiate_server, web_listen
+    );
 
     println!("\n\nWeb server:\n");
     println!("{}", web_server);
