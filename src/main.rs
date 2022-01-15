@@ -22,7 +22,7 @@ enum AstNode {
     },
     Type(Box<AstNode>),
     SchemaAttribute {
-        typedIdentifier: Box<AstNode>, // TypedIdentifier
+        typed_identifier: Box<AstNode>, // TypedIdentifier
     },
     SchemaMethod {
         name: Box<AstNode>,
@@ -184,8 +184,8 @@ fn js_translate(ast: AstNode) -> JSAstNode {
             name: Box::new(js_translate(*name)),
             body: Box::new(js_translate(*body)),
         },
-        AstNode::SchemaAttribute { typedIdentifier } => JSAstNode::ClassProperty {
-            identifier: Box::new(js_translate(*typedIdentifier)),
+        AstNode::SchemaAttribute { typed_identifier } => JSAstNode::ClassProperty {
+            identifier: Box::new(js_translate(*typed_identifier)),
         },
         AstNode::TypedIdentifier { identifier, .. } => JSAstNode::Identifier(match *identifier {
             AstNode::Identifier(n) => n,
@@ -449,7 +449,7 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
             }
         }
         Rule::SchemaAttribute => AstNode::SchemaAttribute {
-            typedIdentifier: Box::new(parse(pair.into_inner().next().unwrap())),
+            typed_identifier: Box::new(parse(pair.into_inner().next().unwrap())),
         },
         Rule::SchemaMethod => schema_method(pair),
         Rule::Identifier => AstNode::Identifier(pair.as_str().into()),
