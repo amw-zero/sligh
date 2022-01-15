@@ -533,6 +533,11 @@ fn main() {
         println!("{}", ex)
     }
 
+    // must create one endpoint per state var:
+    // app.get('/', (req, res) => {
+        // res.send('Hello World!')
+        // })
+
     let web_requires = "const express = require('express');\n\
         const app = express();\n\
         const port = 3000;\n";
@@ -543,5 +548,6 @@ fn main() {
       })\n";
     let web_server = format!("{}{}\n{}{}", web_requires, js_infra_code[1], instantiate_server, web_listen);
 
+    println!("\n\nWeb server:\n");
     println!("{}", web_server);
 }
