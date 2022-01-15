@@ -1,5 +1,4 @@
 use pest::{self, Parser};
-use std::collections::HashMap;
 
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
@@ -159,7 +158,7 @@ fn js_gen_class_body(node: JSAstNode) -> String {
                 match def {
                     JSAstNode::ClassMethod { name, body, .. } => class_body.push_str(
                         format!(
-                            "{}() {{ {} }}",
+                            "{}() {{ {} }}\n\n",
                             js_gen_iden_name(*name),
                             js_gen_string(*body),
                         )
@@ -347,6 +346,39 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     }
 }
 
+fn js_make_client(class_methods: &Vec<JSAstNode>) -> JSAstNode {
+    let mut expanded_class_methods_client: Vec<JSAstNode> = vec![];
+    for cm in class_methods {
+        expanded_class_methods_client.push(js_expand_client(cm.clone()))
+    }
+
+    // Quoted macro version:
+    // quote: class Client {
+    //   `expanded_class_methods_client`   
+    // }
+    JSAstNode::ClassDef {
+        name: Box::new(JSAstNode::Identifier("Client".to_string())),
+        body: Box::new(JSAstNode::ClassBody {
+            definitions: expanded_class_methods_client,
+        }),
+    }
+}
+
+fn js_make_server(class_methods: &Vec<JSAstNode>) -> JSAstNode {
+    let mut expanded_class_methods_server: Vec<JSAstNode> = vec![];
+    for cm in class_methods {
+        expanded_class_methods_server.push(js_expand_server(cm.clone()));
+    }
+    let server_class = JSAstNode::ClassDef {
+        name: Box::new(JSAstNode::Identifier("Server".to_string())),
+        body: Box::new(JSAstNode::ClassBody {
+            definitions: expanded_class_methods_server,
+        }),
+    };
+
+    server_class
+}
+
 fn js_expand_server(class_method: JSAstNode) -> JSAstNode {
     class_method
 }   
@@ -358,29 +390,9 @@ fn js_expand_server(class_method: JSAstNode) -> JSAstNode {
 // by the backend. I.e. client.request() maps to fetch in JS.
 fn js_infra_expand(node: JSAstNode) -> (JSAstNode, JSAstNode) {
     let class_methods = js_find_class_methods(node);
-    let mut expanded_class_methods_client: Vec<JSAstNode> = vec![];
-    for cm in &class_methods {
-        expanded_class_methods_client.push(js_expand_client(cm.clone()))
-    }
-
-    let client = JSAstNode::ClassDef {
-        name: Box::new(JSAstNode::Identifier("Client".to_string())),
-        body: Box::new(JSAstNode::ClassBody {
-            definitions: expanded_class_methods_client,
-        }),
-    };
-
-    let mut expanded_class_methods_server: Vec<JSAstNode> = vec![];
-    for cm in &class_methods {
-        expanded_class_methods_server.push(js_expand_server(cm.clone()));
-    }
-    let server = JSAstNode::ClassDef {
-        name: Box::new(JSAstNode::Identifier("Server".to_string())),
-        body: Box::new(JSAstNode::ClassBody {
-            definitions: expanded_class_methods_server,
-        }),
-    };
-
+    let client = js_make_client(&class_methods);
+    let server = js_make_server(&class_methods);
+  
     (client, server)
 }
 
@@ -517,7 +529,19 @@ fn main() {
     }
 
     println!("\n\nInfrastructure Expansion:\n");
-    for ex in js_infra_code {
+    for ex in &js_infra_code {
         println!("{}", ex)
     }
+
+    let web_requires = "const express = require('express');\n\
+        const app = express();\n\
+        const port = 3000;\n";
+
+    let instantiate_server = "const server = new Server();\n";
+    let web_listen = "app.listen(port, () => {\n\
+        console.log(`Example app listening at http://localhost:${port}`)\n\
+      })\n";
+    let web_server = format!("{}{}\n{}{}", web_requires, js_infra_code[1], instantiate_server, web_listen);
+
+    println!("{}", web_server);
 }

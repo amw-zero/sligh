@@ -4,4 +4,12 @@ schema Application do
   def add(comment: String)
     comments.push(comment)
   end
+
+  def remove(comment: String)
+    comments.delete(comment)
+  end
+
+  def update(comment: String)
+    comments.update(comment)
+  end
 end
