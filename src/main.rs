@@ -394,11 +394,6 @@ fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
     return AstNode::Identifier(pair.as_str().into());
 }
 
-fn r#type(pair: pest::iterators::Pair<Rule>) -> AstNode {
-    let name = identifier(pair.into_inner().next().unwrap());
-    return AstNode::Type(Box::new(name));
-}
-
 fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
     // Only handling methods with arguments right now
     let mut schema_method = pair.into_inner();
