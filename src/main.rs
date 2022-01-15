@@ -288,6 +288,7 @@ fn js_state_var_endpoint(state_var: String) -> String {
     format!("\"/{}\"", state_var)
 }
 
+// TODO: Add post body
 fn js_expand_state_transition(_: String, state_var: String, args: Vec<String>) -> JSAstNode {
     // fetch(endpoint_for_state(star_var), fetch_args(args))
     println!("js_expand_state_transition");
@@ -346,28 +347,41 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     }
 }
 
+fn js_expand_server(class_method: JSAstNode) -> JSAstNode {
+    class_method
+}   
+
 // might want to write quoted JS macros here:
 // consider doing macros in MyLang, i.e. write infra in
 // MyLang first before translating to target lang ?. Every
 // func call / symbol in MyLang would have to be translated
 // by the backend. I.e. client.request() maps to fetch in JS.
-fn js_infra_expand(node: JSAstNode) -> JSAstNode {
+fn js_infra_expand(node: JSAstNode) -> (JSAstNode, JSAstNode) {
     let class_methods = js_find_class_methods(node);
-    let mut expanded_class_methods: Vec<JSAstNode> = vec![];
+    let mut expanded_class_methods_client: Vec<JSAstNode> = vec![];
     for cm in &class_methods {
-        expanded_class_methods.push(js_expand_client(cm.clone()))
+        expanded_class_methods_client.push(js_expand_client(cm.clone()))
     }
 
     let client = JSAstNode::ClassDef {
         name: Box::new(JSAstNode::Identifier("Client".to_string())),
         body: Box::new(JSAstNode::ClassBody {
-            definitions: expanded_class_methods,
+            definitions: expanded_class_methods_client,
         }),
     };
 
-    let server = "class Server { \n".to_string();
+    let mut expanded_class_methods_server: Vec<JSAstNode> = vec![];
+    for cm in &class_methods {
+        expanded_class_methods_server.push(js_expand_server(cm.clone()));
+    }
+    let server = JSAstNode::ClassDef {
+        name: Box::new(JSAstNode::Identifier("Server".to_string())),
+        body: Box::new(JSAstNode::ClassBody {
+            definitions: expanded_class_methods_server,
+        }),
+    };
 
-    client
+    (client, server)
 }
 
 // Parser
@@ -479,10 +493,14 @@ fn main() {
                 let js_ast = js_translate(parsed.clone());
                 js_asts.push(js_ast.clone());
                 js_code.push(js_gen_string(js_ast.clone()));
-                let infra_expanded = js_infra_expand(js_ast);
-                js_infra_expanded.push(infra_expanded.clone());
+                let (client, server) = js_infra_expand(js_ast);
+                js_infra_expanded.push(client.clone());
+                js_infra_expanded.push(server.clone());
+
                 println!("generating expanded infra string");
-                js_infra_code.push(js_gen_string(infra_expanded));
+                js_infra_code.push(js_gen_string(client));
+                js_infra_code.push(js_gen_string(server));
+
             }
         }
         Err(e) => println!("Error {:?}", e),
