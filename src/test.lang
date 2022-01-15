@@ -1,15 +1,20 @@
+schema RecurringTransaction do
+  amount: Numeric
+  name: String
+end
+
 schema Application do
-  comments: [String]
+  recurring_transactions: [RecurringTransaction]
   
-  def add(comment: String)
-    comments.push(comment)
+  def add(rt: RecurringTransaction)
+    recurring_transactions.push(rt)
   end
 
-  def remove(comment: String)
-    comments.delete(comment)
+  def remove(rt: RecurringTransaction)
+    recurring_transactions.delete(rt)
   end
 
-  def update(comment: String)
-    comments.update(comment)
+  def update(rt: RecurringTransaction)
+    recurring_transactions.update(rt)
   end
 end
