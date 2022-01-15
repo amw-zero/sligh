@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use pest::{self, Parser};
 
 #[derive(pest_derive::Parser)]
@@ -38,33 +39,73 @@ enum AstNode {
 // JS Translation
 
 #[derive(Debug, Clone)]
+struct Prop {
+    key: JSAstNode,
+    value: JSAstNode,
+}
+
+#[derive(Debug, Clone)]
 enum JSAstNode {
     InvalidNode,
     ClassDef { name: Box<JSAstNode>, body: Box<JSAstNode>},
     ClassBody { definitions: Vec<JSAstNode>},
     ClassProperty { identifier: Box<JSAstNode> },
     ClassMethod { name: Box<JSAstNode>, args: Vec<JSAstNode>, body: Box<JSAstNode>},
+    FuncCallExpr { call_name: Box<JSAstNode>, args: Vec<JSAstNode> },
     CallExpr { receiver: Box<JSAstNode>, call_name: Box<JSAstNode>, args: Vec<JSAstNode> },
+    Object { props: Vec<Prop> },
     Expr(String),
     Identifier(String)
 }
 
 fn js_gen_string(node: JSAstNode) -> String {
+    println!("js_gen_string");
     match node {
         JSAstNode::ClassDef { name, body } => {
+            println!("JSAstNode::ClassDef");
             let class_name = js_gen_iden_name(*name);
             let class_body = js_gen_class_body(*body);
             format!("class {} {{\n  {}\n}}", class_name, class_body)
         },
         JSAstNode::CallExpr { receiver, call_name, args } => {
+            println!("JSAstNode::CallExpr");
+
             let receiver_name = js_gen_iden_name(*receiver);
+            
             let method_call = js_gen_iden_name(*call_name);
             let mut arg_names: Vec<String> = vec![];
             for arg in args {
                 arg_names.push(js_gen_iden_name(arg));
             }
             let comma_separated_args = arg_names.join(", ");
+
             format!("{}.{}({})", receiver_name, method_call, comma_separated_args)
+        },
+        JSAstNode::FuncCallExpr { call_name, args } => {
+            println!("JSAstNode::FuncCallExpr");
+            let method_call = js_gen_iden_name(*call_name);
+            println!("generating arg names");
+
+            let mut arg_names: Vec<String> = vec![];
+            for arg in args {
+                arg_names.push(js_gen_string(arg));
+            }
+
+            let comma_separated_args = arg_names.join(", ");
+
+            format!("{}({})", method_call, comma_separated_args)            
+        },
+        JSAstNode::Identifier(_) => js_gen_iden_name(node),
+        JSAstNode::Object { props } => {
+            println!("Generating JSAstNode::Object");
+            println!("{:?}", props);
+            let mut key_values: Vec<String> = vec![];
+            for prop in props {
+                key_values.push(
+                    format!("{}: {}", js_gen_iden_name(prop.key), js_gen_iden_name(prop.value))
+                )
+            }
+            format!("{{ {} }}", key_values.join(", "))
         },
         JSAstNode::Expr(e) => e,
         _ => "".to_string()
@@ -196,19 +237,50 @@ fn js_find_class_methods(node: JSAstNode) -> Vec<JSAstNode> {
     class_methods
 }
 
-fn js_class_method_name_expanded(method_name: JSAstNode) -> JSAstNode {
+fn js_class_method_name_expand(method_name: JSAstNode) -> JSAstNode {
     match method_name {
         JSAstNode::Identifier(n) => JSAstNode::Identifier(format!("{}Client", n)),
         _ => JSAstNode::InvalidNode
     }
 }
 
-// These aren't real expression yet - just simple strings
-fn js_body_expand(body: JSAstNode) -> JSAstNode {
+fn js_state_var_endpoint(state_var: String) -> String {
+    format!("\"/{}\"", state_var)
+}
+ 
+fn js_expand_state_transition(_: String, state_var: String, args: Vec<String>) -> JSAstNode {
+    // fetch(endpoint_for_state(star_var), fetch_args(args))
+    println!("js_expand_state_transition");
+    let endpoint = js_state_var_endpoint(state_var);
+    let post_prop = Prop { 
+        key: JSAstNode::Identifier("method".to_string()),
+        value: JSAstNode::Identifier("POST".to_string()),
+    };
+    JSAstNode::FuncCallExpr { 
+        call_name: Box::new(JSAstNode::Identifier("fetch".to_string())), 
+        args: vec![
+            JSAstNode::Identifier(endpoint),
+            JSAstNode::Object { props: vec![post_prop]}
+        ]
+    }
+}
+
+// Replace class methods (state transitions) with network requests
+fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
+    println!("js_class_method_body_expand");
     match body {
-        // query mapping of function name to expanded function (i.e push to fetch),
-        // and replace body with it
-        JSAstNode::Expr(e) => JSAstNode::InvalidNode, // symbol_table[e]
+        JSAstNode::CallExpr { receiver, call_name, args } => {
+            let receiver_name = js_gen_iden_name(*receiver);
+            let call_name = js_gen_iden_name(*call_name);
+            let mut arg_names: Vec<String> = vec![];
+            println!("Pushing arg names");
+            for arg in args {   
+                arg_names.push(js_gen_iden_name(arg));
+            }
+            let action = js_expand_state_transition(call_name, receiver_name, arg_names);
+
+            action.clone()
+        },
         _ => JSAstNode::InvalidNode
     }
 }
@@ -216,9 +288,9 @@ fn js_body_expand(body: JSAstNode) -> JSAstNode {
 fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     match class_method {
         JSAstNode::ClassMethod { name, args, body } => {
-            let expanded_name = Box::new(js_class_method_name_expanded(*name));
-            let expanded_body = Box::new(js_body_expand(*body.clone()));
-            JSAstNode::ClassMethod { name: expanded_name, args: args, body: body }
+            let expanded_name = Box::new(js_class_method_name_expand(*name));
+            let expanded_body = Box::new(js_class_method_body_expand(*body.clone()));
+            JSAstNode::ClassMethod { name: expanded_name, args: args, body: expanded_body }
         },
         _ => JSAstNode::InvalidNode
     }
@@ -231,15 +303,15 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
 // by the backend. I.e. client.request() maps to fetch in JS.
 fn js_infra_expand(node: JSAstNode) -> JSAstNode {
     let class_methods = js_find_class_methods(node);
-    let expanded_class_methods: Vec<JSAstNode> = vec![];
+    let mut expanded_class_methods: Vec<JSAstNode> = vec![];
     for cm in &class_methods {
-
+        expanded_class_methods.push(js_expand_client(cm.clone()))
     }
 
     let client = JSAstNode::ClassDef { 
         name: Box::new(JSAstNode::Identifier("Client".to_string())),
         body: Box::new(JSAstNode::ClassBody{
-            definitions: class_methods
+            definitions: expanded_class_methods
         }) 
     };
 
@@ -344,6 +416,7 @@ fn main() {
                 js_code.push(js_gen_string(js_ast.clone()));
                 let infra_expanded = js_infra_expand(js_ast);
                 js_infra_expanded.push(infra_expanded.clone());
+                println!("generating expanded infra string");
                 js_infra_code.push(js_gen_string(infra_expanded));
             }
         },
@@ -352,11 +425,15 @@ fn main() {
 
     for c in js_asts {
         println!("JS: {:?}", c);
-        println!("Class methods: {:?}", js_find_class_methods(c));
+        println!("Class methods: {:?}\n", js_find_class_methods(c));
     }
+
+    println!("JS Translation:\n");
     for c in js_code {
         println!("{}", c);
     }
+
+    println!("\n\nInfrastructure Expansion:\n");
     for ex in js_infra_code {
         println!("{}", ex)
     }
