@@ -183,12 +183,12 @@ fn js_translate_attribute(name: AstNode) -> JSAstNode {
 }
 
 fn js_translate_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAstNode {
-    let js_name = js_translate_identifier(name);
+    let js_name = js_translate(name);
     let mut js_args: Vec<JSAstNode> = vec![];
     for arg in args {
         js_args.push(js_translate_attribute(arg));
     }
-    let js_body = js_translate_expr(body);
+    let js_body = js_translate(body);
 
     JSAstNode::ClassMethod {
         name: Box::new(js_name),
@@ -200,19 +200,16 @@ fn js_translate_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAs
 fn js_translate(ast: AstNode) -> JSAstNode {
     match ast {
         AstNode::SchemaDef { name, body } => JSAstNode::ClassDef {
-            name: Box::new(js_translate_identifier(*name)),
-            body: Box::new(js_translate_class_body(*body)),
+            name: Box::new(js_translate(*name)),
+            body: Box::new(js_translate(*body)),
         },
-        AstNode::SchemaAttribute { name, .. } => js_translate_attribute(*name),
+        AstNode::SchemaAttribute { name, .. } => JSAstNode::ClassProperty {
+            identifier: Box::new(js_translate(*name))
+        },
+        AstNode::Identifier(n) => JSAstNode::Identifier(n),
         AstNode::SchemaMethod {
             name, args, body, ..
         } => js_translate_method(*name, args, *body),
-        _ => JSAstNode::InvalidNode,
-    }
-}
-
-fn js_translate_class_body(ast: AstNode) -> JSAstNode {
-    match ast {
         AstNode::SchemaBody { definitions } => {
             let mut js_definitions: Vec<JSAstNode> = vec![];
             for def in definitions {
@@ -221,13 +218,7 @@ fn js_translate_class_body(ast: AstNode) -> JSAstNode {
             JSAstNode::ClassBody {
                 definitions: js_definitions,
             }
-        }
-        _ => JSAstNode::InvalidNode,
-    }
-}
-
-fn js_translate_expr(expr: AstNode) -> JSAstNode {
-    match expr {
+        },
         AstNode::CallExpr {
             receiver,
             call_name,
@@ -235,21 +226,14 @@ fn js_translate_expr(expr: AstNode) -> JSAstNode {
         } => {
             let mut js_args: Vec<JSAstNode> = vec![];
             for arg in args {
-                js_args.push(js_translate_identifier(arg));
+                js_args.push(js_translate(arg));
             }
             JSAstNode::CallExpr {
-                receiver: Box::new(js_translate_identifier(*receiver)),
-                call_name: Box::new(js_translate_identifier(*call_name)),
+                receiver: Box::new(js_translate(*receiver)),
+                call_name: Box::new(js_translate(*call_name)),
                 args: js_args,
             }
         }
-        _ => JSAstNode::InvalidNode,
-    }
-}
-
-fn js_translate_identifier(ast: AstNode) -> JSAstNode {
-    match ast {
-        AstNode::Identifier(name) => JSAstNode::Identifier(name),
         _ => JSAstNode::InvalidNode,
     }
 }
