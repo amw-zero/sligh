@@ -4,7 +4,7 @@ Statement = { Schema }
 
 WHITESPACE = _{ " " | "\t" }
 
-Identifier = @{ ASCII_ALPHANUMERIC+ }
+Identifier = @{ (ASCII_ALPHANUMERIC | "_")+ }
 
 Term = { ASCII_ALPHANUMERIC+ }
 
