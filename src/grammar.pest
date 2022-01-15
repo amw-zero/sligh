@@ -1,6 +1,6 @@
 Program = _{ SOI ~ (Statement ~ NEWLINE*)* ~ EOI }
 
-Statement = { Schema }
+Statement = { SchemaDef }
 
 WHITESPACE = _{ " " | "\t" }
 
@@ -20,9 +20,11 @@ ArrayType = { "[" ~ Type ~ "]" }
 
 SchemaType = { Type | ArrayType }
 
-SchemaAttribute = { Identifier ~ ":" ~ SchemaType }
+TypedIdentifier = { Identifier ~ ":" ~ SchemaType }
 
-MethodDefArgs = { Identifier ~ "(" ~ SchemaAttribute ~ ("," ~ SchemaAttribute)* ~ ")" }
+SchemaAttribute = { TypedIdentifier }
+
+MethodDefArgs = { Identifier ~ "(" ~ TypedIdentifier ~ ("," ~ TypedIdentifier)* ~ ")" }
 
 MethodDefNoArgs = { Identifier }
 
@@ -32,4 +34,5 @@ SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ NEWLINE  ~ MethodBo
 
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
-Schema = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ SchemaBody ~ "end" }
+SchemaDef = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ SchemaBody ~ "end" }
+
