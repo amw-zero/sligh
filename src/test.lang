@@ -5,11 +5,3 @@ schema Application do
     comments.push(comment)
   end
 end
-
-schema Other do
-  comments: [String]
-  
-  def add(comment: String)
-    comments.push(comment)
-  end
-end

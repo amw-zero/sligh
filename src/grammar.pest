@@ -10,7 +10,9 @@ Term = { ASCII_ALPHANUMERIC+ }
 
 Receiver = @{ Identifier }
 
-Expr = { (Term ~ "+" ~ Term) | (Receiver ~ "." ~ Identifier ~ "(" ~ Identifier ~ ("," ~ Identifier)* ~ ")") }
+MethodArg = @{ Identifier }
+
+Expr = { (Term ~ "+" ~ Term) | (Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg ~ ("," ~ MethodArg)* ~ ")") }
 
 Type = { Identifier }
 
@@ -20,15 +22,14 @@ SchemaType = { Type | ArrayType }
 
 SchemaAttribute = { Identifier ~ ":" ~ SchemaType }
 
-MethodArgs = { Identifier ~ "(" ~ SchemaAttribute ~ ("," ~ SchemaAttribute)* ~ ")" }
+MethodDefArgs = { Identifier ~ "(" ~ SchemaAttribute ~ ("," ~ SchemaAttribute)* ~ ")" }
 
-MethodNoArgs = { Identifier }
+MethodDefNoArgs = { Identifier }
 
 MethodBody = { Expr }
 
-SchemaMethod = { "def" ~ (MethodArgs | MethodNoArgs) ~ NEWLINE  ~ MethodBody ~ NEWLINE ~ "end" }
+SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ NEWLINE  ~ MethodBody ~ NEWLINE ~ "end" }
 
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
 Schema = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ SchemaBody ~ "end" }
-
