@@ -2,6 +2,7 @@ use pest::{self, Parser};
 use std::cmp::Ordering;
 
 const DEBUG: bool = true;
+const API_HOST: &str = "localhost:3000";
 
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
@@ -300,13 +301,17 @@ fn js_class_method_name_expand(method_name: JSAstNode) -> JSAstNode {
     }
 }
 
-fn js_state_var_endpoint(state_var: String) -> String {
-    format!("\"/{}\"", state_var)
+fn js_state_var_endpoint_client(state_var: String) -> String {
+    format!("{}/{}", API_HOST, state_var)
+}
+
+fn js_state_var_endpoint_server(state_var: String) -> String {
+    format!("/{}", state_var)
 }
 
 fn js_expand_state_transition_client(_: String, state_var: String, args: Vec<String>) -> JSAstNode {
     // fetch(endpoint_for_state(star_var), fetch_args(args))
-    let endpoint = js_state_var_endpoint(state_var);
+    let endpoint = js_state_var_endpoint_client(state_var);
     let post_prop = Prop {
         key: JSAstNode::Identifier("method".to_string()),
         value: JSAstNode::StringLiteral("POST".to_string()),
@@ -324,7 +329,7 @@ fn js_expand_state_transition_client(_: String, state_var: String, args: Vec<Str
     JSAstNode::FuncCallExpr {
         call_name: Box::new(JSAstNode::Identifier("fetch".to_string())),
         args: vec![
-            JSAstNode::Identifier(endpoint),
+            JSAstNode::StringLiteral(endpoint),
             JSAstNode::Object {
                 props: vec![post_prop, body_prop],
             },
@@ -411,7 +416,7 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
             args,
         } => {
             let state_var = js_gen_iden_name(*receiver);
-            let endpoint_path = js_state_var_endpoint(state_var);
+            let endpoint_path = js_state_var_endpoint_server(state_var);
 
             let endpoint_body = JSAstNode::ArrowClosure {
                 args: vec![
@@ -429,7 +434,7 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
             JSAstNode::CallExpr {
                 receiver: Box::new(JSAstNode::Identifier("app".to_string())),
                 call_name: Box::new(JSAstNode::Identifier("post".to_string())),
-                args: vec![JSAstNode::Identifier(endpoint_path), endpoint_body],
+                args: vec![JSAstNode::StringLiteral(endpoint_path), endpoint_body],
             }
         }
         _ => panic!("Unexpected JSAstNode type, should only be expanding CallExprs"),
@@ -614,6 +619,7 @@ fn main() {
     let web_requires = "const express = require('express');\n\
         const app = express();\n\
         const port = 3000;\n\
+        app.options('*', cors());\n\
         app.use(express.json());\n";
 
     let web_listen = "app.listen(port, () => {\n\
