@@ -538,7 +538,7 @@ fn main() {
     let mut js_infra_expanded: Vec<JSAstNode> = vec![];
     let mut js_infra_code: Vec<String> = vec![];
     let mut js_asts: Vec<JSAstNode> = vec![];
-
+    let mut endpoint_strs: Vec<String> = vec![];
     match result {
         Ok(pairs) => {
             for pair in pairs {
@@ -555,7 +555,9 @@ fn main() {
                 println!("generating expanded infra string");
                 js_infra_code.push(js_gen_string(client));
                 for endpoint in server {
-                    js_infra_code.push(js_gen_string(endpoint));
+                    let endpoint_str = js_gen_string(endpoint);
+                    js_infra_code.push(endpoint_str.clone());
+                    endpoint_strs.push(endpoint_str);
                 }
             }
         }
@@ -582,13 +584,13 @@ fn main() {
         const app = express();\n\
         const port = 3000;\n";
 
-    let instantiate_server = "const server = new Server();\n";
     let web_listen = "app.listen(port, () => {\n\
         console.log(`Example app listening at http://localhost:${port}`)\n\
       })\n";
+    let all_endpoints = endpoint_strs.join("\n");
     let web_server = format!(
-        "{}{}\n{}{}",
-        web_requires, js_infra_code[1], instantiate_server, web_listen
+        "{}{}\n{}",
+        web_requires, all_endpoints, web_listen
     );
 
     println!("\n\nWeb server:\n");
