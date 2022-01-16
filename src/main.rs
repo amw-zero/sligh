@@ -1,6 +1,8 @@
 use pest::{self, Parser};
 use std::cmp::Ordering;
 
+const DEBUG: bool = true;
+
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
 struct LangParser;
@@ -91,8 +93,9 @@ enum JSAstNode {
 
 // Top level function for converting a JS statement into a string
 fn js_gen_string(node: JSAstNode) -> String {
-    // Debug
-    // println!("Generating string for {:?}", node);
+    if DEBUG {
+        println!("Generating string for {:?}", node);
+    }
     match node {
         JSAstNode::ClassDef { name, body } => {
             let class_name = js_gen_iden_name(*name);
@@ -483,9 +486,10 @@ fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
 }
 
 fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
-    // Debug
-    // println!("Parsing");
-    // println!("{}", pair.to_json());
+    if DEBUG {
+        println!("Parsing");
+        println!("{}", pair.to_json());
+    }
     match pair.as_rule() {
         Rule::Statement => parse(pair.into_inner().next().unwrap()),
         Rule::TypedIdentifier => {
@@ -597,11 +601,13 @@ fn main() {
     }
     */
 
-    println!("JS Translation:\n");
-    println!("{:?}", js_asts[1]);
+    if DEBUG {
+        println!("JS Translation:\n");
+        println!("{:?}\n", js_asts[2]);
+    }
 
     println!("Client code:\n");
-    println!("{}", js_infra_code[1]);
+    println!("{}", js_infra_code[2]);
 
     let web_requires = "const express = require('express');\n\
         const app = express();\n\
