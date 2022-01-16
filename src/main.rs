@@ -73,8 +73,8 @@ enum JSAstNode {
         args: Vec<JSAstNode>,
     },
     CallExpr {
-        receiver: Box<JSAstNode>,
-        call_name: Box<JSAstNode>,
+        receiver: Box<JSAstNode>,  // Identifier
+        call_name: Box<JSAstNode>, // Identifier
         args: Vec<JSAstNode>,
     },
     Object {
@@ -91,7 +91,7 @@ enum JSAstNode {
 
 // Top level function for converting a JS statement into a string
 fn js_gen_string(node: JSAstNode) -> String {
-    println!("Generating sttring for {:?}", node);
+    println!("Generating string for {:?}", node);
     match node {
         JSAstNode::ClassDef { name, body } => {
             let class_name = js_gen_iden_name(*name);
@@ -106,11 +106,19 @@ fn js_gen_string(node: JSAstNode) -> String {
 
             class_body
         }
-        JSAstNode::ClassMethod { name, body, .. } => format!(
-            "{}() {{ {} }}\n\n",
-            js_gen_iden_name(*name),
-            js_gen_string(*body),
-        ),
+        JSAstNode::ClassMethod { name, body, args } => {
+            let mut arg_strs: Vec<String> = vec![];
+            for arg in args {
+                arg_strs.push(js_gen_string(arg));
+            }
+            let comma_separated_args = arg_strs.join(", ");
+            format!(
+                "{}({}) {{ {} }}\n\n",
+                js_gen_iden_name(*name),
+                comma_separated_args,
+                js_gen_string(*body),
+            )
+        }
         JSAstNode::ClassProperty { identifier } => {
             let name = js_gen_iden_name(*identifier);
             format!("{};\n", name)
@@ -153,7 +161,7 @@ fn js_gen_string(node: JSAstNode) -> String {
                 key_values.push(format!(
                     "{}: {}",
                     js_gen_iden_name(prop.key),
-                    js_gen_iden_name(prop.value)
+                    js_gen_string(prop.value)
                 ))
             }
             format!("{{ {} }}", key_values.join(", "))
@@ -292,7 +300,6 @@ fn js_state_var_endpoint(state_var: String) -> String {
     format!("\"/{}\"", state_var)
 }
 
-// TODO: Add post body
 fn js_expand_state_transition_client(_: String, state_var: String, args: Vec<String>) -> JSAstNode {
     // fetch(endpoint_for_state(star_var), fetch_args(args))
     let endpoint = js_state_var_endpoint(state_var);
@@ -300,12 +307,22 @@ fn js_expand_state_transition_client(_: String, state_var: String, args: Vec<Str
         key: JSAstNode::Identifier("method".to_string()),
         value: JSAstNode::Identifier("POST".to_string()),
     };
+    let body_prop = Prop {
+        key: JSAstNode::Identifier("body".to_string()),
+
+        // TODO: Only JSON.stringifying one method call argument here
+        value: JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier("JSON".to_string())),
+            call_name: Box::new(JSAstNode::Identifier("stringify".to_string())),
+            args: vec![JSAstNode::Identifier(args[0].clone())],
+        },
+    };
     JSAstNode::FuncCallExpr {
         call_name: Box::new(JSAstNode::Identifier("fetch".to_string())),
         args: vec![
             JSAstNode::Identifier(endpoint),
             JSAstNode::Object {
-                props: vec![post_prop],
+                props: vec![post_prop, body_prop],
             },
         ],
     }
@@ -389,12 +406,9 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
             call_name,
             args,
         } => {
-            println!("Generatin state var name");
             let state_var = js_gen_iden_name(*receiver);
-            println!("Generated state var name");
             let endpoint_path = js_state_var_endpoint(state_var);
 
-            // This needs to be a closure containing the SQL query
             let endpoint_body = JSAstNode::ArrowClosure {
                 args: vec![
                     JSAstNode::Identifier("req".to_string()),
@@ -581,6 +595,9 @@ fn main() {
         println!("{}", ex)
     }
     */
+
+    println!("JS Translation:\n");
+    println!("{:?}", js_asts[1]);
 
     println!("Client code:\n");
     println!("{}", js_infra_code[1]);
