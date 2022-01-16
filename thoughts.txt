@@ -11,4 +11,4 @@ If not, this is a problem to think about.
 
 How to compile queries for complicated logic? example: Deal Connections.
 Might just want a way to hook into generated architecture to override
-queries / other things.
+queries / other things. This is comparable to inline assembly.
