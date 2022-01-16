@@ -588,10 +588,7 @@ fn main() {
         console.log(`Example app listening at http://localhost:${port}`)\n\
       })\n";
     let all_endpoints = endpoint_strs.join("\n");
-    let web_server = format!(
-        "{}{}\n{}",
-        web_requires, all_endpoints, web_listen
-    );
+    let web_server = format!("{}{}\n{}", web_requires, all_endpoints, web_listen);
 
     println!("\n\nWeb server:\n");
     println!("{}", web_server);
