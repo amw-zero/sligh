@@ -374,7 +374,7 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     }
 }
 
-fn js_make_client(class_defs: &PartitionedClassDefinitions) -> JSAstNode {
+fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) -> JSAstNode {
     let mut expanded_definitions: Vec<JSAstNode> = vec![];
     for cm in &class_defs.class_methods {
         expanded_definitions.push(js_expand_client(cm.clone()))
@@ -390,7 +390,7 @@ fn js_make_client(class_defs: &PartitionedClassDefinitions) -> JSAstNode {
     //   `expanded_definitions`
     // }
     JSAstNode::ClassDef {
-        name: Box::new(JSAstNode::Identifier("Client".to_string())),
+        name: Box::new(JSAstNode::Identifier(class_name)),
         body: Box::new(JSAstNode::ClassBody {
             definitions: expanded_definitions,
         }),
@@ -460,11 +460,21 @@ fn js_expand_endpoint(class_method: JSAstNode) -> JSAstNode {
 // func call / symbol in MyLang would have to be translated
 // by the backend. I.e. client.request() maps to fetch in JS.
 fn js_infra_expand(node: JSAstNode) -> (JSAstNode, Vec<JSAstNode>) {
-    let partitioned_class_defs = js_partition_class_definitions(node);
-    let client = js_make_client(&partitioned_class_defs);
-    let server = js_make_server(&partitioned_class_defs);
+    match node {
+        JSAstNode::ClassDef { ref name, .. } => {
+            let partitioned_class_defs = js_partition_class_definitions(node.clone());
+            // TODO: I don't know why &** is necessary here
+            let class_name = match &**name {
+                JSAstNode::Identifier(n) => n,
+                _ => panic!("Expected identifier"),
+            };
+            let client = js_make_client(class_name.clone(), &partitioned_class_defs);
+            let server = js_make_server(&partitioned_class_defs);
 
-    (client, server)
+            (client, server)
+        }
+        _ => (JSAstNode::InvalidNode, vec![]),
+    }
 }
 
 // Parser
@@ -614,12 +624,14 @@ fn main() {
     }
 
     println!("Client code:\n");
-    println!("{}", js_infra_code[2]);
+    for c in js_infra_code {
+        println!("{}", c);
+    }
 
     let web_requires = "const express = require('express');\n\
         const app = express();\n\
         const port = 3000;\n\
-        app.options('*', cors());\n\
+        app.use(cors({options: \"*\"}));\n\
         app.use(express.json());\n";
 
     let web_listen = "app.listen(port, () => {\n\
