@@ -91,7 +91,8 @@ enum JSAstNode {
 
 // Top level function for converting a JS statement into a string
 fn js_gen_string(node: JSAstNode) -> String {
-    println!("Generating string for {:?}", node);
+    // Debug
+    // println!("Generating string for {:?}", node);
     match node {
         JSAstNode::ClassDef { name, body } => {
             let class_name = js_gen_iden_name(*name);
@@ -483,8 +484,8 @@ fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
 
 fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
     // Debug
-    println!("Parsing");
-    println!("{}", pair.to_json());
+    // println!("Parsing");
+    // println!("{}", pair.to_json());
     match pair.as_rule() {
         Rule::Statement => parse(pair.into_inner().next().unwrap()),
         Rule::TypedIdentifier => {
