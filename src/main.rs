@@ -565,6 +565,7 @@ fn main() {
     }
 
     // Debug
+    /*
     println!("Parsed statements");
     for s in statements {
         println!("{:?}", s);
@@ -579,6 +580,10 @@ fn main() {
     for ex in &js_infra_code {
         println!("{}", ex)
     }
+    */
+
+    println!("Client code:\n");
+    println!("{}", js_infra_code[1]);
 
     let web_requires = "const express = require('express');\n\
         const app = express();\n\
