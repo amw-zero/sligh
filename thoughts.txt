@@ -1,0 +1,14 @@
+Handling endpoint backwards compatibility? Services that an external party 
+consumes, or something like blue-green deployments where there are multiple
+versions of the application running in tandem. Since endpoint names and implementations
+are generated, how do we prevent clients from breaking when calling the endpoints that
+they are aware of?
+
+Monitoring? many monitoring tools assume that the code being monitored
+is going to be human-readable. Generating the implementation code makes
+this difficult, though maybe the generated code can remain human-readable.
+If not, this is a problem to think about.
+
+How to compile queries for complicated logic? example: Deal Connections.
+Might just want a way to hook into generated architecture to override
+queries / other things.
