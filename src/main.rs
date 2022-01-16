@@ -309,7 +309,7 @@ fn js_expand_state_transition_client(_: String, state_var: String, args: Vec<Str
     let endpoint = js_state_var_endpoint(state_var);
     let post_prop = Prop {
         key: JSAstNode::Identifier("method".to_string()),
-        value: JSAstNode::Identifier("POST".to_string()),
+        value: JSAstNode::StringLiteral("POST".to_string()),
     };
     let body_prop = Prop {
         key: JSAstNode::Identifier("body".to_string()),
