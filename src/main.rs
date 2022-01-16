@@ -80,12 +80,18 @@ enum JSAstNode {
     Object {
         props: Vec<Prop>,
     },
+    ArrowClosure {
+        args: Vec<JSAstNode>,
+        body: Box<JSAstNode>,
+    },
+    StringLiteral(String),
     Expr(String),
     Identifier(String),
 }
 
 // Top level function for converting a JS statement into a string
 fn js_gen_string(node: JSAstNode) -> String {
+    println!("Generating sttring for {:?}", node);
     match node {
         JSAstNode::ClassDef { name, body } => {
             let class_name = js_gen_iden_name(*name);
@@ -117,11 +123,11 @@ fn js_gen_string(node: JSAstNode) -> String {
             let receiver_name = js_gen_iden_name(*receiver);
 
             let method_call = js_gen_iden_name(*call_name);
-            let mut arg_names: Vec<String> = vec![];
+            let mut arg_strs: Vec<String> = vec![];
             for arg in args {
-                arg_names.push(js_gen_iden_name(arg));
+                arg_strs.push(js_gen_string(arg));
             }
-            let comma_separated_args = arg_names.join(", ");
+            let comma_separated_args = arg_strs.join(", ");
 
             format!(
                 "{}.{}({})",
@@ -131,12 +137,12 @@ fn js_gen_string(node: JSAstNode) -> String {
         JSAstNode::FuncCallExpr { call_name, args } => {
             let method_call = js_gen_iden_name(*call_name);
 
-            let mut arg_names: Vec<String> = vec![];
+            let mut arg_strs: Vec<String> = vec![];
             for arg in args {
-                arg_names.push(js_gen_string(arg));
+                arg_strs.push(js_gen_string(arg));
             }
 
-            let comma_separated_args = arg_names.join(", ");
+            let comma_separated_args = arg_strs.join(", ");
 
             format!("{}({})", method_call, comma_separated_args)
         }
@@ -152,6 +158,16 @@ fn js_gen_string(node: JSAstNode) -> String {
             }
             format!("{{ {} }}", key_values.join(", "))
         }
+        JSAstNode::ArrowClosure { args, body } => {
+            let mut arg_strs: Vec<String> = vec![];
+            for arg in args {
+                arg_strs.push(js_gen_string(arg));
+            }
+            let comma_separated_args = arg_strs.join(", ");
+            let body_str = js_gen_string(*body);
+            format!("({}) => {{ {} }}", comma_separated_args, body_str)
+        }
+        JSAstNode::StringLiteral(s) => format!("\"{}\"", s),
         JSAstNode::Expr(e) => e,
         _ => "".to_string(),
     }
@@ -277,9 +293,8 @@ fn js_state_var_endpoint(state_var: String) -> String {
 }
 
 // TODO: Add post body
-fn js_expand_state_transition(_: String, state_var: String, args: Vec<String>) -> JSAstNode {
+fn js_expand_state_transition_client(_: String, state_var: String, args: Vec<String>) -> JSAstNode {
     // fetch(endpoint_for_state(star_var), fetch_args(args))
-    println!("js_expand_state_transition");
     let endpoint = js_state_var_endpoint(state_var);
     let post_prop = Prop {
         key: JSAstNode::Identifier("method".to_string()),
@@ -310,7 +325,7 @@ fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
             for arg in args {
                 arg_names.push(js_gen_iden_name(arg));
             }
-            let action = js_expand_state_transition(call_name, receiver_name, arg_names);
+            let action = js_expand_state_transition_client(call_name, receiver_name, arg_names);
 
             action.clone()
         }
@@ -334,45 +349,84 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
 }
 
 fn js_make_client(class_defs: &PartitionedClassDefinitions) -> JSAstNode {
-    let mut expanded_class_methods_client: Vec<JSAstNode> = vec![];
+    let mut expanded_definitions: Vec<JSAstNode> = vec![];
     for cm in &class_defs.class_methods {
-        expanded_class_methods_client.push(js_expand_client(cm.clone()))
+        expanded_definitions.push(js_expand_client(cm.clone()))
     }
     for cm in &class_defs.other_definitions {
-        expanded_class_methods_client.push(cm.clone());
+        expanded_definitions.push(cm.clone());
     }
 
-    expanded_class_methods_client.sort_by(js_ast_node_cmp);
+    expanded_definitions.sort_by(js_ast_node_cmp);
 
     // Quoted macro version:
     // quote: class Client {
-    //   `expanded_class_methods_client`
+    //   `expanded_definitions`
     // }
     JSAstNode::ClassDef {
         name: Box::new(JSAstNode::Identifier("Client".to_string())),
         body: Box::new(JSAstNode::ClassBody {
-            definitions: expanded_class_methods_client,
+            definitions: expanded_definitions,
         }),
     }
 }
 
-fn js_make_server(class_defs: &PartitionedClassDefinitions) -> JSAstNode {
-    let mut expanded_class_methods_server: Vec<JSAstNode> = vec![];
-    for cm in &class_defs.class_methods {
-        expanded_class_methods_server.push(js_expand_server(cm.clone()));
+// We generate a set of endpoints corresponding to all each state transition
+fn js_make_server(class_defs: &PartitionedClassDefinitions) -> Vec<JSAstNode> {
+    let mut endpoints: Vec<JSAstNode> = vec![];
+    for class_method in &class_defs.class_methods {
+        endpoints.push(js_expand_endpoint(class_method.clone()));
     }
-    let server_class = JSAstNode::ClassDef {
-        name: Box::new(JSAstNode::Identifier("Server".to_string())),
-        body: Box::new(JSAstNode::ClassBody {
-            definitions: expanded_class_methods_server,
-        }),
-    };
 
-    server_class
+    endpoints
 }
 
-fn js_expand_server(class_method: JSAstNode) -> JSAstNode {
-    class_method
+// Expand state transitions into SQL queries inside of server
+fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
+    match body {
+        JSAstNode::CallExpr {
+            receiver,
+            call_name,
+            args,
+        } => {
+            println!("Generatin state var name");
+            let state_var = js_gen_iden_name(*receiver);
+            println!("Generated state var name");
+            let endpoint_path = js_state_var_endpoint(state_var);
+
+            // This needs to be a closure containing the SQL query
+            let endpoint_body = JSAstNode::ArrowClosure {
+                args: vec![
+                    JSAstNode::Identifier("req".to_string()),
+                    JSAstNode::Identifier("res".to_string()),
+                ],
+                body: Box::new(JSAstNode::FuncCallExpr {
+                    call_name: Box::new(JSAstNode::Identifier("alasql".to_string())),
+                    args: vec![JSAstNode::StringLiteral("INSERT SUM SQL".to_string())],
+                }),
+            };
+
+            JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("app".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("get".to_string())),
+                args: vec![JSAstNode::Identifier(endpoint_path), endpoint_body],
+            }
+        }
+        _ => panic!("Unexpected JSAstNode type, should only be expanding CallExprs"),
+    }
+}
+
+// must create one endpoint per state var:
+// app.get('/recurring_transactions', (req, res) => {
+//   alasql("INSERT INTO recurring_transactions VALUES (50.0, 'mortgage')");
+//   res.send('Hello World!');
+// })
+// JSAstNodes: arrow closure
+fn js_expand_endpoint(class_method: JSAstNode) -> JSAstNode {
+    match class_method {
+        JSAstNode::ClassMethod { body, .. } => js_expand_class_method_to_endpoint(*body),
+        _ => JSAstNode::InvalidNode,
+    }
 }
 
 // might want to write quoted JS macros here:
@@ -380,7 +434,7 @@ fn js_expand_server(class_method: JSAstNode) -> JSAstNode {
 // MyLang first before translating to target lang ?. Every
 // func call / symbol in MyLang would have to be translated
 // by the backend. I.e. client.request() maps to fetch in JS.
-fn js_infra_expand(node: JSAstNode) -> (JSAstNode, JSAstNode) {
+fn js_infra_expand(node: JSAstNode) -> (JSAstNode, Vec<JSAstNode>) {
     let partitioned_class_defs = js_partition_class_definitions(node);
     let client = js_make_client(&partitioned_class_defs);
     let server = js_make_server(&partitioned_class_defs);
@@ -496,11 +550,13 @@ fn main() {
                 js_code.push(js_gen_string(js_ast.clone()));
                 let (client, server) = js_infra_expand(js_ast);
                 js_infra_expanded.push(client.clone());
-                js_infra_expanded.push(server.clone());
+                js_infra_expanded.append(&mut server.clone());
 
                 println!("generating expanded infra string");
                 js_infra_code.push(js_gen_string(client));
-                js_infra_code.push(js_gen_string(server));
+                for endpoint in server {
+                    js_infra_code.push(js_gen_string(endpoint));
+                }
             }
         }
         Err(e) => println!("Error {:?}", e),
@@ -521,11 +577,6 @@ fn main() {
     for ex in &js_infra_code {
         println!("{}", ex)
     }
-
-    // must create one endpoint per state var:
-    // app.get('/', (req, res) => {
-    // res.send('Hello World!')
-    // })
 
     let web_requires = "const express = require('express');\n\
         const app = express();\n\
