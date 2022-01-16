@@ -424,9 +424,11 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
                 }),
             };
 
+            // TODO: Only generating POST endpoints - have to infer HTTP method from
+            // statement semantics
             JSAstNode::CallExpr {
                 receiver: Box::new(JSAstNode::Identifier("app".to_string())),
-                call_name: Box::new(JSAstNode::Identifier("get".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("post".to_string())),
                 args: vec![JSAstNode::Identifier(endpoint_path), endpoint_body],
             }
         }
@@ -611,7 +613,8 @@ fn main() {
 
     let web_requires = "const express = require('express');\n\
         const app = express();\n\
-        const port = 3000;\n";
+        const port = 3000;\n\
+        app.use(express.json());\n";
 
     let web_listen = "app.listen(port, () => {\n\
         console.log(`Example app listening at http://localhost:${port}`)\n\
