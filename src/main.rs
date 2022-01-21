@@ -597,7 +597,8 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
 }
 
 fn main() {
-    let source = std::fs::read_to_string("./src/test.lang").expect("Gotta exist");
+    let source_file = std::env::args().nth(1).expect("No source file specified");
+    let source = std::fs::read_to_string(source_file).expect("Gotta exist");
     let result = LangParser::parse(Rule::Program, &source);
     let mut statements: Vec<AstNode> = vec![];
     let mut js_code: Vec<String> = vec![];
