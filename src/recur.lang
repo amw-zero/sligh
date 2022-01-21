@@ -17,4 +17,8 @@ schema Application:
   def update(rt: RecurringTransaction)
     recurring_transactions.update!(rt)
   end
+
+  def view()
+    recurring_transactions
+  end
 end

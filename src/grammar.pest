@@ -24,11 +24,11 @@ TypedIdentifier = { Identifier ~ ":" ~ SchemaType }
 
 SchemaAttribute = { TypedIdentifier }
 
-MethodDefArgs = { Identifier ~ "(" ~ TypedIdentifier ~ ("," ~ TypedIdentifier)* ~ ")" }
+MethodDefArgs = { Identifier ~ "(" ~ TypedIdentifier* ~ ("," ~ TypedIdentifier)* ~ ")" }
 
 MethodDefNoArgs = { Identifier }
 
-MethodBody = { Expr }
+MethodBody = { Expr | Identifier }
 
 SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ NEWLINE  ~ MethodBody ~ NEWLINE ~ "end" }
 
