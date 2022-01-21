@@ -275,7 +275,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
 // Infrastructure expansion
 
 struct PartitionedClassDefinitions {
-    class_methods: Vec<JSAstNode>,
+    state_transitions: Vec<JSAstNode>,
     other_definitions: Vec<JSAstNode>,
 }
 
@@ -290,14 +290,29 @@ fn js_ast_node_cmp(l: &JSAstNode, r: &JSAstNode) -> Ordering {
 }
 
 fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinitions {
-    let mut class_methods: Vec<JSAstNode> = vec![];
+    let mut state_transitions: Vec<JSAstNode> = vec![];
     let mut other_definitions: Vec<JSAstNode> = vec![];
     match node {
         JSAstNode::ClassDef { body, .. } => match *body {
             JSAstNode::ClassBody { definitions } => {
                 for def in definitions {
-                    match def {
-                        JSAstNode::ClassMethod { .. } => class_methods.push(def),
+                    match def.clone() {
+                        JSAstNode::ClassMethod { body, .. } => {
+                            match *body {
+                                JSAstNode::CallExpr { call_name, .. } => {
+                                    // The convention is that method names ending in ! are
+                                    // state transitions. Separate these for subsequent expansion
+                                    let method_name = js_gen_iden_name(*call_name);
+                                    let name_chars: Vec<char> = method_name.chars().collect();
+                                    if *name_chars.last().unwrap() == '!' {
+                                        state_transitions.push(def);
+                                    } else {
+                                        other_definitions.push(def);
+                                    }
+                                },
+                                _ => other_definitions.push(def)
+                            }
+                        }
                         JSAstNode::ClassProperty { .. } => other_definitions.push(def),
                         _ => panic!("Found unknown class body definition"),
                     }
@@ -309,7 +324,7 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
     };
 
     PartitionedClassDefinitions {
-        class_methods: class_methods,
+        state_transitions: state_transitions,
         other_definitions: other_definitions,
     }
 }
@@ -396,8 +411,8 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
 
 fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) -> JSAstNode {
     let mut expanded_definitions: Vec<JSAstNode> = vec![];
-    for cm in &class_defs.class_methods {
-        expanded_definitions.push(js_expand_client(cm.clone()))
+    for st in &class_defs.state_transitions {
+        expanded_definitions.push(js_expand_client(st.clone()))
     }
     for cm in &class_defs.other_definitions {
         expanded_definitions.push(cm.clone());
@@ -441,8 +456,8 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
 // We generate a set of endpoints corresponding to all each state transition
 fn js_make_server(class_defs: &PartitionedClassDefinitions) -> Vec<JSAstNode> {
     let mut endpoints: Vec<JSAstNode> = vec![];
-    for class_method in &class_defs.class_methods {
-        endpoints.push(js_expand_endpoint(class_method.clone()));
+    for st in &class_defs.state_transitions {
+        endpoints.push(js_expand_endpoint(st.clone()));
     }
 
     endpoints
@@ -482,12 +497,6 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
     }
 }
 
-// must create one endpoint per state var:
-// app.get('/recurring_transactions', (req, res) => {
-//   alasql("INSERT INTO recurring_transactions VALUES (50.0, 'mortgage')");
-//   res.send('Hello World!');
-// })
-// JSAstNodes: arrow closure
 fn js_expand_endpoint(class_method: JSAstNode) -> JSAstNode {
     match class_method {
         JSAstNode::ClassMethod { body, .. } => js_expand_class_method_to_endpoint(*body),
@@ -629,7 +638,6 @@ fn main() {
                 js_infra_expanded.push(client.clone());
                 js_infra_expanded.append(&mut server.clone());
 
-                println!("generating expanded infra string");
                 js_infra_code.push(js_gen_string(client));
                 for endpoint in server {
                     let endpoint_str = js_gen_string(endpoint);
