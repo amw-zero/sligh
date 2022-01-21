@@ -1,7 +1,7 @@
 use pest::{self, Parser};
 use std::cmp::Ordering;
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 const API_HOST: &str = "localhost:3000";
 
 #[derive(pest_derive::Parser)]
@@ -166,6 +166,7 @@ fn js_gen_string(node: JSAstNode) -> String {
         JSAstNode::TypedIdentifier { identifier, r#type } => {
             let iden_str = js_gen_string(*identifier);
             let type_str = js_gen_string(*r#type);
+
             format!("{}: {}", iden_str, type_str)
         }
         JSAstNode::Identifier(_) => js_gen_iden_name(node),
@@ -396,7 +397,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
 
     // This may not belong here - but here is where the constructor for the top-level
     // client state object is.
-    let config_func_type = format!("config: (a: {}) => void", class_name);
+    let config_func_type = format!("(a: {}) => void", class_name);
     let constructor = JSAstNode::ClassMethod {
         name: Box::new(JSAstNode::Identifier("constructor".to_string())),
         args: vec![
