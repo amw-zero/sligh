@@ -390,9 +390,30 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
     }
     for cm in &class_defs.other_definitions {
         expanded_definitions.push(cm.clone());
-    }
+    }    
 
     expanded_definitions.sort_by(js_ast_node_cmp);
+
+    // This may not belong here - but here is where the constructor for the top-level
+    // client state object is.
+    let config_func_type = format!("config: (a: {}) => void", class_name);
+    let constructor = JSAstNode::ClassMethod {
+        name: Box::new(JSAstNode::Identifier("constructor".to_string())),
+        args: vec![
+            JSAstNode::TypedIdentifier {
+                identifier: Box::new(JSAstNode::Identifier("config".to_string())),
+                r#type: Box::new(JSAstNode::Identifier(config_func_type))
+            }
+        ],
+        body: Box::new(JSAstNode::FuncCallExpr {
+            args: vec![
+                JSAstNode::Identifier("this".to_string())
+            ],
+            call_name: Box::new(JSAstNode::Identifier("config".to_string()))
+        })
+    };
+
+    expanded_definitions.insert(0, constructor);
 
     // Quoted macro version:
     // quote: class Client {
