@@ -1,20 +1,20 @@
-schema RecurringTransaction do
+schema RecurringTransaction:
   amount: Numeric
   name: String
 end
 
-schema Application do
+schema Application:
   recurring_transactions: [RecurringTransaction]
   
   def add(rt: RecurringTransaction)
-    recurring_transactions.add(rt)
+    recurring_transactions.add!(rt)
   end
 
   def remove(rt: RecurringTransaction)
-    recurring_transactions.delete(rt)
+    recurring_transactions.delete!(rt)
   end
 
   def update(rt: RecurringTransaction)
-    recurring_transactions.update(rt)
+    recurring_transactions.update!(rt)
   end
 end
