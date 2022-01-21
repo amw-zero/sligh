@@ -4,7 +4,7 @@ Statement = { SchemaDef }
 
 WHITESPACE = _{ " " | "\t" }
 
-Identifier = @{ (ASCII_ALPHANUMERIC | "_")+ }
+Identifier = @{ (ASCII_ALPHANUMERIC | "_" | "!")+ }
 
 Term = { ASCII_ALPHANUMERIC+ }
 
@@ -34,5 +34,5 @@ SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ NEWLINE  ~ MethodBo
 
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
-SchemaDef = { "schema" ~ Identifier ~ "do" ~ NEWLINE ~ SchemaBody ~ "end" }
+SchemaDef = { "schema" ~ Identifier ~ ":" ~ NEWLINE ~ SchemaBody ~ "end" }
 
