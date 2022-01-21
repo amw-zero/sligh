@@ -3,14 +3,8 @@ schema RecurringTransaction do
   name: String
 end
 
-schema Scenario do
-  name: String
-  recurring_transactions: [RecurringTransaction]
-end
-
 schema Application do
   recurring_transactions: [RecurringTransaction]
-  scenarios: [Scenario]
   
   def add(rt: RecurringTransaction)
     recurring_transactions.add(rt)
@@ -22,9 +16,5 @@ schema Application do
 
   def update(rt: RecurringTransaction)
     recurring_transactions.update(rt)
-  end
-
-  def add_scenario(s: Scenario)
-    scenarios.add(s)
   end
 end
