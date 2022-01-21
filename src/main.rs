@@ -167,7 +167,17 @@ fn js_gen_string(node: JSAstNode) -> String {
             let iden_str = js_gen_string(*identifier);
             let type_str = js_gen_string(*r#type);
 
-            format!("{}: {}", iden_str, type_str)
+            let type_str_chars: Vec<char> = type_str.chars().collect();
+            let last_char = *type_str_chars.last().unwrap();
+            let num_chars = type_str_chars.len();
+            let gen_type_str = if type_str_chars[0] == '[' && last_char == ']' {
+                let type_name: String = type_str_chars.into_iter().skip(1).take(num_chars - 2).collect();
+                format!("{}[]", type_name)
+            } else {
+                type_str
+            };
+
+            format!("{}: {}", iden_str, gen_type_str)
         }
         JSAstNode::Identifier(_) => js_gen_iden_name(node),
         JSAstNode::Object { props } => {
