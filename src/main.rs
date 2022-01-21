@@ -90,6 +90,10 @@ enum JSAstNode {
     StringLiteral(String),
     Expr(String),
     Identifier(String),
+    TypedIdentifier {
+        identifier: Box<JSAstNode>, // Identifier,
+        r#type: Box<JSAstNode>     // Identifier
+     }
 }
 
 // Top level function for converting a JS statement into a string
@@ -125,8 +129,8 @@ fn js_gen_string(node: JSAstNode) -> String {
             )
         }
         JSAstNode::ClassProperty { identifier } => {
-            let name = js_gen_iden_name(*identifier);
-            format!("{};\n", name)
+            let property = js_gen_string(*identifier);
+            format!("{};\n", property)
         }
         JSAstNode::CallExpr {
             receiver,
@@ -158,6 +162,11 @@ fn js_gen_string(node: JSAstNode) -> String {
             let comma_separated_args = arg_strs.join(", ");
 
             format!("{}({})", method_call, comma_separated_args)
+        }
+        JSAstNode::TypedIdentifier { identifier, r#type } => {
+            let iden_str = js_gen_string(*identifier);
+            let type_str = js_gen_string(*r#type);
+            format!("{}: {}", iden_str, type_str)
         }
         JSAstNode::Identifier(_) => js_gen_iden_name(node),
         JSAstNode::Object { props } => {
@@ -216,10 +225,10 @@ fn js_translate(ast: AstNode) -> JSAstNode {
         AstNode::SchemaAttribute { typed_identifier } => JSAstNode::ClassProperty {
             identifier: Box::new(js_translate(*typed_identifier)),
         },
-        AstNode::TypedIdentifier { identifier, .. } => JSAstNode::Identifier(match *identifier {
-            AstNode::Identifier(n) => n,
-            _ => panic!("Expected Identifier node"),
-        }),
+        AstNode::TypedIdentifier { identifier, r#type } => JSAstNode::TypedIdentifier {
+            identifier: Box::new(js_translate(*identifier)),
+            r#type: Box::new(js_translate(*r#type))
+        },
         AstNode::Identifier(n) => JSAstNode::Identifier(n),
         AstNode::SchemaMethod {
             name, args, body, ..
@@ -568,7 +577,6 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
 fn main() {
     let source = std::fs::read_to_string("./src/test.lang").expect("Gotta exist");
     let result = LangParser::parse(Rule::Program, &source);
-    //    let mut schemas: HashMap<String, AstNode> = HashMap::new();
     let mut statements: Vec<AstNode> = vec![];
     let mut js_code: Vec<String> = vec![];
     let mut js_infra_expanded: Vec<JSAstNode> = vec![];
