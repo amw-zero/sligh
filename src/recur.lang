@@ -7,7 +7,7 @@ schema Application:
   recurring_transactions: [RecurringTransaction]
   
   def add(rt: RecurringTransaction)
-    recurring_transactions.add!(rt)
+    recurring_transactions.create!(rt)
   end
 
   def remove(rt: RecurringTransaction)
