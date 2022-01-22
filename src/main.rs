@@ -87,6 +87,9 @@ enum JSAstNode {
         args: Vec<JSAstNode>,
         body: Box<JSAstNode>,
     },
+    StatementList {
+        statements: Vec<JSAstNode>
+    },
     StringLiteral(String),
     Expr(String),
     Identifier(String),
@@ -122,11 +125,19 @@ fn js_gen_string(node: JSAstNode) -> String {
             }
             let comma_separated_args = arg_strs.join(", ");
             format!(
-                "{}({}) {{ {} }}\n\n",
+                "{}({}) {{\n  {} }}\n\n",
                 js_gen_iden_name(*name),
                 comma_separated_args,
                 js_gen_string(*body),
             )
+        }
+        JSAstNode::StatementList { statements } => {
+            let mut stmt_strs: Vec<String> = vec![];
+            for s in statements {
+                stmt_strs.push(js_gen_string(s));
+            }
+
+            format!("{};\n", stmt_strs.join(";\n  "))
         }
         JSAstNode::ClassProperty { identifier } => {
             let property = js_gen_string(*identifier);
@@ -336,7 +347,7 @@ fn js_class_method_name_expand(method_name: JSAstNode) -> JSAstNode {
     }
 }
 
-fn js_state_var_endpoint_client(state_var: String) -> String {
+fn js_state_var_endpoint_client(state_var: &String) -> String {
     format!("{}/{}", API_HOST, state_var)
 }
 
@@ -344,13 +355,32 @@ fn js_state_var_endpoint_server(state_var: String) -> String {
     format!("/{}", state_var)
 }
 
-fn js_expand_state_transition_client(_: String, state_var: String, args: Vec<String>) -> JSAstNode {
-    // fetch(endpoint_for_state(star_var), fetch_args(args))
-    let endpoint = js_state_var_endpoint_client(state_var);
-    let post_prop = Prop {
-        key: JSAstNode::Identifier("method".to_string()),
-        value: JSAstNode::StringLiteral("POST".to_string()),
-    };
+enum StateTransitionFunc {
+    Create,
+    Update,
+    Delete,
+}
+
+impl StateTransitionFunc {
+    fn as_http_method(&self) -> &'static str {
+        match self {
+            StateTransitionFunc::Create => "POST",
+            StateTransitionFunc::Update => "PUT",
+            StateTransitionFunc::Delete => "DELETE",
+        }
+    }
+}
+
+fn state_transition_func_from_str(s: &str) -> StateTransitionFunc {
+    match s {
+        "create!" => StateTransitionFunc::Create,
+        "update!" => StateTransitionFunc::Update,
+        "delete!" => StateTransitionFunc::Delete,
+        _ => panic!(format!("Unexpected StateTransitionFunc string: {}", s))
+    }
+}
+
+fn js_expand_fetch_args_from_state_transition(st: &StateTransitionFunc, state_var_iden: &JSAstNode) -> JSAstNode {
     let body_prop = Prop {
         key: JSAstNode::Identifier("body".to_string()),
 
@@ -358,17 +388,53 @@ fn js_expand_state_transition_client(_: String, state_var: String, args: Vec<Str
         value: JSAstNode::CallExpr {
             receiver: Box::new(JSAstNode::Identifier("JSON".to_string())),
             call_name: Box::new(JSAstNode::Identifier("stringify".to_string())),
-            args: vec![JSAstNode::Identifier(args[0].clone())],
+            args: vec![state_var_iden.clone()],
         },
     };
-    JSAstNode::FuncCallExpr {
+    let post_prop = Prop {
+        key: JSAstNode::Identifier("method".to_string()),
+        value: JSAstNode::StringLiteral(st.as_http_method().to_string()),
+    };
+
+    JSAstNode::Object {
+        props: vec![post_prop, body_prop],
+    }
+}
+
+fn js_expand_update_client_state_from_state_transition(st: &StateTransitionFunc, state_var_iden: &JSAstNode, state_var: &str) -> JSAstNode {
+    match st {
+         _ => JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+            call_name: Box::new(JSAstNode::Identifier("push".to_string())),
+            args: vec![state_var_iden.clone()]
+        }
+    }
+    // StateTransitionFunc::Create        
+    //        StateTransitionFunc::Update =>
+    //        StateTransitionFunc::Delete =>
+}
+
+// This turns a semantic state transition into a network request to update the state in
+// the database as well as optimistically update the client state
+fn js_expand_state_transition_client(call_name: String, state_var: String, args: Vec<String>) -> JSAstNode {
+    let endpoint = js_state_var_endpoint_client(&state_var);
+    let state_var_iden = JSAstNode::Identifier(args[0].clone());
+    let state_trans_func = state_transition_func_from_str(&call_name);
+    let st_fetch_args = js_expand_fetch_args_from_state_transition(&state_trans_func, &state_var_iden);
+
+    let fetch_args = vec![
+        JSAstNode::StringLiteral(endpoint),
+        st_fetch_args,
+    ];
+
+    let fetch = JSAstNode::FuncCallExpr {
         call_name: Box::new(JSAstNode::Identifier("fetch".to_string())),
-        args: vec![
-            JSAstNode::StringLiteral(endpoint),
-            JSAstNode::Object {
-                props: vec![post_prop, body_prop],
-            },
-        ],
+        args: fetch_args,
+    };
+    let update_client_state = js_expand_update_client_state_from_state_transition(&state_trans_func, &state_var_iden, &state_var);
+
+    JSAstNode::StatementList {
+        statements: vec![fetch, update_client_state]
     }
 }
 
