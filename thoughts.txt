@@ -11,4 +11,28 @@ If not, this is a problem to think about.
 
 How to compile queries for complicated logic? example: Deal Connections.
 Might just want a way to hook into generated architecture to override
-queries / other things. This is comparable to inline assembly.
+queries / other things. This is comparable to inline assembly. Thoughts here:
+Alloy can be an inspiration. If there is an underlying model of data, such as everything
+being relations, we can use relational operations to make expressing this logic relatively
+intuitive. i.e.:
+
+```
+  def connections(d: Deal)
+    (Deal - d).where: |prevDeal| d.customer = prevDeal.customer and prevDeal.stage in Late
+  end
+```
+
+The expanded implementation can have a larger state space than the spec. 
+The simplest example of this is network errors. When you make a network request, 
+it can fail for many different reasons - timeout, server error, response parsing error,
+etc. That error state gets added to a state space that uses network requests. How does 
+this affect the simulation / refinement relationship between the spec and implementation?
+
+Make example of denormalized data, i.e. view / paginating 4 different tables
+
+Should incremental migrations still be possible? I.e., only applying a new pattern to 
+certain endpoints / behaviors for testing. Might be able to solve this with versioning
+/ canaray deployment.
+
+Name: Sollemnis? Mystique?
+
