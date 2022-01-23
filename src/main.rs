@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use pest::{self, Parser};
 use std::cmp::Ordering;
 
-const DEBUG: bool = false;
-const API_HOST: &str = "localhost:3000";
+const DEBUG: bool = true;
+const API_HOST: &str = "http://localhost:3000";
 
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
@@ -90,6 +91,11 @@ enum JSAstNode {
     StatementList {
         statements: Vec<JSAstNode>
     },
+    LetExpr {
+        name: Box<JSAstNode>,         // Identifier,
+        value: Box<JSAstNode>        // any node
+    },
+    ArrayLiteral(Vec<JSAstNode>),
     StringLiteral(String),
     Expr(String),
     Identifier(String),
@@ -137,7 +143,13 @@ fn js_gen_string(node: JSAstNode) -> String {
                 stmt_strs.push(js_gen_string(s));
             }
 
-            format!("{};\n", stmt_strs.join(";\n  "))
+            format!("{};\n", stmt_strs.join(";\n"))
+        }
+        JSAstNode::LetExpr { name, value } => {
+            let name_str = js_gen_string(*name);
+            let value_str = js_gen_string(*value);
+
+            format!("let {} = {}", name_str, value_str)
         }
         JSAstNode::ClassProperty { identifier } => {
             let property = js_gen_string(*identifier);
@@ -196,7 +208,7 @@ fn js_gen_string(node: JSAstNode) -> String {
             for prop in props {
                 key_values.push(format!(
                     "{}: {}",
-                    js_gen_iden_name(prop.key),
+                    js_gen_string(prop.key),
                     js_gen_string(prop.value)
                 ))
             }
@@ -209,7 +221,16 @@ fn js_gen_string(node: JSAstNode) -> String {
             }
             let comma_separated_args = arg_strs.join(", ");
             let body_str = js_gen_string(*body);
-            format!("({}) => {{ {} }}", comma_separated_args, body_str)
+            format!("({}) => {{\n {} }}", comma_separated_args, body_str)
+        }
+        JSAstNode::ArrayLiteral(nodes) => {
+            let mut node_strs: Vec<String> = vec![];
+            for node in nodes {
+                node_strs.push(js_gen_string(node));
+            }
+
+            let comma_separated_node_strs = node_strs.join(", ");
+            format!("[{}]", comma_separated_node_strs)
         }
         JSAstNode::StringLiteral(s) => format!("\"{}\"", s),
         JSAstNode::Expr(e) => e,
@@ -223,6 +244,7 @@ fn js_gen_iden_name(node: JSAstNode) -> String {
         _ => panic!("Invalid JS identifier"),
     }
 }
+
 fn js_translate_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAstNode {
     let js_name = js_translate(name);
     let mut js_args: Vec<JSAstNode> = vec![];
@@ -351,7 +373,7 @@ fn js_state_var_endpoint_client(state_var: &String) -> String {
     format!("{}/{}", API_HOST, state_var)
 }
 
-fn js_state_var_endpoint_server(state_var: String) -> String {
+fn js_state_var_endpoint_server(state_var: &str) -> String {
     format!("/{}", state_var)
 }
 
@@ -396,8 +418,20 @@ fn js_expand_fetch_args_from_state_transition(st: &StateTransitionFunc, state_va
         value: JSAstNode::StringLiteral(st.as_http_method().to_string()),
     };
 
+    let headers_prop = Prop {
+        key: JSAstNode::Identifier("headers".to_string()),
+        value: JSAstNode::Object {
+            props: vec![
+                Prop {
+                    key: JSAstNode::StringLiteral("Content-Type".to_string()),
+                    value: JSAstNode::StringLiteral("application/json".to_string())
+                }
+            ]
+        }
+    };
+
     JSAstNode::Object {
-        props: vec![post_prop, body_prop],
+        props: vec![post_prop, body_prop, headers_prop],
     }
 }
 
@@ -520,17 +554,76 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
 }
 
 // We generate a set of endpoints corresponding to all each state transition
-fn js_make_server(class_defs: &PartitionedClassDefinitions) -> Vec<JSAstNode> {
+fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -> Vec<JSAstNode> {
     let mut endpoints: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transitions {
-        endpoints.push(js_expand_endpoint(st.clone()));
+        match st {
+            JSAstNode::ClassMethod { body, args, .. } => {
+                // Again - only handling one method arg here.
+                let state_var_type = match &args[0] {
+                    JSAstNode::TypedIdentifier { r#type, .. } => js_gen_iden_name(*r#type.clone()),
+                    _ => panic!("Expected a TypedIdentifier to be the first argument of a class method")
+                };
+                endpoints.push(js_expand_class_method_to_endpoint(*body.clone(), &state_var_type, schemas));
+            }
+            _ => continue
+        }
     }
 
     endpoints
 }
 
+fn js_state_query(state_var: &str, st_func: &StateTransitionFunc, state_var_type: &str, schemas: &Schemas) -> JSAstNode {
+    match st_func {
+        StateTransitionFunc::Create => {
+            let mut attr_names: Vec<String> = vec![];
+            let mut sql_attr_names: Vec<SQLAstNode> = vec![];
+            let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
+            let mut js_attr_values: Vec<JSAstNode> = vec![];
+            let schema = &schemas[state_var_type];
+            for attr in &schema.attributes {
+                attr_names.push(attr.name.clone());
+
+                // TODO: this is assuming the name of 'data' which is used to 
+                // parse the HTTP body in write requests.
+                js_attr_values.push(
+                    JSAstNode::Identifier(
+                        format!("data.{}", attr.name)
+                    )
+                );
+                sql_attr_names.push(
+                    SQLAstNode::Identifier(attr.name.clone())
+                );
+                sql_value_placeholders.push(
+                    SQLAstNode::Identifier("?".to_string())
+                )
+            }
+            // INSERT INTO state_var (attr_names) VALUES (?, ?, ?)
+            let sql = SQLAstNode::Insert {
+                into: Box::new(SQLAstNode::Identifier(state_var.to_string())),
+                attributes: sql_attr_names,
+                values:     sql_value_placeholders,
+            };
+            JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("run".to_string())),
+                args: vec![
+                    JSAstNode::StringLiteral(
+                        sql_gen_string(&sql)
+                    ),
+                    JSAstNode::ArrayLiteral(
+                        js_attr_values
+                    )
+                    // cb
+                ],
+            }
+        },
+        _ => JSAstNode::InvalidNode
+    }
+}
+
 // Expand state transitions into SQL queries inside of server
-fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
+fn js_expand_class_method_to_endpoint(body: JSAstNode, state_var_type: &str, schemas: &Schemas) -> JSAstNode {
     match body {
         JSAstNode::CallExpr {
             receiver,
@@ -538,21 +631,36 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
             args,
         } => {
             let state_var = js_gen_iden_name(*receiver);
-            let endpoint_path = js_state_var_endpoint_server(state_var);
+            let call_name_str = js_gen_iden_name(*call_name);
+            let state_transition_func = state_transition_func_from_str(&call_name_str);
+            let endpoint_path = js_state_var_endpoint_server(&state_var);
+            let query = js_state_query(&state_var, &state_transition_func, state_var_type, schemas);
+
+            let parse_data = JSAstNode::LetExpr {
+                name: Box::new(JSAstNode::Identifier("data".to_string())),
+                value: Box::new(JSAstNode::Identifier("req.body".to_string()))
+            };
 
             let endpoint_body = JSAstNode::ArrowClosure {
                 args: vec![
                     JSAstNode::Identifier("req".to_string()),
                     JSAstNode::Identifier("res".to_string()),
                 ],
-                body: Box::new(JSAstNode::FuncCallExpr {
-                    call_name: Box::new(JSAstNode::Identifier("alasql".to_string())),
-                    args: vec![JSAstNode::StringLiteral("INSERT SUM SQL".to_string())],
+                body: Box::new(JSAstNode::StatementList {
+                    statements: vec![
+                        parse_data,
+                        query,
+                        JSAstNode::CallExpr {
+                            receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+                            call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+                            args: vec![
+                                JSAstNode::Object { props: vec![] }
+                            ]
+                        }
+                    ]
                 }),
             };
 
-            // TODO: Only generating POST endpoints - have to infer HTTP method from
-            // statement semantics
             JSAstNode::CallExpr {
                 receiver: Box::new(JSAstNode::Identifier("app".to_string())),
                 call_name: Box::new(JSAstNode::Identifier("post".to_string())),
@@ -563,19 +671,12 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode) -> JSAstNode {
     }
 }
 
-fn js_expand_endpoint(class_method: JSAstNode) -> JSAstNode {
-    match class_method {
-        JSAstNode::ClassMethod { body, .. } => js_expand_class_method_to_endpoint(*body),
-        _ => JSAstNode::InvalidNode,
-    }
-}
-
 // might want to write quoted JS macros here:
 // consider doing macros in MyLang, i.e. write infra in
 // MyLang first before translating to target lang ?. Every
 // func call / symbol in MyLang would have to be translated
 // by the backend. I.e. client.request() maps to fetch in JS.
-fn js_infra_expand(node: JSAstNode) -> (JSAstNode, Vec<JSAstNode>) {
+fn js_infra_expand(node: JSAstNode, schemas: &Schemas) -> (JSAstNode, Vec<JSAstNode>) {
     match node {
         JSAstNode::ClassDef { ref name, .. } => {
             let partitioned_class_defs = js_partition_class_definitions(node.clone());
@@ -585,7 +686,7 @@ fn js_infra_expand(node: JSAstNode) -> (JSAstNode, Vec<JSAstNode>) {
                 _ => panic!("Expected identifier"),
             };
             let client = js_make_client(class_name.clone(), &partitioned_class_defs);
-            let server = js_make_server(&partitioned_class_defs);
+            let server = js_make_server(&partitioned_class_defs, schemas);
 
             (client, server)
         }
@@ -681,10 +782,110 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
     }
 }
 
+// SQL
+
+enum SQLAstNode {
+    Insert {
+        into: Box<SQLAstNode>,
+        attributes: Vec<SQLAstNode>,
+        values: Vec<SQLAstNode>
+    },
+    Select {
+        attributes: Vec<SQLAstNode>,
+        from: Box<SQLAstNode>,
+        clause: Option<Box<SQLAstNode>>,
+    },
+    Update {
+        from: Box<SQLAstNode>,
+        attributes: Vec<SQLAstNode>, // Vec<EqualityExpr>
+        clause: Option<Box<SQLAstNode>>
+    },
+    Delete {
+        from: Box<SQLAstNode>,
+        clause: Option<Box<SQLAstNode>>
+    },
+    EqualityExpr {
+        left: Box<SQLAstNode>,
+        right: Box<SQLAstNode>,
+    },
+    Identifier(String),
+    StringLiteral(String),
+    NumberLiteral(i32),
+}
+
+fn sql_gen_string(node: &SQLAstNode) -> String {
+    match node {
+        SQLAstNode::Insert { into, attributes, values } => {
+            let into_relation = sql_gen_string(into);
+            let mut attr_names: Vec<String> = vec![];
+            for attr in attributes {
+                attr_names.push(sql_gen_string(attr));
+            }
+
+            let mut attr_values: Vec<String> = vec![];
+            for value in values {
+                attr_values.push(sql_gen_string(value));
+            }
+
+            let comma_separated_attrs = attr_names.join(", ");
+            let comma_separated_values = attr_values.join(", ");
+
+            format!("INSERT INTO {} ({}) VALUES ({})", into_relation, comma_separated_attrs, comma_separated_values)
+        },
+        SQLAstNode::Identifier(n) => n.clone(),
+        _ => panic!("Attempted to generate string for invalid SQLAstNode")
+    }
+}
+
+type Schemas = HashMap<String, Schema>;
+
+struct SchemaAttribute {
+    name: String,
+    r#type: String
+}
+
+struct Schema {
+    name: String,
+    attributes: Vec<SchemaAttribute>
+}
+
+fn iden_name(iden: AstNode) -> String {
+    match iden {
+        AstNode::Identifier(s) => s,
+        _ => panic!("This is for extracting names out of Identifiers only")
+    }
+}
+
+fn schema_attributes(schema_body: AstNode) -> Vec<SchemaAttribute> {
+    let mut attrs: Vec<SchemaAttribute> = vec![];
+    match schema_body {
+        AstNode::SchemaBody { definitions } => {
+            for def in definitions {
+                match def {
+                    AstNode::SchemaAttribute { typed_identifier } => match *typed_identifier {
+                        AstNode::TypedIdentifier { identifier, r#type } => {
+                            let attr_name = iden_name(*identifier);
+                            let attr_type = iden_name(*r#type);
+
+                            attrs.push(SchemaAttribute { name: attr_name, r#type: attr_type });
+                        },
+                        _ => continue
+                    },
+                    _ => continue
+                }
+            }
+
+            attrs
+        },
+        _ => panic!("Can only extract schema attributes out of SchemaBodies")
+    }
+}
+
 fn main() {
     let source_file = std::env::args().nth(1).expect("No source file specified");
     let source = std::fs::read_to_string(source_file).expect("Gotta exist");
     let result = LangParser::parse(Rule::Program, &source);
+    let mut schemas: Schemas = HashMap::new();
     let mut statements: Vec<AstNode> = vec![];
     let mut js_code: Vec<String> = vec![];
     let mut js_infra_expanded: Vec<JSAstNode> = vec![];
@@ -695,12 +896,25 @@ fn main() {
         Ok(pairs) => {
             for pair in pairs {
                 let parsed = parse(pair);
+                match parsed.clone() {
+                    AstNode::SchemaDef { name, body } => {
+                        let schema_name = iden_name(*name);
+                        let attributes = schema_attributes(*body);
+                        let schema = Schema {
+                            name: schema_name.clone(),
+                            attributes: attributes
+                        };
+
+                        schemas.insert(schema_name, schema);
+                    },
+                    _ => ()
+                }
 
                 statements.push(parsed.clone());
                 let js_ast = js_translate(parsed.clone());
                 js_asts.push(js_ast.clone());
                 js_code.push(js_gen_string(js_ast.clone()));
-                let (client, server) = js_infra_expand(js_ast);
+                let (client, server) = js_infra_expand(js_ast, &schemas);
                 js_infra_expanded.push(client.clone());
                 js_infra_expanded.append(&mut server.clone());
 
@@ -757,4 +971,9 @@ fn main() {
 
     println!("\n\nWeb server:\n");
     println!("{}", web_server);
+
+    for js_ast in js_asts {
+        println!("JSAst:");
+        println!("{:?}\n\n", js_ast);
+    }
 }
