@@ -12,7 +12,7 @@ Receiver = @{ Identifier }
 
 MethodArg = @{ Identifier }
 
-Expr = { (Term ~ "+" ~ Term) | (Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg ~ ("," ~ MethodArg)* ~ ")") }
+Expr = { (Term ~ "+" ~ Term) | (Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")") }
 
 Type = { Identifier }
 
