@@ -9,9 +9,9 @@ describe('Array', function() {
       let rt = new RecurringTransaction(() => {});
       rt.name = "test";
       rt.amount = 50.0;
-      budget.create_recurring_transactionClient(rt);
-      expect(false).to.eq(true);
 
+      budget.create_recurring_transactionClient(rt);
+      expect(budget.recurring_transactions[0].name).to.eq("test");
     });
   });
 });
