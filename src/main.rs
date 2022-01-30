@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use pest::{self, Parser};
 use std::cmp::Ordering;
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 const API_HOST: &str = "http://localhost:3000";
 
 #[derive(pest_derive::Parser)]
@@ -65,7 +65,7 @@ enum JSAstNode {
         definitions: Vec<JSAstNode>,
     },
     ClassProperty {
-        identifier: Box<JSAstNode>,
+        typed_identifier: Box<JSAstNode>,
     },
     ClassMethod {
         name: Box<JSAstNode>,
@@ -151,8 +151,8 @@ fn js_gen_string(node: JSAstNode) -> String {
 
             format!("let {} = {}", name_str, value_str)
         }
-        JSAstNode::ClassProperty { identifier } => {
-            let property = js_gen_string(*identifier);
+        JSAstNode::ClassProperty { typed_identifier } => {
+            let property = js_gen_string(*typed_identifier);
             format!("{};\n", property)
         }
         JSAstNode::CallExpr {
@@ -267,7 +267,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
             body: Box::new(js_translate(*body)),
         },
         AstNode::SchemaAttribute { typed_identifier } => JSAstNode::ClassProperty {
-            identifier: Box::new(js_translate(*typed_identifier)),
+            typed_identifier: Box::new(js_translate(*typed_identifier)),
         },
         AstNode::TypedIdentifier { identifier, r#type } => JSAstNode::TypedIdentifier {
             identifier: Box::new(js_translate(*identifier)),
@@ -309,7 +309,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
 
 struct PartitionedClassDefinitions {
     state_transitions: Vec<JSAstNode>,
-    other_definitions: Vec<JSAstNode>,
+    state_variables: Vec<JSAstNode>,
 }
 
 fn js_ast_node_cmp(l: &JSAstNode, r: &JSAstNode) -> Ordering {
@@ -324,7 +324,7 @@ fn js_ast_node_cmp(l: &JSAstNode, r: &JSAstNode) -> Ordering {
 
 fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinitions {
     let mut state_transitions: Vec<JSAstNode> = vec![];
-    let mut other_definitions: Vec<JSAstNode> = vec![];
+    let mut state_variables: Vec<JSAstNode> = vec![];
     match node {
         JSAstNode::ClassDef { body, .. } => match *body {
             JSAstNode::ClassBody { definitions } => {
@@ -340,13 +340,13 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
                                     if *name_chars.last().unwrap() == '!' {
                                         state_transitions.push(def);
                                     } else {
-                                        other_definitions.push(def);
+                                        state_variables.push(def);
                                     }
                                 },
-                                _ => other_definitions.push(def)
+                                _ => state_variables.push(def)
                             }
                         }
-                        JSAstNode::ClassProperty { .. } => other_definitions.push(def),
+                        JSAstNode::ClassProperty { .. } => state_variables.push(def),
                         _ => panic!("Found unknown class body definition"),
                     }
                 }
@@ -358,7 +358,7 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
 
     PartitionedClassDefinitions {
         state_transitions: state_transitions,
-        other_definitions: other_definitions,
+        state_variables: state_variables,
     }
 }
 
@@ -514,7 +514,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
     for st in &class_defs.state_transitions {
         expanded_definitions.push(js_expand_client(st.clone()))
     }
-    for cm in &class_defs.other_definitions {
+    for cm in &class_defs.state_variables {
         expanded_definitions.push(cm.clone());
     }    
 
