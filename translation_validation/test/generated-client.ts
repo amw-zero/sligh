@@ -12,7 +12,7 @@ export class RecurringTransaction {
     constructor(config: (a: Budget) => void) {
     config(this) }
   
-  recurring_transactions: RecurringTransaction[];
+  recurring_transactions: RecurringTransaction[] = [];
   create_recurring_transactionClient(rt: RecurringTransaction) {
     fetch("http://localhost:3000/recurring_transactions", { method: "POST", body: JSON.stringify(rt), headers: { "Content-Type": "application/json" } });
   this.recurring_transactions.push(rt);

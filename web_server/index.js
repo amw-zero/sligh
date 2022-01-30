@@ -4,7 +4,7 @@ const defineEndpoints = require("./define-endpoints");
 const app = express();
 const sqlite3 = require("sqlite3").verbose();
 
-const db = new sqlite3.Database('./recur.db');
+const db = new sqlite3.Database('./test.db');
 
 const port = 3000;
 
