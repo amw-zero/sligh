@@ -43,7 +43,7 @@ enum AstNode {
         call_name: Box<AstNode>,
         args: Vec<AstNode>,
     },
-    Expr(String),
+    // Expr(String),
 }
 
 // JS Translation
@@ -97,7 +97,7 @@ enum JSAstNode {
     },
     ArrayLiteral(Vec<JSAstNode>),
     StringLiteral(String),
-    Expr(String),
+    // Expr(String),
     Identifier(String),
     TypedIdentifier {
         identifier: Box<JSAstNode>, // Identifier,
@@ -233,7 +233,7 @@ fn js_gen_string(node: JSAstNode) -> String {
             format!("[{}]", comma_separated_node_strs)
         }
         JSAstNode::StringLiteral(s) => format!("\"{}\"", s),
-        JSAstNode::Expr(e) => e,
+        /*JSAstNode::Expr(e) => e,*/
         _ => "".to_string(),
     }
 }
@@ -346,7 +346,9 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
                                 _ => state_variables.push(def)
                             }
                         }
-                        JSAstNode::ClassProperty { .. } => state_variables.push(def),
+                        JSAstNode::ClassProperty { .. } => {
+                            state_variables.push(def)
+                        },
                         _ => panic!("Found unknown class body definition"),
                     }
                 }
@@ -398,7 +400,7 @@ fn state_transition_func_from_str(s: &str) -> StateTransitionFunc {
         "create!" => StateTransitionFunc::Create,
         "update!" => StateTransitionFunc::Update,
         "delete!" => StateTransitionFunc::Delete,
-        _ => panic!(format!("Unexpected StateTransitionFunc string: {}", s))
+        _ => panic!("Unexpected StateTransitionFunc string")
     }
 }
 
@@ -628,7 +630,7 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode, state_var_type: &str, sch
         JSAstNode::CallExpr {
             receiver,
             call_name,
-            args,
+            ..
         } => {
             let state_var = js_gen_iden_name(*receiver);
             let call_name_str = js_gen_iden_name(*call_name);
@@ -790,6 +792,8 @@ enum SQLAstNode {
         attributes: Vec<SQLAstNode>,
         values: Vec<SQLAstNode>
     },
+    Identifier(String),
+    /*
     Select {
         attributes: Vec<SQLAstNode>,
         from: Box<SQLAstNode>,
@@ -808,9 +812,9 @@ enum SQLAstNode {
         left: Box<SQLAstNode>,
         right: Box<SQLAstNode>,
     },
-    Identifier(String),
     StringLiteral(String),
     NumberLiteral(i32),
+    */
 }
 
 fn sql_gen_string(node: &SQLAstNode) -> String {
@@ -833,7 +837,6 @@ fn sql_gen_string(node: &SQLAstNode) -> String {
             format!("INSERT INTO {} ({}) VALUES ({})", into_relation, comma_separated_attrs, comma_separated_values)
         },
         SQLAstNode::Identifier(n) => n.clone(),
-        _ => panic!("Attempted to generate string for invalid SQLAstNode")
     }
 }
 
@@ -841,11 +844,11 @@ type Schemas = HashMap<String, Schema>;
 
 struct SchemaAttribute {
     name: String,
-    r#type: String
+    // r#type: String
 }
 
 struct Schema {
-    name: String,
+    /* name: String, */
     attributes: Vec<SchemaAttribute>
 }
 
@@ -863,11 +866,11 @@ fn schema_attributes(schema_body: AstNode) -> Vec<SchemaAttribute> {
             for def in definitions {
                 match def {
                     AstNode::SchemaAttribute { typed_identifier } => match *typed_identifier {
-                        AstNode::TypedIdentifier { identifier, r#type } => {
+                        AstNode::TypedIdentifier { identifier, .. /*, r#type*/ } => {
                             let attr_name = iden_name(*identifier);
-                            let attr_type = iden_name(*r#type);
+                            // let attr_type = iden_name(*r#type);
 
-                            attrs.push(SchemaAttribute { name: attr_name, r#type: attr_type });
+                            attrs.push(SchemaAttribute { name: attr_name /*, r#type: attr_type*/ });
                         },
                         _ => continue
                     },
@@ -901,7 +904,7 @@ fn main() {
                         let schema_name = iden_name(*name);
                         let attributes = schema_attributes(*body);
                         let schema = Schema {
-                            name: schema_name.clone(),
+                            /*name: schema_name.clone(),*/
                             attributes: attributes
                         };
 
