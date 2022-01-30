@@ -3,22 +3,22 @@ schema RecurringTransaction:
   name: String
 end
 
-schema Application:
+schema Budget:
   recurring_transactions: [RecurringTransaction]
   
-  def add(rt: RecurringTransaction)
+  def create_recurring_transaction(rt: RecurringTransaction)
     recurring_transactions.create!(rt)
   end
 
-  def remove(rt: RecurringTransaction)
+  def delete_recurring_transaction(rt: RecurringTransaction)
     recurring_transactions.delete!(rt)
   end
 
-  def update(rt: RecurringTransaction)
+  def update_recurring_transaction(rt: RecurringTransaction)
     recurring_transactions.update!(rt)
   end
 
-  def view()
+  def view_recurring_transactions()
     recurring_transactions
   end
 end
