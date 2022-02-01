@@ -1,3 +1,94 @@
+schema RecurrenceRule = Monthly | Weekly
+
+schema RecurringTransaction do
+  amount: Numeric
+  name: String
+  recurrence_rule: RecurrenceRule
+end
+
+schema Scenario do
+  name: String
+  recurring_transactions: [RecurringTransaction]
+end
+
+schema Transaction do
+  date: Date
+end
+
+# Language hints for architectural differences, i.e. query vs. precomputed data:
+
+schema RecurringTransaction:
+  amount: Numeric
+  name: String
+end
+
+schema Application:
+  recurring_transactions: [RecurringTransaction]
+
+  def create_recurring_transaction(rt: RecurringTransaction)
+    recurring_transactions.create!(rt)
+  end
+
+  def complicated_logic()
+    # .precomputed here means that whenever the state changes, this gets set. Can identify
+    # the re-cache trigger from all state transitions on this state var.
+    recurring_transactions.where { |rt| rt > 5 }.order { |rt| rt.amount }.precomputed
+  end
+end
+
+# Experimental
+# Metaprogramming - function bodies can be referred to via *_def
+Application
+  .complicated_logic_def
+  .precompute
+
+# state vars can be referred to
+Application.state_vars.except(:something)
+
+
+# Schema-level constraints?
+
+schema RecurringTransaction:
+  amount: Numeric
+  name: String
+
+  amount > 15
+  name.length < 100
+end
+
+# Distinguish between state machines / data?
+
+# Probably want a way to distinguish between functions, state functions, and state transitions
+schema Application do
+  recurring_transactions: [RecurringTransaction]
+  scenarios: [Scenario]
+  
+  def add(rt: RecurringTransaction)
+    recurring_transactions.add(rt)
+  end
+
+  def remove(rt: RecurringTransaction)
+    recurring_transactions.delete(rt)
+  end
+
+  def update(rt: RecurringTransaction)
+    recurring_transactions.update(rt)
+  end
+
+  def add_scenario(s: Scenario)
+    scenarios.add(s)
+  end
+
+  def view_transactions(date_filter: DateFilter)
+    recurring_transactions
+      .expand
+      .select((rt) =>  rt.)
+  end
+end
+
+
+
+
 schema Server
   comments: [Int]
   
