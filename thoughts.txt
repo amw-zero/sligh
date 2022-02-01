@@ -36,3 +36,7 @@ certain endpoints / behaviors for testing. Might be able to solve this with vers
 
 Name: Sollemnis? Mystique?
 
+How to handle application-specific logic, like pagination / ordering? Example - ordering of
+data in table. Pagination might live in the compiler, ordering might be a domain rule. Or,
+just allow application logic to be expressed in the lang
+
