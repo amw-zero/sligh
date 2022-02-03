@@ -10,12 +10,13 @@ import { RecurringTransaction } from "./generated-model";
   async create_recurring_transactionClient(rt: RecurringTransaction) {
 //    console.log("Ho?")
 //    try {
-    await fetch("http://localhost:3000/recurring_transactions", { method: "POST", body: JSON.stringify(rt), headers: { "Content-Type": "application/json" } });
+    let resp = await fetch("http://localhost:3000/recurring_transactions", { method: "POST", body: JSON.stringify(rt), headers: { "Content-Type": "application/json" } });
+    let json = await resp.json();
+    let respTrans = JSON.parse(json);
 //    } catch (e) {
 //      console.log({e});
 //    }
-//    console.log("Hehy?")
-      this.recurring_transactions.push(rt);
+      this.recurring_transactions.push(respTrans);
    }
   
   delete_recurring_transactionClient(rt: RecurringTransaction) {
