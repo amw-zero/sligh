@@ -12,10 +12,6 @@ class CreateCommand implements fc.AsyncCommand<Model, Fullstack> {
     m.create_recurring_transaction(this.value);
 
     expect(r.recurring_transactions).to.deep.eq(m.recurring_transactions);
-
-    return new Promise((resolve) => {
-      resolve();
-    });
   }
   toString = () => `createRecurringTransaction(${this.value})`;
 }
@@ -24,21 +20,17 @@ class DeleteCommand implements fc.AsyncCommand<Model, Fullstack> {
   check(m: Readonly<Model>): boolean {
     return true;
   }
-  run(m: Model, r: Fullstack): Promise<void> {
+  async run(m: Model, r: Fullstack): Promise<void> {
     r.delete_recurring_transactionClient(this.value)
     m.delete_recurring_transaction(this.value);
 
     expect(r.recurring_transactions).to.deep.eq(m.recurring_transactions);
-
-    return new Promise((resolve) => {
-      resolve();
-    });
   }
   toString = () => `deleteRecurringTransaction(${this.value})`;
 }
 
 describe('FullstackBudget', function() {
-  it('simulates the model', function() {
+  it('simulates the model', async function() {
     const cmds = [
       fc.record({ name: fc.string(), amount: fc.float()}).map(({ name, amount }) => {
         let rt = new RecurringTransaction();
@@ -56,12 +48,12 @@ describe('FullstackBudget', function() {
       }),
     ];
 
-    fc.assert(
-      fc.property(fc.commands(cmds, { maxCommands: 100 }), cmds => {
+    await fc.assert(
+      fc.asyncProperty(fc.commands(cmds, { maxCommands: 20 }), cmds => {
         const s = () => ({ model: new Model(), real: new Fullstack(() => {}) });
-        fc.asyncModelRun(s, cmds);
+        return fc.asyncModelRun(s, cmds);
       }),
-      { numRuns: 1000 },
+      { numRuns: 100 },
     );
   });
 });
