@@ -381,6 +381,7 @@ fn js_state_var_endpoint_server(state_var: &str) -> String {
 
 enum StateTransitionFunc {
     Create,
+    Read,
     Update,
     Delete,
 }
@@ -389,8 +390,18 @@ impl StateTransitionFunc {
     fn as_http_method(&self) -> &'static str {
         match self {
             StateTransitionFunc::Create => "POST",
+            StateTransitionFunc::Read => "GET",
             StateTransitionFunc::Update => "PUT",
             StateTransitionFunc::Delete => "DELETE",
+        }
+    }
+
+    fn as_express_http_method(&self) -> &'static str {
+        match self {
+            StateTransitionFunc::Create => "post",
+            StateTransitionFunc::Read => "get",
+            StateTransitionFunc::Update => "put",
+            StateTransitionFunc::Delete => "delete",
         }
     }
 }
@@ -398,24 +409,16 @@ impl StateTransitionFunc {
 fn state_transition_func_from_str(s: &str) -> StateTransitionFunc {
     match s {
         "create!" => StateTransitionFunc::Create,
+        "read!" => StateTransitionFunc::Read,
         "update!" => StateTransitionFunc::Update,
         "delete!" => StateTransitionFunc::Delete,
         _ => panic!("Unexpected StateTransitionFunc string")
     }
 }
 
-fn js_expand_fetch_args_from_state_transition(st: &StateTransitionFunc, state_var_iden: &JSAstNode) -> JSAstNode {
-    let body_prop = Prop {
-        key: JSAstNode::Identifier("body".to_string()),
 
-        // TODO: Only JSON.stringifying one method call argument here
-        value: JSAstNode::CallExpr {
-            receiver: Box::new(JSAstNode::Identifier("JSON".to_string())),
-            call_name: Box::new(JSAstNode::Identifier("stringify".to_string())),
-            args: vec![state_var_iden.clone()],
-        },
-    };
-    let post_prop = Prop {
+fn js_expand_fetch_args_from_state_transition(st: &StateTransitionFunc, args: &Vec<String>) -> JSAstNode {
+    let method_prop = Prop {
         key: JSAstNode::Identifier("method".to_string()),
         value: JSAstNode::StringLiteral(st.as_http_method().to_string()),
     };
@@ -432,31 +435,37 @@ fn js_expand_fetch_args_from_state_transition(st: &StateTransitionFunc, state_va
         }
     };
 
-    JSAstNode::Object {
-        props: vec![post_prop, body_prop, headers_prop],
-    }
-}
+    let mut props: Vec<Prop> = vec![method_prop, headers_prop];
 
-fn js_expand_update_client_state_from_state_transition(st: &StateTransitionFunc, state_var_iden: &JSAstNode, state_var: &str) -> JSAstNode {
     match st {
-         _ => JSAstNode::CallExpr {
-            receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-            call_name: Box::new(JSAstNode::Identifier("push".to_string())),
-            args: vec![state_var_iden.clone()]
-        }
+        StateTransitionFunc::Create => {
+            let state_var_iden = JSAstNode::Identifier(args[0].clone());
+            let body_prop = Prop {
+                key: JSAstNode::Identifier("body".to_string()),
+        
+                // TODO: Only JSON.stringifying one method call argument here
+                value: JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("JSON".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier("stringify".to_string())),
+                    args: vec![state_var_iden.clone()],
+                },
+            };
+            props.push(body_prop);
+        },
+        _ => ()
     }
-    // StateTransitionFunc::Create        
-    //        StateTransitionFunc::Update =>
-    //        StateTransitionFunc::Delete =>
+
+    JSAstNode::Object {
+        props: props,
+    }
 }
 
 // This turns a semantic state transition into a network request to update the state in
 // the database as well as optimistically update the client state
 fn js_expand_state_transition_client(call_name: String, state_var: String, args: Vec<String>) -> JSAstNode {
     let endpoint = js_state_var_endpoint_client(&state_var);
-    let state_var_iden = JSAstNode::Identifier(args[0].clone());
     let state_trans_func = state_transition_func_from_str(&call_name);
-    let st_fetch_args = js_expand_fetch_args_from_state_transition(&state_trans_func, &state_var_iden);
+    let st_fetch_args = js_expand_fetch_args_from_state_transition(&state_trans_func, &args);
 
     let fetch_args = vec![
         JSAstNode::StringLiteral(endpoint),
@@ -467,10 +476,22 @@ fn js_expand_state_transition_client(call_name: String, state_var: String, args:
         call_name: Box::new(JSAstNode::Identifier("fetch".to_string())),
         args: fetch_args,
     };
-    let update_client_state = js_expand_update_client_state_from_state_transition(&state_trans_func, &state_var_iden, &state_var);
+    let mut expanded_statements: Vec<JSAstNode> = vec![fetch];
+    match state_trans_func {
+        StateTransitionFunc::Create => {
+            let state_var_iden = JSAstNode::Identifier(args[0].clone());
+            let update_client_state = JSAstNode::CallExpr {
+               receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+               call_name: Box::new(JSAstNode::Identifier("push".to_string())),
+               args: vec![state_var_iden.clone()]
+            };
+            expanded_statements.push(update_client_state);
+       },
+       _ => ()
+   }
 
     JSAstNode::StatementList {
-        statements: vec![fetch, update_client_state]
+        statements: expanded_statements
     }
 }
 
@@ -560,13 +581,8 @@ fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -
     let mut endpoints: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transitions {
         match st {
-            JSAstNode::ClassMethod { body, args, .. } => {
-                // Again - only handling one method arg here.
-                let state_var_type = match &args[0] {
-                    JSAstNode::TypedIdentifier { r#type, .. } => js_gen_iden_name(*r#type.clone()),
-                    _ => panic!("Expected a TypedIdentifier to be the first argument of a class method")
-                };
-                endpoints.push(js_expand_class_method_to_endpoint(*body.clone(), &state_var_type, schemas));
+            JSAstNode::ClassMethod { body, args, .. } => {                
+                endpoints.push(js_expand_class_method_to_endpoint(*body.clone(), &args, schemas));
             }
             _ => continue
         }
@@ -575,72 +591,128 @@ fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -
     endpoints
 }
 
-fn js_state_query(state_var: &str, st_func: &StateTransitionFunc, state_var_type: &str, schemas: &Schemas) -> JSAstNode {
-    match st_func {
-        StateTransitionFunc::Create => {
-            let mut attr_names: Vec<String> = vec![];
-            let mut sql_attr_names: Vec<SQLAstNode> = vec![];
-            let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
-            let mut js_attr_values: Vec<JSAstNode> = vec![];
-            let schema = &schemas[state_var_type];
-            for attr in &schema.attributes {
-                attr_names.push(attr.name.clone());
+fn js_state_query_read(state_var: &str) -> JSAstNode {
+    let sql = SQLAstNode::Select {
+        from: Box::new(SQLAstNode::Identifier(state_var.to_string())),
+        attributes: vec![SQLAstNode::Identifier("*".to_string())],
+        clause: None,
+    };
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("all".to_string())),
+        args: vec![
+            JSAstNode::StringLiteral(
+                sql_gen_string(&sql)
+            ),
+            JSAstNode::ArrowClosure {
+                args: vec![JSAstNode::Identifier("_".to_string()), JSAstNode::Identifier("rows".to_string())],
+                body: Box::new(JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+                    args: vec![
+                        JSAstNode::Identifier("rows".to_string())
+                    ]
+                })
+            }
+        ]
+    }
+}
 
-                // TODO: this is assuming the name of 'data' which is used to 
-                // parse the HTTP body in write requests.
-                js_attr_values.push(
-                    JSAstNode::Identifier(
-                        format!("data.{}", attr.name)
-                    )
-                );
-                sql_attr_names.push(
-                    SQLAstNode::Identifier(attr.name.clone())
-                );
-                sql_value_placeholders.push(
-                    SQLAstNode::Identifier("?".to_string())
-                )
-            }
-            // INSERT INTO state_var (attr_names) VALUES (?, ?, ?)
-            let sql = SQLAstNode::Insert {
-                into: Box::new(SQLAstNode::Identifier(state_var.to_string())),
-                attributes: sql_attr_names,
-                values:     sql_value_placeholders,
-            };
-            JSAstNode::CallExpr {
-                receiver: Box::new(JSAstNode::Identifier("db".to_string())),
-                call_name: Box::new(JSAstNode::Identifier("run".to_string())),
-                args: vec![
-                    JSAstNode::StringLiteral(
-                        sql_gen_string(&sql)
-                    ),
-                    JSAstNode::ArrayLiteral(
-                        js_attr_values
-                    )
-                    // cb
-                ],
-            }
-        },
-        _ => JSAstNode::InvalidNode
+fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schemas) -> JSAstNode {
+    let mut attr_names: Vec<String> = vec![];
+    let mut sql_attr_names: Vec<SQLAstNode> = vec![];
+    let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
+    let mut js_attr_values: Vec<JSAstNode> = vec![];
+    let schema = &schemas[state_var_type];
+    for attr in &schema.attributes {
+        attr_names.push(attr.name.clone());
+
+        // TODO: this is assuming the name of 'data' which is used to 
+        // parse the HTTP body in write requests.
+        js_attr_values.push(
+            JSAstNode::Identifier(
+                format!("data.{}", attr.name)
+            )
+        );
+        sql_attr_names.push(
+            SQLAstNode::Identifier(attr.name.clone())
+        );
+        sql_value_placeholders.push(
+            SQLAstNode::Identifier("?".to_string())
+        )
+    }
+    // INSERT INTO state_var (attr_names) VALUES (?, ?, ?)
+    let sql = SQLAstNode::Insert {
+        into: Box::new(SQLAstNode::Identifier(state_var.to_string())),
+        attributes: sql_attr_names,
+        values:     sql_value_placeholders,
+    };
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("run".to_string())),
+        args: vec![
+            JSAstNode::StringLiteral(
+                sql_gen_string(&sql)
+            ),
+            JSAstNode::ArrayLiteral(
+                js_attr_values
+            )
+            // cb
+        ],
     }
 }
 
 // Expand state transitions into SQL queries inside of server
-fn js_expand_class_method_to_endpoint(body: JSAstNode, state_var_type: &str, schemas: &Schemas) -> JSAstNode {
+fn js_expand_class_method_to_endpoint(body: JSAstNode, args: &Vec<JSAstNode>, schemas: &Schemas) -> JSAstNode {
     match body {
         JSAstNode::CallExpr {
             receiver,
             call_name,
             ..
-        } => {
+        } => {            
             let state_var = js_gen_iden_name(*receiver);
             let call_name_str = js_gen_iden_name(*call_name);
             let state_transition_func = state_transition_func_from_str(&call_name_str);
-            let endpoint_path = js_state_var_endpoint_server(&state_var);
-            let query = js_state_query(&state_var, &state_transition_func, state_var_type, schemas);
-
-            let parse_data = JSAstNode::LetExpr {
-                name: Box::new(JSAstNode::Identifier("data".to_string())),
-                value: Box::new(JSAstNode::Identifier("req.body".to_string()))
+            let express_method = state_transition_func.as_express_http_method();
+            let endpoint_path = js_state_var_endpoint_server(&state_var);            
+            let state_body = match state_transition_func {
+                StateTransitionFunc::Create => {
+                    // Again - only handling one method arg here.
+                    // also need to switch on StateTransitionFunc here.
+                    let state_var_type = match &args[0] {
+                        JSAstNode::TypedIdentifier { r#type, .. } => js_gen_iden_name(*r#type.clone()),
+                        _ => panic!("Expected a TypedIdentifier to be the first argument of a class method")
+                    };
+                    let query = js_state_query_create(&state_var, &state_var_type, schemas);
+                    let parse_data = JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("data".to_string())),
+                        value: Box::new(JSAstNode::Identifier("req.body".to_string()))
+                    };  
+                    Box::new(JSAstNode::StatementList {
+                        statements: vec![
+                            parse_data,
+                            query,
+                            JSAstNode::CallExpr {
+                                receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+                                call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+                                args: vec![
+                                    JSAstNode::Object { props: vec![] }
+                                ]
+                            }
+                        ]
+                    })
+                }
+                StateTransitionFunc::Read => {
+                    let query = js_state_query_read(&state_var);
+                    Box::new(query)
+                }
+                _ => Box::new(JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+                    args: vec![
+                        JSAstNode::Object { props: vec![] }
+                    ]
+                })
             };
 
             let endpoint_body = JSAstNode::ArrowClosure {
@@ -648,24 +720,12 @@ fn js_expand_class_method_to_endpoint(body: JSAstNode, state_var_type: &str, sch
                     JSAstNode::Identifier("req".to_string()),
                     JSAstNode::Identifier("res".to_string()),
                 ],
-                body: Box::new(JSAstNode::StatementList {
-                    statements: vec![
-                        parse_data,
-                        query,
-                        JSAstNode::CallExpr {
-                            receiver: Box::new(JSAstNode::Identifier("res".to_string())),
-                            call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-                            args: vec![
-                                JSAstNode::Object { props: vec![] }
-                            ]
-                        }
-                    ]
-                }),
+                body: state_body,
             };
 
             JSAstNode::CallExpr {
                 receiver: Box::new(JSAstNode::Identifier("app".to_string())),
-                call_name: Box::new(JSAstNode::Identifier("post".to_string())),
+                call_name: Box::new(JSAstNode::Identifier(express_method.to_string())),
                 args: vec![JSAstNode::StringLiteral(endpoint_path), endpoint_body],
             }
         }
@@ -793,12 +853,12 @@ enum SQLAstNode {
         values: Vec<SQLAstNode>
     },
     Identifier(String),
-    /*
     Select {
         attributes: Vec<SQLAstNode>,
         from: Box<SQLAstNode>,
         clause: Option<Box<SQLAstNode>>,
     },
+    /*
     Update {
         from: Box<SQLAstNode>,
         attributes: Vec<SQLAstNode>, // Vec<EqualityExpr>
@@ -836,6 +896,20 @@ fn sql_gen_string(node: &SQLAstNode) -> String {
 
             format!("INSERT INTO {} ({}) VALUES ({})", into_relation, comma_separated_attrs, comma_separated_values)
         },
+        SQLAstNode::Select { from, attributes, .. } => {
+            let from_relation = sql_gen_string(from);
+            let mut attr_names: Vec<String> = vec![];
+            for attr in attributes {
+                attr_names.push(sql_gen_string(attr));
+            }
+            let comma_separated_attrs = attr_names.join(", ");
+
+            if comma_separated_attrs.len() == 1 {
+                format!("SELECT {} FROM {}", comma_separated_attrs, from_relation)
+            } else {
+                format!("SELECT ({}) FROM {}", comma_separated_attrs, from_relation)
+            }
+        }
         SQLAstNode::Identifier(n) => n.clone(),
     }
 }
@@ -957,6 +1031,11 @@ fn main() {
 
     println!("Client code:\n");
     for c in js_infra_code {
+        println!("{}", c);
+    }
+
+    println!("JS Translation:\n");
+    for c in js_code {
         println!("{}", c);
     }
 
