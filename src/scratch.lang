@@ -32,18 +32,76 @@ schema Application:
   def complicated_logic()
     # .precomputed here means that whenever the state changes, this gets set. Can identify
     # the re-cache trigger from all state transitions on this state var.
-    recurring_transactions.where { |rt| rt > 5 }.order { |rt| rt.amount }.precomputed
+    recurring_transactions
+      .where { |rt| rt > 5 }
+      .order { |rt| rt.amount }
+      .precomputed
   end
 end
 
+# Onboarding templates feature. This one is UI heavy, how best to handle it?
+
+
+schema OrgTemplateField:
+  name: String
+  value: Any
+end
+
+schema OrgTemplate:
+  name: String
+  initial_state: [OrgTemplateField]
+end
+
+schema OrgTemplates:
+  org_templates: [OrgTemplate]
+
+  def add_org_template(t: OrgTemplate)
+    org_templates.add(t)
+  end
+
+  def view_org_templates()
+    org_templates.view!
+  end
+end
+
+schema CardsModule:
+   def provide_org_templates()
+    OrgTemplates.add_org_template([
+      OrgTemplate{
+        name: 'Temp1',
+        initial_state: [
+          OrgTemplateField{name: 'amount', value: 17},
+          OrgTemplateField{name: 'name', value: 'Transaction 8'},
+        ]
+      },
+    ])
+   end
+end
+
 # Experimental
-# Metaprogramming - function bodies can be referred to via *_def
+# Metaprogramming - function bodies can be referred to via *_def, a la Isabell.
+# This is a good idea lol
+# Separates pure logic description from application concerns, still in a generic way
+# Probably hard / brittle  to find specific AST nodes though, i.e. element 8 in a statement list.
 Application
   .complicated_logic_def
   .precompute
 
 # state vars can be referred to
 Application.state_vars.except(:something)
+
+# Calling external APIs:
+
+schema StripeCreateCard:
+  customer: StripeCustomerId
+  Address: String
+end
+
+service Stripe:
+  def create_card(create_card_req: StripeCreateCard)
+    ...
+  end
+end
 
 
 # Schema-level constraints?
