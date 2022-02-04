@@ -1,4 +1,5 @@
 schema RecurringTransaction:
+  id: Numeric
   amount: Numeric
   name: String
 end
