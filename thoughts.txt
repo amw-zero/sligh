@@ -40,3 +40,11 @@ How to handle application-specific logic, like pagination / ordering? Example - 
 data in table. Pagination might live in the compiler, ordering might be a domain rule. Or,
 just allow application logic to be expressed in the lang
 
+How to handle external services, i.e. Stripe 
+
+For correctness, it might be possible to prove once-and-for-all that the expanded version
+preserves the semantics of the abstract version. This relies on a proof of something along
+the lines of: "forall st: state transitions(A), abstract(st) = expanded(st) implies exec(A) = exec(C)"
+e.g. proving each state transition transformation from abstract to expaned is equivalent implies that the 
+abstract and concrete programs are equivalent. Already did a similar proof in the Refinement CQ 
+blog post, and there probably are only the 4 main state transitions, e.g. CRUD.
