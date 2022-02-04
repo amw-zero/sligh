@@ -53,7 +53,7 @@ describe('FullstackBudget', function() {
         const s = () => ({ model: new Model(), real: new Fullstack(() => {}) });
         return fc.asyncModelRun(s, cmds);
       }),
-      { numRuns: 100 },
+      { numRuns: 25 },
     );
   });
 });
