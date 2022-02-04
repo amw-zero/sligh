@@ -19,6 +19,6 @@ schema Budget:
   end
 
   def view_recurring_transactions()
-    recurring_transactions
+    recurring_transactions.read!()
   end
 end
