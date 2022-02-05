@@ -92,9 +92,15 @@ enum JSAstNode {
         statements: Vec<JSAstNode>
     },
     ReturnStatement(Box<JSAstNode>),
+    AsyncModifier {
+        node: Box<JSAstNode>          // ClassMethod
+    },
+    AwaitOperator {
+        node: Box<JSAstNode>          // FuncCallExpr or CallExpr of an async-modified ClassMethod def
+    },
     LetExpr {
         name: Box<JSAstNode>,         // Identifier,
-        value: Box<JSAstNode>        // any node
+        value: Box<JSAstNode>         // any node
     },
     AssignmentStatement {
         left: Box<JSAstNode>,         // Identifier
@@ -153,6 +159,12 @@ fn js_gen_string(node: JSAstNode) -> String {
                 comma_separated_args,
                 js_gen_string(*body),
             )
+        }
+        JSAstNode::AsyncModifier { node } => {
+            format!("async {}", js_gen_string(*node))
+        }
+        JSAstNode::AwaitOperator { node } => {
+            format!("await {}", js_gen_string(*node))
         }
         JSAstNode::StatementList { statements } => {
             let mut stmt_strs: Vec<String> = vec![];
@@ -514,39 +526,60 @@ fn js_expand_state_transition_client(call_name: String, state_var: String, args:
         call_name: Box::new(JSAstNode::Identifier("fetch".to_string())),
         args: fetch_args,
     };
-    let mut expanded_statements: Vec<JSAstNode> = vec![fetch];
-    match state_trans_func {
-        StateTransitionFunc::Create => {
-            let state_var_iden = JSAstNode::Identifier(args[0].clone());
-            let update_client_state = JSAstNode::CallExpr {
-               receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-               call_name: Box::new(JSAstNode::Identifier("push".to_string())),
-               args: vec![state_var_iden.clone()]
+    let expanded_statements: Vec<JSAstNode> = 
+        match state_trans_func {
+            StateTransitionFunc::Create => {
+                let state_var_iden = JSAstNode::Identifier(args[0].clone());
+                let update_client_state = JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+                call_name: Box::new(JSAstNode::Identifier("push".to_string())),
+                args: vec![state_var_iden.clone()]
+                };
+                vec![fetch, update_client_state]
+        }
+        StateTransitionFunc::Delete => {
+            let state_var_iden_str = args[0].clone();
+                let update_client_state = JSAstNode::AssignmentStatement {
+                    left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+                    right: Box::new(JSAstNode::CallExpr {
+                        receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+                        call_name: Box::new(JSAstNode::Identifier("filter".to_string())),
+                        args: vec![JSAstNode::ArrowClosure {
+                            args: vec![JSAstNode::Identifier("data".to_string())],
+                            body: Box::new(JSAstNode::ReturnStatement(
+                                Box::new(JSAstNode::NotEqualExpr { 
+                                left: Box::new(JSAstNode::Identifier("data.id".to_string())),
+                                right: Box::new(JSAstNode::Identifier(format!("{}.id", state_var_iden_str)))
+                            })))
+                        }]
+                    })
+                };
+                vec![fetch, update_client_state]
+        }
+        StateTransitionFunc::Read => {
+            /*
+            let rts = await fetch("http://localhost:3000/recurring_transactions", { method: "GET", headers: { "Content-Type": "application/json" } });
+            let rts_json = await rts.json();
+            this.recurring_transactions = rts_json;
+            */
+            let await_fetch = JSAstNode::LetExpr {
+                name: Box::new(JSAstNode::Identifier("data".to_string())),
+                value: Box::new(JSAstNode::AwaitOperator { node: Box::new(fetch) })
             };
-            expanded_statements.push(update_client_state);
-       },
-       StateTransitionFunc::Delete => {
-           //   this.recurring_transactions = this.recurring_transactions.filter(rtt => rtt.name === rt.name);
-           let state_var_iden_str = args[0].clone();
             let update_client_state = JSAstNode::AssignmentStatement {
                 left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-                right: Box::new(JSAstNode::CallExpr {
-                    receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-                    call_name: Box::new(JSAstNode::Identifier("filter".to_string())),
-                    args: vec![JSAstNode::ArrowClosure {
-                        args: vec![JSAstNode::Identifier("data".to_string())],
-                        body: Box::new(JSAstNode::ReturnStatement(
-                            Box::new(JSAstNode::NotEqualExpr { 
-                            left: Box::new(JSAstNode::Identifier("data.id".to_string())),
-                            right: Box::new(JSAstNode::Identifier(format!("{}.id", state_var_iden_str)))
-                        })))
-                    }]
+                right: Box::new(JSAstNode::AwaitOperator {
+                    node: Box::new(JSAstNode::CallExpr {
+                        call_name: Box::new(JSAstNode::Identifier("json".to_string())),
+                        receiver: Box::new(JSAstNode::Identifier("data".to_string())),
+                        args: vec![]
+                    })
                 })
             };
-            expanded_statements.push(update_client_state);
-       }
-       _ => ()
-   }
+            vec![await_fetch, update_client_state]
+        }
+        _ => vec![]
+    };
 
     JSAstNode::StatementList {
         statements: expanded_statements
