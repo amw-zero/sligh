@@ -408,13 +408,6 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
     }
 }
 
-fn js_class_method_name_expand(method_name: JSAstNode) -> JSAstNode {
-    match method_name {
-        JSAstNode::Identifier(n) => JSAstNode::Identifier(format!("{}Client", n)),
-        _ => JSAstNode::InvalidNode,
-    }
-}
-
 fn js_state_var_endpoint_client(
     state_var: &String,
     state_transition: &StateTransitionFunc,
@@ -630,10 +623,9 @@ fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
 fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     match class_method {
         JSAstNode::ClassMethod { name, args, body } => {
-            let expanded_name = Box::new(js_class_method_name_expand(*name));
             let expanded_body = Box::new(js_class_method_body_expand(*body.clone()));
             JSAstNode::ClassMethod {
-                name: expanded_name,
+                name: name,
                 args: args,
                 body: expanded_body,
             }
@@ -653,9 +645,13 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
 
     expanded_definitions.sort_by(js_ast_node_cmp);
 
-    let mut async_state_transitions: Vec<JSAstNode> = vec![];
+    //
+    let mut defs_with_async_state_transitions: Vec<JSAstNode> = vec![];
     for def in expanded_definitions {
-        async_state_transitions.push(JSAstNode::AsyncModifier{ node: Box::new(def) })
+        match def {
+            JSAstNode::ClassMethod { .. } => defs_with_async_state_transitions.push(JSAstNode::AsyncModifier{ node: Box::new(def) }),
+            _ => defs_with_async_state_transitions.push(def)
+        }
     }
 
     // This may not belong here - but here is where the constructor for the top-level
@@ -673,7 +669,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
         }),
     };
 
-    async_state_transitions.insert(0, constructor);
+    defs_with_async_state_transitions.insert(0, constructor);
 
     // Quoted macro version:
     // quote: class Client {
@@ -682,7 +678,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
     JSAstNode::ClassDef {
         name: Box::new(JSAstNode::Identifier(class_name)),
         body: Box::new(JSAstNode::ClassBody {
-            definitions: async_state_transitions,
+            definitions: defs_with_async_state_transitions,
         }),
     }
 }
