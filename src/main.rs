@@ -653,6 +653,11 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
 
     expanded_definitions.sort_by(js_ast_node_cmp);
 
+    let mut async_state_transitions: Vec<JSAstNode> = vec![];
+    for def in expanded_definitions {
+        async_state_transitions.push(JSAstNode::AsyncModifier{ node: Box::new(def) })
+    }
+
     // This may not belong here - but here is where the constructor for the top-level
     // client state object is.
     let config_func_type = format!("(a: {}) => void", class_name);
@@ -668,7 +673,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
         }),
     };
 
-    expanded_definitions.insert(0, constructor);
+    async_state_transitions.insert(0, constructor);
 
     // Quoted macro version:
     // quote: class Client {
@@ -677,7 +682,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
     JSAstNode::ClassDef {
         name: Box::new(JSAstNode::Identifier(class_name)),
         body: Box::new(JSAstNode::ClassBody {
-            definitions: expanded_definitions,
+            definitions: async_state_transitions,
         }),
     }
 }
