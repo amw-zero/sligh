@@ -516,6 +516,49 @@ fn js_expand_fetch_args_from_state_transition(
     JSAstNode::Object { props: props }
 }
 
+fn js_push_var(state_var: &str, state_var_val: &str) -> JSAstNode {
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+        call_name: Box::new(JSAstNode::Identifier("push".to_string())),
+        args: vec![JSAstNode::Identifier(state_var_val.to_string())],
+    }
+}
+
+fn js_delete_var(state_var: &str, state_var_val: &str) -> JSAstNode {
+    JSAstNode::AssignmentStatement {
+        left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+        right: Box::new(JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+            call_name: Box::new(JSAstNode::Identifier("filter".to_string())),
+            args: vec![JSAstNode::ArrowClosure {
+                args: vec![JSAstNode::Identifier("data".to_string())],
+                body: Box::new(JSAstNode::ReturnStatement(Box::new(
+                    JSAstNode::NotEqualExpr {
+                        left: Box::new(JSAstNode::Identifier("data.id".to_string())),
+                        right: Box::new(JSAstNode::Identifier(format!(
+                            "{}.id",
+                            state_var_val
+                        ))),
+                    },
+                ))),
+            }],
+        }),
+    }
+}
+
+fn js_read_var(state_var: &str) -> JSAstNode {
+    JSAstNode::AssignmentStatement {
+        left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+        right: Box::new(JSAstNode::AwaitOperator {
+            node: Box::new(JSAstNode::CallExpr {
+                call_name: Box::new(JSAstNode::Identifier("json".to_string())),
+                receiver: Box::new(JSAstNode::Identifier("data".to_string())),
+                args: vec![],
+            }),
+        }),
+    }
+}
+
 // This turns a semantic state transition into a network request to update the state in
 // the database as well as optimistically update the client state
 fn js_expand_state_transition_client(
@@ -536,34 +579,12 @@ fn js_expand_state_transition_client(
     let expanded_statements: Vec<JSAstNode> = match state_trans_func {
         StateTransitionFunc::Create => {
             let state_var_iden = JSAstNode::Identifier(args[0].clone());
-            let update_client_state = JSAstNode::CallExpr {
-                receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-                call_name: Box::new(JSAstNode::Identifier("push".to_string())),
-                args: vec![state_var_iden.clone()],
-            };
+            let update_client_state = js_push_var(&state_var, &args[0]);
             vec![fetch, update_client_state]
         }
         StateTransitionFunc::Delete => {
             let state_var_iden_str = args[0].clone();
-            let update_client_state = JSAstNode::AssignmentStatement {
-                left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-                right: Box::new(JSAstNode::CallExpr {
-                    receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-                    call_name: Box::new(JSAstNode::Identifier("filter".to_string())),
-                    args: vec![JSAstNode::ArrowClosure {
-                        args: vec![JSAstNode::Identifier("data".to_string())],
-                        body: Box::new(JSAstNode::ReturnStatement(Box::new(
-                            JSAstNode::NotEqualExpr {
-                                left: Box::new(JSAstNode::Identifier("data.id".to_string())),
-                                right: Box::new(JSAstNode::Identifier(format!(
-                                    "{}.id",
-                                    state_var_iden_str
-                                ))),
-                            },
-                        ))),
-                    }],
-                }),
-            };
+            let update_client_state = js_delete_var(&state_var, &args[0]);
             vec![fetch, update_client_state]
         }
         StateTransitionFunc::Read => {
@@ -578,16 +599,7 @@ fn js_expand_state_transition_client(
                     node: Box::new(fetch),
                 }),
             };
-            let update_client_state = JSAstNode::AssignmentStatement {
-                left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-                right: Box::new(JSAstNode::AwaitOperator {
-                    node: Box::new(JSAstNode::CallExpr {
-                        call_name: Box::new(JSAstNode::Identifier("json".to_string())),
-                        receiver: Box::new(JSAstNode::Identifier("data".to_string())),
-                        args: vec![],
-                    }),
-                }),
-            };
+            let update_client_state = js_read_var(&state_var);
             vec![await_fetch, update_client_state]
         }
         _ => vec![],
@@ -895,6 +907,47 @@ fn js_infra_expand(node: JSAstNode, schemas: &Schemas) -> (JSAstNode, Vec<JSAstN
     }
 }
 
+// JS Executable Compilation
+
+fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
+    match node {
+        JSAstNode::ClassDef { name, body } => {
+            let translated_name = js_executable_translate(&name);
+            let translated_body = js_executable_translate(&body);
+
+            JSAstNode::ClassDef { name: Box::new(translated_name), body: Box::new(translated_body) }
+        }
+        JSAstNode::ClassBody { definitions } => {
+            let mut translated: Vec<JSAstNode> = vec![];
+            for def in definitions {
+                translated.push(js_executable_translate(&def));
+            }
+
+            JSAstNode::ClassBody { definitions: translated }
+        }
+        JSAstNode::ClassMethod { name, args, body } => {
+            JSAstNode::ClassMethod { name: name.clone(), args: args.clone(), body: Box::new(js_executable_translate(body)) }
+        }
+        JSAstNode::CallExpr { receiver, call_name, args } => {
+            let call_str = js_gen_string(*call_name.clone());
+            let state_trans_func = state_transition_func_from_str(&call_str);
+            let state_var = js_gen_string(*receiver.clone());            
+            match state_trans_func {
+                StateTransitionFunc::Create => {
+                    let state_var_val = js_gen_string(args[0].clone());
+                    js_push_var(&state_var, &state_var_val)
+                },
+                StateTransitionFunc::Delete => {
+                    let state_var_val = js_gen_string(args[0].clone());
+                    js_delete_var(&state_var, &state_var_val)
+                }
+                _ => node.clone()
+            }
+        }
+        _ => node.clone()
+    }
+}
+
 // Parser
 
 fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
@@ -1128,6 +1181,7 @@ fn main() {
     let mut js_infra_expanded: Vec<JSAstNode> = vec![];
     let mut js_infra_code: Vec<String> = vec![];
     let mut js_asts: Vec<JSAstNode> = vec![];
+    let mut js_compiled_asts: Vec<JSAstNode> = vec![];
     let mut endpoint_strs: Vec<String> = vec![];
     match result {
         Ok(pairs) => {
@@ -1148,7 +1202,12 @@ fn main() {
                 }
 
                 statements.push(parsed.clone());
+                // js_translate is a direct translation
                 let js_ast = js_translate(parsed.clone());
+
+                // js_compile translates to executable JS, i.e. replaces state
+                // transition functions with real operations
+                js_compiled_asts.push(js_executable_translate(&js_ast));
                 js_asts.push(js_ast.clone());
                 js_code.push(js_gen_string(js_ast.clone()));
                 let (client, server) = js_infra_expand(js_ast, &schemas);
@@ -1197,6 +1256,11 @@ fn main() {
     println!("JS Translation:\n");
     for c in js_code {
         println!("{}", c);
+    }
+
+    println!("JS Executable Translation:\n");
+    for ca in js_compiled_asts {
+        println!("{}", js_gen_string(ca));
     }
 
     let web_requires = "const express = require('express');\n\
