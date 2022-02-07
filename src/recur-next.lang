@@ -1,0 +1,109 @@
+type Weekday:
+  | Monday
+  | Tuesday
+  | Wednesday
+  | Thursday
+  | Friday 
+  | Saturday
+  | Sunday
+end
+
+type RecurrenceRule:
+  | Monthly(Numeric)
+  | Weekly(Weekday)
+end
+
+def expand_month(start_date: Numeric, end_date: Numeric, month_day: Numeric)
+  # Each month day that falls between start and end date.
+  # 9/16/2022 - 2/2/2023, 5
+  # 2 - 9 = -7 --> 12 - 7 = 5. If positive, diff is itself. If negative 12 - diff
+  # [9..2] ==> 9, 10, 11, 12, 1, 2
+  # [16..2]
+  # [2022..2023]
+  # 
+end
+
+schema Date
+  month: Numeric
+  day: Numeric
+  year: Numeric
+end
+
+# Non-persisted data should be "type"
+schema RecurringTransaction:
+  id: Numeric
+  amount: Numeric
+  name: String
+  recurrence_rule: RecurrenceRule
+
+  def expand(start_date: Date, end_date: Date)
+    case recurrence_rule
+      Monthly(month_day): expand_month(start_date, end_date, month_day)
+    end
+  end
+end
+
+schema CreateRecurringTransaction:
+  amount: Numeric
+  name: String
+  recurrence_rule: RecurrenceRule  
+end
+
+# Persisted data denoted by "schema"
+schema Budget:
+  recurring_transactions: [RecurringTransaction]
+  
+  def create_recurring_transaction(rtc: CreateRecurringTransaction)
+    recurring_transactions.create!(rtc)
+  end
+
+  def delete_recurring_transaction(rt: RecurringTransaction)
+    recurring_transactions.delete!(rt)
+  end
+
+  def update_recurring_transaction(rt: RecurringTransaction)
+    recurring_transactions.update!(rt)
+  end
+
+  def view_recurring_transactions()
+    recurring_transactions.read!()
+  end
+end
+
+type ScheduledTransaction:
+  amount: Numeric
+  name: String
+  occurs_on: Date
+end
+
+type Schedule:
+  budget: Budget
+
+  def scheduled_transactions(start_date: Date, end_date: Date)
+    # Interesting case: this read should be query-only, i.e. not returned to the frontend.
+    # This read! call wouldn't generate a network request on the frontend  then?
+    # The endpoint can expand the transactions before responding, i.e. call expan
+    # budget.recurring_transactions.read!()
+
+    # This is what the frontend should be calling, the frontend asks for scheduled transactions.
+    # But this is derived data, aka "derived relvar"
+
+    # Possibly, seeing a read! within a read! can be used. The outer read! must be a network request,
+    # While the inner read can be query only since it will be occurring inside of an endpoint. This brings up:
+    # should state vars be able to be accessed without read!? And maybe that means only use the client state?
+    scheduled_transactions.read!(
+      budget.recurring_transactions.read!().map(RecurringTransaction.expand).flatten
+    )
+
+    # Maybe should only use 'service' methods:
+    scheduled_transactions.read!(
+      # Note: RecurringTransaction.expand is partially applied. Not sure of the semantics of this.
+      # But the intention is to supply what arguments you have, and have the rest be applicable later.
+      budget.view_recurring_transactions().map(
+        RecurringTransaction.expand(start_date: start_date, end_date: end_date)
+      ).flatten
+    )
+  end
+end
+
+# TODO: Sum types + pattern matching / case statement. Top-level functions. Derived relations, i.e. ScheduledTransactions
