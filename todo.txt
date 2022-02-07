@@ -1,0 +1,5 @@
+* Enable writing generated code as macros. It's painful to generate code using the AST directly.
+  Using a quasi-quoted macro to express code, a la Nim, should make generating code much smoother.
+  Note: this will require parsing the target language, TS currently.
+
+* File output. Start writing to files. Copying from the terminal output is getting old.
