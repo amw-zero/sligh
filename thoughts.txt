@@ -34,7 +34,7 @@ Should incremental migrations still be possible? I.e., only applying a new patte
 certain endpoints / behaviors for testing. Might be able to solve this with versioning
 / canaray deployment.
 
-Name: Sollemnis? Mystique?
+Name: Sollemnis? Mystique? Sligh?
 
 How to handle application-specific logic, like pagination / ordering? Example - ordering of
 data in table. Pagination might live in the compiler, ordering might be a domain rule. Or,
@@ -48,3 +48,7 @@ the lines of: "forall st: state transitions(A), abstract(st) = expanded(st) impl
 e.g. proving each state transition transformation from abstract to expaned is equivalent implies that the 
 abstract and concrete programs are equivalent. Already did a similar proof in the Refinement CQ 
 blog post, and there probably are only the 4 main state transitions, e.g. CRUD.
+
+^ I think this idea has legs. Instead of generating a giant e2e test, I can generate 1 test for each
+state transition type (only 4 of them currently) and just verify that the state transition is equivalent
+vs. checking the entire state machine. Pretty sure that's what a refinement relation is.
