@@ -1,6 +1,8 @@
-use pest::{self, Parser};
+use pest::{self, Parser as PestParser};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use clap::Parser as ClapParser;
+use std::fs;
 
 const DEBUG: bool = false;
 const API_HOST: &str = "http://localhost:3000";
@@ -1187,14 +1189,9 @@ fn sql_gen_string(node: &SQLAstNode) -> String {
                     }
                     let comma_separated_attrs = attr_names.join(", ");
 
-                    println!("Compiling select with no from");
-                    println!("{:?}", comma_separated_attrs);
-                    println!("{}", attributes.len());
                     if attributes.len() == 1 {
-                        println!("1 length");
                         format!("SELECT {}", comma_separated_attrs)
                     } else {
-                        println!("else");
                         format!("SELECT ({})", comma_separated_attrs)
                     }
                 }
@@ -1257,18 +1254,27 @@ fn schema_attributes(schema_body: AstNode) -> Vec<SchemaAttribute> {
     }
 }
 
+#[derive(ClapParser, Debug)]
+struct Args {
+    input_file: String,
+
+    /// Generated client output
+    #[clap(short, long, default_value = "./client.ts")]
+    client_output: String,
+
+    /// Generated server output
+    #[clap(short, long, default_value = "./server.js")]
+    server_output: String,
+}
+
 fn main() {
-    let source_file = std::env::args().nth(1).expect("No source file specified");
-    let source = std::fs::read_to_string(source_file).expect("Gotta exist");
+    let args = Args::parse();
+    let source = std::fs::read_to_string(args.input_file).expect("No input file provided.");
     let result = LangParser::parse(Rule::Program, &source);
     let mut schemas: Schemas = HashMap::new();
     let mut statements: Vec<AstNode> = vec![];
-    let mut js_code: Vec<String> = vec![];
-    let mut js_infra_expanded: Vec<JSAstNode> = vec![];
-    let mut js_infra_code: Vec<String> = vec![];
-    let mut js_asts: Vec<JSAstNode> = vec![];
-    let mut js_compiled_asts: Vec<JSAstNode> = vec![];
-    let mut endpoint_strs: Vec<String> = vec![];
+    let mut js_expanded_client: Vec<String> = vec![];
+    let mut js_expanded_server: Vec<String> = vec![];
     match result {
         Ok(pairs) => {
             for pair in pairs {
@@ -1293,79 +1299,22 @@ fn main() {
 
                 // js_compile translates to executable JS, i.e. replaces state
                 // transition functions with real operations
-                js_compiled_asts.push(js_executable_translate(&js_ast));
-                js_asts.push(js_ast.clone());
-                js_code.push(js_gen_string(js_ast.clone()));
                 let (client, server) = js_infra_expand(js_ast, &schemas);
-                js_infra_expanded.push(client.clone());
-                js_infra_expanded.append(&mut server.clone());
 
-                js_infra_code.push(js_gen_string(client));
+                js_expanded_client.push(js_gen_string(client.clone()));
+
                 for endpoint in server {
                     let endpoint_str = js_gen_string(endpoint);
-                    js_infra_code.push(endpoint_str.clone());
-                    endpoint_strs.push(endpoint_str);
+                    js_expanded_server.push(endpoint_str.clone());
                 }
             }
         }
         Err(e) => println!("Error {:?}", e),
     }
 
-    // Debug
-    /*
-    println!("Parsed statements");
-    for s in statements {
-        println!("{:?}", s);
-    }
+    let client_code = js_expanded_client.join("\n\n");
+    fs::write(args.client_output, client_code).expect("Unable to write client code file.");
 
-    println!("JS Translation:\n");
-    for c in js_code {
-        println!("{}", c);
-    }
-
-    println!("\n\nInfrastructure Expansion:\n");
-    for ex in &js_infra_code {
-        println!("{}", ex)
-    }
-    */
-
-    if DEBUG {
-        println!("JS Translation:\n");
-        println!("{:?}\n", js_asts[2]);
-    }
-
-    println!("Client code:\n");
-    for c in js_infra_code {
-        println!("{}", c);
-    }
-
-    println!("JS Translation:\n");
-    for c in js_code {
-        println!("{}", c);
-    }
-
-    println!("JS Executable Translation:\n");
-    for ca in js_compiled_asts {
-        println!("{}", js_gen_string(ca));
-    }
-
-    let web_requires = "const express = require('express');\n\
-        const app = express();\n\
-        const port = 3000;\n\
-        app.use(cors({options: \"*\"}));\n\
-        app.use(express.json());\n";
-
-    let web_listen = "app.listen(port, () => {\n\
-        console.log(`Example app listening at http://localhost:${port}`)\n\
-      })\n";
-    let all_endpoints = endpoint_strs.join("\n");
-    let web_server = format!("{}{}\n{}", web_requires, all_endpoints, web_listen);
-
-    println!("\n\nWeb server:\n");
-    println!("{}", web_server);
-
-    for js_ast in js_asts {
-        println!("JSAst:");
-        println!("{:?}\n\n", js_ast);
-    }
+    let server_code = js_expanded_server.join("\n\n");
+    fs::write(args.server_output, server_code).expect("Unable to write server code file.");
 }

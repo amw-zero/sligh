@@ -8,3 +8,4 @@ edition = "2018"
 [dependencies]
 pest = { version = "2.1", features = ["pretty-print"] }
 pest_derive = "2.1"
+clap = { version = "3.0.14", features = ["derive"] }
