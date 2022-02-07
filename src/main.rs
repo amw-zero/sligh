@@ -584,6 +584,15 @@ fn js_expand_state_transition_client(
     };
     let expanded_statements: Vec<JSAstNode> = match state_trans_func {
         StateTransitionFunc::Create => {
+            // TODO: The fetch here should be of the form:
+            /*
+            async create_recurring_transaction(rtc: CreateRecurringTransaction) {
+            let resp = await fetch("http://localhost:3000/recurring_transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rtc) });
+            let rt = await resp.json()
+            console.log({createdTransaction: rt});
+            this.recurring_transactions.push(rt);
+            }
+            */
             let update_client_state = js_push_var(&state_var, &args[0]);
             vec![fetch, update_client_state]
         }
