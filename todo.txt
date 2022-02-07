@@ -7,3 +7,7 @@
 * Generate translation certification test.
 
 * Probably should compile to Rust.
+
+* Support different backends. Should be able to compile to different languages as well
+  as architectures / patterns. For example, compile to microservices, monolithic backend,
+  relational DB, MongoDB, DynamoDB, etc.
