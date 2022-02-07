@@ -1,3 +1,44 @@
+# Sum types:
+
+type MonthRecurrence:
+  | Relative(Numeric)
+  | Absolute(Numeric)
+end
+
+type WeekDay:
+  | Sunday
+  | Monday
+  | Tuesday
+  | Wednesday
+  | Thursday
+  | Friday
+  | Saturday
+end
+
+type RecurrenceRule:
+  | Monthly(MonthRecurrence)
+  | Weekly(WeekDay)
+end
+
+schema Date:
+  month: Numeric
+  day: Numeric
+  year: Numeric
+end
+
+# 2/4/2022 - 3/4/2022
+def expand(rule: RecurrenceRule, start_date: Date, end_date: Date) -> [Date]
+  case rule
+  Monthly(mr): 
+    case mr:
+    Relative(md):
+    Absolute(md):
+    end
+  default:
+  end
+end
+
+
 schema RecurrenceRule = Monthly | Weekly
 
 schema RecurringTransaction do
@@ -79,7 +120,7 @@ schema CardsModule:
 end
 
 # Experimental
-# Metaprogramming - function bodies can be referred to via *_def, a la Isabell.
+# Metaprogramming - function bodies can be referred to via *_def, a la Isabelle.
 # This is a good idea lol
 # Separates pure logic description from application concerns, still in a generic way
 # Probably hard / brittle  to find specific AST nodes though, i.e. element 8 in a statement list.
@@ -155,9 +196,45 @@ schema Server
   end
 end
 
-# 
+# Multiple models
 action MultiModel(rt: RecurringTransaction, d: Date) do
   rt.comments.add("New comment #{d.to_s}")
+end
+
+type Scenario:
+  id: Numeric
+  name: String
+  recurring_transactions: [RecurringTransaction]
+end
+
+# This one kind of stinks- relatively duplicative of Scenario. Is it necessary?
+type ScenarioData
+  name: String
+  recurring_transactions: [RecurringTransaction]
+end
+
+# FormObject / Create Request object.
+type CreateScenario:
+  name: String
+  clone_from: Option[Scenario]
+  recurring_transactions: [RecurringTransaction]
+end
+
+schema Budget:
+  scenarios: {Scenario}
+
+  def create_scenario(cs: CreateScenario)
+    case cs.clone_from
+      Some(from_scenario): 
+        scenarios.create!(
+          ScenarioData(
+            name: cs.name, 
+            recurring_transactions: from_scenario.recurring_transactions
+          )
+        )
+      None: scenarios.create!(ScenarioData(name: cs.name, recurring_transactions: []))
+    end
+  end
 end
 
 
