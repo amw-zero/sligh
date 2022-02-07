@@ -3,3 +3,5 @@
   Note: this will require parsing the target language, TS currently.
 
 * File output. Start writing to files. Copying from the terminal output is getting old.
+
+* Generate translation certification test.
