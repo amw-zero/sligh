@@ -306,6 +306,12 @@ fn js_translate_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAs
     }
 }
 
+// A better name for this might be js_translate_initial
+// or something like that.
+// it represents a bridge between the source lang
+// and JS, but it still has some syntax rules of 
+// the source, i.e. 'create!' is a valid identifier
+// in the source, but not in JS.
 fn js_translate(ast: AstNode) -> JSAstNode {
     match ast {
         AstNode::SchemaDef { name, body } => JSAstNode::ClassDef {
@@ -578,12 +584,10 @@ fn js_expand_state_transition_client(
     };
     let expanded_statements: Vec<JSAstNode> = match state_trans_func {
         StateTransitionFunc::Create => {
-            let state_var_iden = JSAstNode::Identifier(args[0].clone());
             let update_client_state = js_push_var(&state_var, &args[0]);
             vec![fetch, update_client_state]
         }
         StateTransitionFunc::Delete => {
-            let state_var_iden_str = args[0].clone();
             let update_client_state = js_delete_var(&state_var, &args[0]);
             vec![fetch, update_client_state]
         }
@@ -716,7 +720,7 @@ fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -
 
 fn js_state_query_read(state_var: &str) -> JSAstNode {
     let sql = SQLAstNode::Select {
-        from: Box::new(SQLAstNode::Identifier(state_var.to_string())),
+        from: Some(Box::new(SQLAstNode::Identifier(state_var.to_string()))),
         attributes: vec![SQLAstNode::Identifier("*".to_string())],
         clause: None,
     };
@@ -745,29 +749,84 @@ fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schema
     let mut sql_attr_names: Vec<SQLAstNode> = vec![];
     let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
     let mut js_attr_values: Vec<JSAstNode> = vec![];
-    let schema = &schemas[state_var_type];
+    let mut response_props: Vec<Prop> = vec![];
+    let schema = &schemas[state_var_type];    
     for attr in &schema.attributes {
         attr_names.push(attr.name.clone());
 
         // TODO: this is assuming the name of 'data' which is used to
         // parse the HTTP body in write requests.
         js_attr_values.push(JSAstNode::Identifier(format!("data.{}", attr.name)));
+        response_props.push(Prop{ key: JSAstNode::Identifier(attr.name.clone()), value: JSAstNode::Identifier(format!("data.{}", attr.name)) });
         sql_attr_names.push(SQLAstNode::Identifier(attr.name.clone()));
         sql_value_placeholders.push(SQLAstNode::Identifier("?".to_string()))
     }
-    // INSERT INTO state_var (attr_names) VALUES (?, ?, ?)
-    let sql = SQLAstNode::Insert {
+    /*
+    db.serialize(() => {
+        db.run("INSERT INTO recurring_transactions (amount, name) VALUES (?, ?)", [data.amount, data.name]);
+        db.get("SELECT last_insert_rowid()", (err, row) => {
+          res.send({...data, id: row});
+        });
+      });
+      */
+    let insert_sql = SQLAstNode::Insert {
         into: Box::new(SQLAstNode::Identifier(state_var.to_string())),
         attributes: sql_attr_names,
         values: sql_value_placeholders,
     };
-    JSAstNode::CallExpr {
+    let insert_js = JSAstNode::CallExpr {
         receiver: Box::new(JSAstNode::Identifier("db".to_string())),
         call_name: Box::new(JSAstNode::Identifier("run".to_string())),
         args: vec![
-            JSAstNode::StringLiteral(sql_gen_string(&sql)),
+            JSAstNode::StringLiteral(sql_gen_string(&insert_sql)),
             JSAstNode::ArrayLiteral(js_attr_values),
         ],
+    };
+    let get_id_sql = SQLAstNode::Select {
+        attributes: vec![SQLAstNode::Identifier("last_insert_rowid()".to_string())],
+        from: None,
+        clause: None,
+    };
+
+    response_props.push(Prop { key: JSAstNode::Identifier("id".to_string()), value: JSAstNode::Identifier("row[\"last_insert_rowid()\"]".to_string())});
+    let respond = JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+        args: vec![
+            JSAstNode::Object { props: response_props}
+        ],
+    };
+
+
+    let respond_with_id = JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("get".to_string())),
+        args: vec![
+            JSAstNode::StringLiteral(sql_gen_string(&get_id_sql)),
+            JSAstNode::ArrowClosure {
+                args: vec![
+                    JSAstNode::Identifier("err".to_string()),
+                    JSAstNode::Identifier("row".to_string()),
+                ],
+                body: Box::new(respond)
+            }
+        ],
+    };
+    
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("serialize".to_string())),
+        args: vec![
+            JSAstNode::ArrowClosure {
+                args: vec![],
+                body: Box::new(JSAstNode::StatementList {
+                    statements: vec![
+                        insert_js,
+                        respond_with_id,
+                    ]
+                })
+            }
+        ]
     }
 }
 
@@ -834,11 +893,6 @@ fn js_expand_class_method_to_endpoint(
                         statements: vec![
                             parse_data,
                             query,
-                            JSAstNode::CallExpr {
-                                receiver: Box::new(JSAstNode::Identifier("res".to_string())),
-                                call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-                                args: vec![JSAstNode::Object { props: vec![] }],
-                            },
                         ],
                     })
                 }
@@ -1047,7 +1101,7 @@ enum SQLAstNode {
     Identifier(String),
     Select {
         attributes: Vec<SQLAstNode>,
-        from: Box<SQLAstNode>,
+        from: Option<Box<SQLAstNode>>,
         clause: Option<Box<SQLAstNode>>,
     },
     Delete {
@@ -1102,18 +1156,41 @@ fn sql_gen_string(node: &SQLAstNode) -> String {
         SQLAstNode::Select {
             from, attributes, ..
         } => {
-            let from_relation = sql_gen_string(from);
-            let mut attr_names: Vec<String> = vec![];
-            for attr in attributes {
-                attr_names.push(sql_gen_string(attr));
-            }
-            let comma_separated_attrs = attr_names.join(", ");
+            match from {
+                Some(f) => {
+                    let from_relation = sql_gen_string(f);
+                    let mut attr_names: Vec<String> = vec![];
+                    for attr in attributes {
+                        attr_names.push(sql_gen_string(attr));
+                    }
+                    let comma_separated_attrs = attr_names.join(", ");
 
-            if comma_separated_attrs.len() == 1 {
-                format!("SELECT {} FROM {}", comma_separated_attrs, from_relation)
-            } else {
-                format!("SELECT ({}) FROM {}", comma_separated_attrs, from_relation)
+                    if attributes.len() == 1 {
+                        format!("SELECT {} FROM {}", comma_separated_attrs, from_relation)
+                    } else {
+                        format!("SELECT ({}) FROM {}", comma_separated_attrs, from_relation)
+                    }
+                },
+                None => {
+                    let mut attr_names: Vec<String> = vec![];
+                    for attr in attributes {
+                        attr_names.push(sql_gen_string(attr));
+                    }
+                    let comma_separated_attrs = attr_names.join(", ");
+
+                    println!("Compiling select with no from");
+                    println!("{:?}", comma_separated_attrs);
+                    println!("{}", attributes.len());
+                    if attributes.len() == 1 {
+                        println!("1 length");
+                        format!("SELECT {}", comma_separated_attrs)
+                    } else {
+                        println!("else");
+                        format!("SELECT ({})", comma_separated_attrs)
+                    }
+                }
             }
+            
         }
         SQLAstNode::Delete { from, clause } => match clause {
             Some(c) => format!("DELETE FROM {} {}", sql_gen_string(from), sql_gen_string(c)),
