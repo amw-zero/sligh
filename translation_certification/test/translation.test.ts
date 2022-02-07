@@ -1,80 +1,78 @@
 import { expect } from 'chai';
 import 'mocha';
 import { Budget as Fullstack,  } from "./generated-client";
-import { Budget as Model, RecurringTransaction } from "./generated-model"
+import { Budget as Model, RecurringTransaction, CreateRecurringTransaction } from "./generated-model"
 import fc from 'fast-check';
 import { Database } from "sqlite3";
 import { omit } from "lodash";
 
-function withoutId(rt: RecurringTransaction): Omit<RecurringTransaction, "id"> {
-  return omit(rt, "id");
+async function assertSimulation(m: Model, r: Fullstack) {
+  // console.log("Before data fetch");
+  // console.log(r.recurring_transactions);
+  // Compare client side state to model
+  expect(r.recurring_transactions).to.deep.eq(m.recurring_transactions);
+
+  // Compare database state to model
+  await r.view_recurring_transactions();
+  // console.log("After data fetch");
+  // console.log(r.recurring_transactions);
+  expect(r.recurring_transactions).to.deep.eq(m.recurring_transactions);
 }
 
 class CreateCommand implements fc.AsyncCommand<Model, Fullstack> {
-  constructor(readonly value: RecurringTransaction) {}
+  constructor(readonly value: CreateRecurringTransaction) {}
   check = (m: Readonly<Model>) => true;
   async run(m: Model, r: Fullstack): Promise<void> {
-    await r.create_recurring_transaction(this.value);
-    await r.view_recurring_transactions();
-    m.create_recurring_transaction(this.value);
+    console.log("Create");
+    let createdRt = await r.create_recurring_transaction(this.value);
+    m.create_recurring_transaction(this.value, createdRt.id);
 
-    console.log("Fullstack:")
-    console.log(r.recurring_transactions);
-    console.log("Model:")
-    console.log(m.recurring_transactions);
-    expect(r.recurring_transactions.map(withoutId)).to.deep.eq(m.recurring_transactions.map(withoutId));
+    return assertSimulation(m, r);
   }
   toString = () => `createRecurringTransaction(${this.value})`;
 }
+
 class DeleteCommand implements fc.AsyncCommand<Model, Fullstack> {
-  constructor(readonly value: RecurringTransaction) {}
+  constructor(readonly indexToDelete: number) {}
   check(m: Readonly<Model>): boolean {
-    return true;
+    return m.recurring_transactions.length > 0;
   }
   async run(m: Model, r: Fullstack): Promise<void> {
-    await r.delete_recurring_transaction(this.value)
-    await r.view_recurring_transactions();
-    m.delete_recurring_transaction(this.value);
+    let toDelete = r.recurring_transactions[this.indexToDelete];
+    if (toDelete) {
+      console.log("Deleting");
+      await r.delete_recurring_transaction(toDelete);
+      m.delete_recurring_transaction(toDelete);
+    }
 
-
-    expect(r.recurring_transactions).to.deep.eq(m.recurring_transactions);
+    return assertSimulation(m, r);
   }
-  toString = () => `deleteRecurringTransaction(${this.value})`;
+  toString = () => `deleteRecurringTransaction(${this.indexToDelete})`;
 }
 
 describe('FullstackBudget', function() {
   it('simulates the model', async function() {
     const cmds = [
-      fc.record({ name: fc.string(), amount: fc.float()}).map(({ name, amount }) => {
-        let rt = new RecurringTransaction();
-        rt.name = name;
-        rt.amount = amount;
-
-        return new CreateCommand(rt);
+      fc.record({ name: fc.string(), amount: fc.float(), id: fc.integer()}).map(({ name, amount, id }) => {
+        let crt = { name, amount };
+        return new CreateCommand(crt);
       }),
-      // fc.record({ name: fc.string(), amount: fc.float()}).map(({ name, amount }) => {
-      //   let rt = new RecurringTransaction();
-      //   rt.name = name;
-      //   rt.amount = amount;
-
-      //   return new DeleteCommand(rt);
-      // }),
+      fc.record({ indexToDelete: fc.nat({ max: 10 })}).map(({ indexToDelete }) => {
+        return new DeleteCommand(indexToDelete);
+      }),
     ];
 
     const db = new Database('../web_server/test.db');
 
     await fc.assert(
-      fc.asyncProperty(fc.commands(cmds, { maxCommands: 20 }), cmds => {
-        console.log("\n\n==== Property iteration ====");
+      await fc.asyncProperty(fc.commands(cmds, { maxCommands: 20 }), cmds => {
         const s = () => ({ model: new Model(), real: new Fullstack(() => {}) });
+        console.log("\n\n==== Property begin ====")
         let setupPromise = new Promise<boolean | void>((resolve, reject) => {
           db.run("DELETE FROM recurring_transactions", (result, err) => {
-            console.log("Data setup")
             if (err) {
-              console.log("Data error");
               reject(err);
             } else {
-              console.log("Running model");
               resolve(fc.asyncModelRun(s, cmds));
             }
           });
@@ -82,7 +80,7 @@ describe('FullstackBudget', function() {
         
         return setupPromise;
       }),
-      { numRuns: 25 },
+      { numRuns: 100 },
     );
   });
 });
