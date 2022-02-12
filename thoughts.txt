@@ -52,3 +52,10 @@ blog post, and there probably are only the 4 main state transitions, e.g. CRUD.
 ^ I think this idea has legs. Instead of generating a giant e2e test, I can generate 1 test for each
 state transition type (only 4 of them currently) and just verify that the state transition is equivalent
 vs. checking the entire state machine. Pretty sure that's what a refinement relation is.
+
+How to handle things like View Models / logic that aggregates domain models.
+
+Possible overall goal: Support extensible syntax with extensible code generation via quasi-quoted macros, like how
+Svelte uses code-red to make code generation closer to writing actual JS.
+
+Mascot: Jackal. (Jackal Pup)

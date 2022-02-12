@@ -1,6 +1,7 @@
 * Enable writing generated code as macros. It's painful to generate code using the AST directly.
   Using a quasi-quoted macro to express code, a la Nim, should make generating code much smoother.
-  Note: this will require parsing the target language, TS currently.
+  Note: this will require parsing the target language, TS currently. Svelte does this 
+  via code-red: https://www.npmjs.com/package/code-red
 
 * File output. Start writing to files. Copying from the terminal output is getting old.
 
@@ -11,3 +12,5 @@
 * Support different backends. Should be able to compile to different languages as well
   as architectures / patterns. For example, compile to microservices, monolithic backend,
   relational DB, MongoDB, DynamoDB, etc.
+
+* Pagination - how to show that pagination is a simulation of the model?
