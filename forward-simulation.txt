@@ -1,0 +1,30 @@
+From http://isabelle.informatik.tu-muenchen.de/~kleing/papers/klein_sw_10.pdf
+
+record process = Init :: ’external ⇒ ’state set
+                 Step :: ’event ⇒ (’state × ’state) set
+                  Fin :: ’state ⇒ ’external
+
+fw-sim SR C A ≡ (∀s. Init C s ⊆ SR ‘‘ Init A s)
+              ∧ (∀event. Step C event O SR ⊆ SR O Step A event)
+              ∧ (∀s s’. (s, s’) ∈ SR −→ Fin C s’ = Fin A s)
+
+
+Relation: <
+x R y ==> x < y
+
+A relation is a set of pairs, i.e. {(s1,s2), (s2,s3) ...}
+
+process C: external, event, state_c
+process A: external, event, state_a
+
+Step C event :: (state_c x state_c) set
+SR           :: (state_c, state_a) set
+Step A event :: (state_a, state_a) set
+
+Step C event O SR :: (state_c x state_a) set
+SR O Step A event :: (state_c x state_a) set
+
+1. the allowable initial states of C is a subset of the image of the state relation 
+   under the allowable initial states of A
+2. for all events, the state relation applied to a step taken from the event in C produces
+   a subset of the state relation applied to a step taken from the event in A
