@@ -6,7 +6,7 @@ import fc from 'fast-check';
 import { Database } from "sqlite3";
 
 describe('FullstackBudget', function() {
-  this.timeout(20000);
+  this.timeout(60000);
   it('simulates the model', async function() {
     const db = new Database('../web_server/test.db');
 
@@ -33,7 +33,7 @@ describe('FullstackBudget', function() {
           });
          });
       }),
-      { numRuns: 1000000 },
+      { numRuns: 10000 },
     );
   });
 });
