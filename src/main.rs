@@ -1,7 +1,7 @@
+use clap::Parser as ClapParser;
 use pest::{self, Parser as PestParser};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use clap::Parser as ClapParser;
 use std::fs;
 
 const DEBUG: bool = false;
@@ -46,12 +46,12 @@ enum AstNode {
         args: Vec<AstNode>,
     },
     ExprList(Vec<AstNode>),
-    LetExpr{
-        name: Box<AstNode>      // Identifier
+    LetExpr {
+        name: Box<AstNode>, // Identifier
     },
-    FuncCall{
+    FuncCall {
         name: Box<AstNode>,
-        args: Vec<AstNode>
+        args: Vec<AstNode>,
     },
     // Expr(String),
 }
@@ -319,7 +319,7 @@ fn js_translate_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAs
 // A better name for this might be js_translate_initial
 // or something like that.
 // it represents a bridge between the source lang
-// and JS, but it still has some syntax rules of 
+// and JS, but it still has some syntax rules of
 // the source, i.e. 'create!' is a valid identifier
 // in the source, but not in JS.
 fn js_translate(ast: AstNode) -> JSAstNode {
@@ -370,7 +370,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
             }
 
             JSAstNode::StatementList {
-                statements: js_exprs
+                statements: js_exprs,
             }
         }
         _ => JSAstNode::InvalidNode,
@@ -412,17 +412,19 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
                                                 // The convention is that method names ending in ! are
                                                 // state transitions. Separate these for subsequent expansion
                                                 println!("Found call expr");
-                                                let method_name = js_gen_iden_name(*call_name.clone());
-                                                let name_chars: Vec<char> = method_name.chars().collect();
+                                                let method_name =
+                                                    js_gen_iden_name(*call_name.clone());
+                                                let name_chars: Vec<char> =
+                                                    method_name.chars().collect();
                                                 if *name_chars.last().unwrap() == '!' {
                                                     println!("Detected state transition");
                                                     state_transitions.push(def.clone());
-                                                    break
+                                                    break;
                                                 } else {
                                                     state_variables.push(def.clone());
                                                 }
-                                            },
-                                            _ => state_variables.push(def.clone())
+                                            }
+                                            _ => state_variables.push(def.clone()),
                                         }
                                     }
                                 }
@@ -477,7 +479,7 @@ fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransitionFunc) 
 enum StateTransitionFunc {
     Create,
 
-    // Note: Read is considered a state transition because it queries the 
+    // Note: Read is considered a state transition because it queries the
     // server state and applies it to the client state. It isn't a _read_ of the state,
     // aka state function, but a transition where the client state is updated
     Read,
@@ -576,10 +578,7 @@ fn js_delete_var(state_var: &str, state_var_val: &str) -> JSAstNode {
                 body: Box::new(JSAstNode::ReturnStatement(Box::new(
                     JSAstNode::NotEqualExpr {
                         left: Box::new(JSAstNode::Identifier("data.id".to_string())),
-                        right: Box::new(JSAstNode::Identifier(format!(
-                            "{}.id",
-                            state_var_val
-                        ))),
+                        right: Box::new(JSAstNode::Identifier(format!("{}.id", state_var_val))),
                     },
                 ))),
             }],
@@ -682,23 +681,23 @@ fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
 
 fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     match class_method {
-        JSAstNode::ClassMethod { name, args, body } => {
-            match *body {
-                JSAstNode::StatementList { statements } => {
-                    let mut expanded_statements: Vec<JSAstNode> = vec![];
-                    for statement in statements {
-                        expanded_statements.push(js_class_method_body_expand(statement.clone()));                        
-                    }
+        JSAstNode::ClassMethod { name, args, body } => match *body {
+            JSAstNode::StatementList { statements } => {
+                let mut expanded_statements: Vec<JSAstNode> = vec![];
+                for statement in statements {
+                    expanded_statements.push(js_class_method_body_expand(statement.clone()));
+                }
 
-                    JSAstNode::ClassMethod {
-                        name: name,
-                        args: args,
-                        body: Box::new(JSAstNode::StatementList { statements: expanded_statements }),
-                    }
-                },
-                _ => panic!("Attempted to client-expand ")
+                JSAstNode::ClassMethod {
+                    name: name,
+                    args: args,
+                    body: Box::new(JSAstNode::StatementList {
+                        statements: expanded_statements,
+                    }),
+                }
             }
-        }
+            _ => panic!("Attempted to client-expand "),
+        },
         _ => JSAstNode::InvalidNode,
     }
 }
@@ -718,8 +717,12 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
     let mut defs_with_async_state_transitions: Vec<JSAstNode> = vec![];
     for def in expanded_definitions {
         match def {
-            JSAstNode::ClassMethod { .. } => defs_with_async_state_transitions.push(JSAstNode::AsyncModifier{ node: Box::new(def) }),
-            _ => defs_with_async_state_transitions.push(def)
+            JSAstNode::ClassMethod { .. } => {
+                defs_with_async_state_transitions.push(JSAstNode::AsyncModifier {
+                    node: Box::new(def),
+                })
+            }
+            _ => defs_with_async_state_transitions.push(def),
         }
     }
 
@@ -757,25 +760,23 @@ fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -
     let mut endpoints: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transitions {
         match st {
-            JSAstNode::ClassMethod { body, args, .. } => {
-                match &**body {
-                    JSAstNode::StatementList { statements } => {
-                        for statement in statements {
-                            match statement {
-                                JSAstNode::CallExpr { ..} => {
-                                    endpoints.push(js_expand_state_transition_to_endpoint(
-                                        statement.clone(),
-                                        &args,
-                                        schemas,
-                                    ));
-                                },
-                                _ => continue
+            JSAstNode::ClassMethod { body, args, .. } => match &**body {
+                JSAstNode::StatementList { statements } => {
+                    for statement in statements {
+                        match statement {
+                            JSAstNode::CallExpr { .. } => {
+                                endpoints.push(js_expand_state_transition_to_endpoint(
+                                    statement.clone(),
+                                    &args,
+                                    schemas,
+                                ));
                             }
-                        }  
-                    },
-                    _ => continue
+                            _ => continue,
+                        }
+                    }
                 }
-            }
+                _ => continue,
+            },
             _ => continue,
         }
     }
@@ -815,14 +816,17 @@ fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schema
     let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
     let mut js_attr_values: Vec<JSAstNode> = vec![];
     let mut response_props: Vec<Prop> = vec![];
-    let schema = &schemas[state_var_type];    
+    let schema = &schemas[state_var_type];
     for attr in &schema.attributes {
         attr_names.push(attr.name.clone());
 
         // TODO: this is assuming the name of 'data' which is used to
         // parse the HTTP body in write requests.
         js_attr_values.push(JSAstNode::Identifier(format!("data.{}", attr.name)));
-        response_props.push(Prop{ key: JSAstNode::Identifier(attr.name.clone()), value: JSAstNode::Identifier(format!("data.{}", attr.name)) });
+        response_props.push(Prop {
+            key: JSAstNode::Identifier(attr.name.clone()),
+            value: JSAstNode::Identifier(format!("data.{}", attr.name)),
+        });
         sql_attr_names.push(SQLAstNode::Identifier(attr.name.clone()));
         sql_value_placeholders.push(SQLAstNode::Identifier("?".to_string()))
     }
@@ -853,15 +857,17 @@ fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schema
         clause: None,
     };
 
-    response_props.push(Prop { key: JSAstNode::Identifier("id".to_string()), value: JSAstNode::Identifier("row[\"last_insert_rowid()\"]".to_string())});
+    response_props.push(Prop {
+        key: JSAstNode::Identifier("id".to_string()),
+        value: JSAstNode::Identifier("row[\"last_insert_rowid()\"]".to_string()),
+    });
     let respond = JSAstNode::CallExpr {
         receiver: Box::new(JSAstNode::Identifier("res".to_string())),
         call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-        args: vec![
-            JSAstNode::Object { props: response_props}
-        ],
+        args: vec![JSAstNode::Object {
+            props: response_props,
+        }],
     };
-
 
     let respond_with_id = JSAstNode::CallExpr {
         receiver: Box::new(JSAstNode::Identifier("db".to_string())),
@@ -873,25 +879,20 @@ fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schema
                     JSAstNode::Identifier("err".to_string()),
                     JSAstNode::Identifier("row".to_string()),
                 ],
-                body: Box::new(respond)
-            }
+                body: Box::new(respond),
+            },
         ],
     };
-    
+
     JSAstNode::CallExpr {
         receiver: Box::new(JSAstNode::Identifier("db".to_string())),
         call_name: Box::new(JSAstNode::Identifier("serialize".to_string())),
-        args: vec![
-            JSAstNode::ArrowClosure {
-                args: vec![],
-                body: Box::new(JSAstNode::StatementList {
-                    statements: vec![
-                        insert_js,
-                        respond_with_id,
-                    ]
-                })
-            }
-        ]
+        args: vec![JSAstNode::ArrowClosure {
+            args: vec![],
+            body: Box::new(JSAstNode::StatementList {
+                statements: vec![insert_js, respond_with_id],
+            }),
+        }],
     }
 }
 
@@ -955,10 +956,7 @@ fn js_expand_state_transition_to_endpoint(
                         value: Box::new(JSAstNode::Identifier("req.body".to_string())),
                     };
                     Box::new(JSAstNode::StatementList {
-                        statements: vec![
-                            parse_data,
-                            query,
-                        ],
+                        statements: vec![parse_data, query],
                     })
                 }
                 StateTransitionFunc::Read => {
@@ -1034,7 +1032,10 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
             let translated_name = js_executable_translate(&name);
             let translated_body = js_executable_translate(&body);
 
-            JSAstNode::ClassDef { name: Box::new(translated_name), body: Box::new(translated_body) }
+            JSAstNode::ClassDef {
+                name: Box::new(translated_name),
+                body: Box::new(translated_body),
+            }
         }
         JSAstNode::ClassBody { definitions } => {
             let mut translated: Vec<JSAstNode> = vec![];
@@ -1042,28 +1043,36 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
                 translated.push(js_executable_translate(&def));
             }
 
-            JSAstNode::ClassBody { definitions: translated }
+            JSAstNode::ClassBody {
+                definitions: translated,
+            }
         }
-        JSAstNode::ClassMethod { name, args, body } => {
-            JSAstNode::ClassMethod { name: name.clone(), args: args.clone(), body: Box::new(js_executable_translate(body)) }
-        }
-        JSAstNode::CallExpr { receiver, call_name, args } => {
+        JSAstNode::ClassMethod { name, args, body } => JSAstNode::ClassMethod {
+            name: name.clone(),
+            args: args.clone(),
+            body: Box::new(js_executable_translate(body)),
+        },
+        JSAstNode::CallExpr {
+            receiver,
+            call_name,
+            args,
+        } => {
             let call_str = js_gen_string(*call_name.clone());
             let state_trans_func = state_transition_func_from_str(&call_str);
-            let state_var = js_gen_string(*receiver.clone());            
+            let state_var = js_gen_string(*receiver.clone());
             match state_trans_func {
                 StateTransitionFunc::Create => {
                     let state_var_val = js_gen_string(args[0].clone());
                     js_push_var(&state_var, &state_var_val)
-                },
+                }
                 StateTransitionFunc::Delete => {
                     let state_var_val = js_gen_string(args[0].clone());
                     js_delete_var(&state_var, &state_var_val)
                 }
-                _ => node.clone()
+                _ => node.clone(),
             }
         }
-        _ => node.clone()
+        _ => node.clone(),
     }
 }
 
@@ -1085,7 +1094,7 @@ fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
     let args = method_args.map(parse).collect();
 
     let method_body = parse(schema_method.next().unwrap());
-//    let expr = method_body.map(parse).collect();
+    //    let expr = method_body.map(parse).collect();
 
     return AstNode::SchemaMethod {
         name: Box::new(name),
@@ -1151,15 +1160,9 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
                     .collect(),
             }
         }
-        Rule::ExprList => {
-            AstNode::ExprList(pair.into_inner().map(parse).collect())
-        }
-        Rule::LetExpr => {
-            AstNode::InvalidNode
-        }
-        Rule::FuncCall => {
-            AstNode::InvalidNode
-        }
+        Rule::ExprList => AstNode::ExprList(pair.into_inner().map(parse).collect()),
+        Rule::LetExpr => AstNode::InvalidNode,
+        Rule::FuncCall => AstNode::InvalidNode,
         _ => {
             println!("Other");
             return AstNode::InvalidNode;
@@ -1232,38 +1235,35 @@ fn sql_gen_string(node: &SQLAstNode) -> String {
         }
         SQLAstNode::Select {
             from, attributes, ..
-        } => {
-            match from {
-                Some(f) => {
-                    let from_relation = sql_gen_string(f);
-                    let mut attr_names: Vec<String> = vec![];
-                    for attr in attributes {
-                        attr_names.push(sql_gen_string(attr));
-                    }
-                    let comma_separated_attrs = attr_names.join(", ");
+        } => match from {
+            Some(f) => {
+                let from_relation = sql_gen_string(f);
+                let mut attr_names: Vec<String> = vec![];
+                for attr in attributes {
+                    attr_names.push(sql_gen_string(attr));
+                }
+                let comma_separated_attrs = attr_names.join(", ");
 
-                    if attributes.len() == 1 {
-                        format!("SELECT {} FROM {}", comma_separated_attrs, from_relation)
-                    } else {
-                        format!("SELECT ({}) FROM {}", comma_separated_attrs, from_relation)
-                    }
-                },
-                None => {
-                    let mut attr_names: Vec<String> = vec![];
-                    for attr in attributes {
-                        attr_names.push(sql_gen_string(attr));
-                    }
-                    let comma_separated_attrs = attr_names.join(", ");
-
-                    if attributes.len() == 1 {
-                        format!("SELECT {}", comma_separated_attrs)
-                    } else {
-                        format!("SELECT ({})", comma_separated_attrs)
-                    }
+                if attributes.len() == 1 {
+                    format!("SELECT {} FROM {}", comma_separated_attrs, from_relation)
+                } else {
+                    format!("SELECT ({}) FROM {}", comma_separated_attrs, from_relation)
                 }
             }
-            
-        }
+            None => {
+                let mut attr_names: Vec<String> = vec![];
+                for attr in attributes {
+                    attr_names.push(sql_gen_string(attr));
+                }
+                let comma_separated_attrs = attr_names.join(", ");
+
+                if attributes.len() == 1 {
+                    format!("SELECT {}", comma_separated_attrs)
+                } else {
+                    format!("SELECT ({})", comma_separated_attrs)
+                }
+            }
+        },
         SQLAstNode::Delete { from, clause } => match clause {
             Some(c) => format!("DELETE FROM {} {}", sql_gen_string(from), sql_gen_string(c)),
             None => format!("DELETE FROM {}", sql_gen_string(from)),
@@ -1385,18 +1385,15 @@ fn main() {
     fs::write(args.server_output, server_code).expect("Unable to write server code file.");
 }
 
-
 // Goal:
-// 
+//
 // budget.recurring_transactions
 //       .map { |rt| rt.expand(start_date, end_date) }
 //       .flatten
 //       .read!()
 
-
-
 // Client:
-// 
+//
 // fetch("/scheduled_transactions")
 //
 // Server:
@@ -1406,9 +1403,9 @@ fn main() {
 //     .map { |rt| rt.expand(start_date, end_date) }
 //     .flatten)
 // )
-// 
+//
 
-// TODO: 
+// TODO:
 // Lang -
 // top-level functions
 // let expressions
@@ -1416,6 +1413,6 @@ fn main() {
 // closures
 // trailing closures
 // if statement
-// 
+//
 // Infrastructure expansion -
 // Endpoint for derived state (recurring_transactions)
