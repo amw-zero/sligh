@@ -1,16 +1,20 @@
 * Enable writing generated code as macros. It's painful to generate code using the AST directly.
   Using a quasi-quoted macro to express code, a la Nim, should make generating code much smoother.
   Note: this will require parsing the target language, TS currently. Svelte does this 
-  via code-red: https://www.npmjs.com/package/code-red
-
-* File output. Start writing to files. Copying from the terminal output is getting old.
+  via code-red: https://www.npmjs.com/package/code-red.
 
 * Generate translation certification test.
 
-* Probably should compile to Rust.
+* Probably should consider compiling to Rust.
 
 * Support different backends. Should be able to compile to different languages as well
   as architectures / patterns. For example, compile to microservices, monolithic backend,
   relational DB, MongoDB, DynamoDB, etc.
 
 * Pagination - how to show that pagination is a simulation of the model?
+
+* Create documentation on language construct equivalences, e.g. state access and SELECT, create! and INSERT, etc.
+
+* Introduce serialization-specific logic, like converting dates, numbers, encrypting IDs, etc.
+
+* Introduce semantics-preserving caching, i.e. store in Redis under the hood. Hopefully no syntactic overhead

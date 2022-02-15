@@ -53,9 +53,72 @@ blog post, and there probably are only the 4 main state transitions, e.g. CRUD.
 state transition type (only 4 of them currently) and just verify that the state transition is equivalent
 vs. checking the entire state machine. Pretty sure that's what a refinement relation is.
 
-How to handle things like View Models / logic that aggregates domain models.
+How to handle things like View Models / logic that aggregates domain models. It's probably ok to define them because
+what data needs to be available to the UI is an important design decision, though they could be inferred somehow with
+a GraphQL like description of the data dependencies as a piece of data. Since these types are compositions of other
+types, set operators on record values might be useful, i.e.:
+
+let rt: RecurringTransaction = { name: 'test', amount: 5 }
+
+type HomePageRecurringTransaction:
+  include RecurringTransaction
+
+  last_paid_at: Date
+end
+
+type HomePage:
+  home_page_recurring_transactions: [HomePageRecurringTransaction]
+end
+
+let home_page_recurring_transaction = rt.union({ last_paid_at: Date.current })
 
 Possible overall goal: Support extensible syntax with extensible code generation via quasi-quoted macros, like how
 Svelte uses code-red to make code generation closer to writing actual JS.
 
-Mascot: Jackal. (Jackal Pup)
+Name: Sligh. Mascot: Jackal. (Jackal Pup)
+
+From building ScheduleTransaction feature which consists of derived data:
+
+  # Interesting case: this read should be query-only, i.e. not returned to the frontend.
+  # This read! call wouldn't generate a network request on the frontend  then?
+  # The endpoint can expand the transactions before responding, i.e. call expandx
+  # budget.recurring_transactions.read!()
+
+  # This is what the frontend should be calling, the frontend asks for scheduled transactions.
+  # But this is derived data, aka "derived relvar"
+
+  # Possibly, seeing a read! within a read! can be used. The outer read! must be a network request,
+  # While the inner read can be query only since it will be occurring inside of an endpoint. This brings up:
+  # should state vars be able to be accessed without read!? And maybe that means only use the client state?
+  
+  
+  ScheduledTransaction.from(read!(
+    budget.recurring_transactions.read!().map(RecurringTransaction.expand).flatten
+  )
+
+  # Maybe should only use 'service' methods:
+  
+  scheduled_transactions.read!(
+    # Note: RecurringTransaction.expand is partially applied. Not sure of the semantics of this.
+    # But the intention is to supply what arguments you have, and have the rest be applicable later.
+    budget.view_recurring_transactions().map(
+      RecurringTransaction.expand(start_date: start_date, end_date: end_date)
+    ).flatten
+  )
+
+  # Might want intermediate representation for client / server demarcation
+  # read! means: client state must be unified with system state.
+  # member variable access means current value of state must be read, kind of like s' vs. s.
+
+  # Compiles to:
+  # client: fetch("/scheduled_transactions", {});
+  # server: recurring_transactions = SELECT * from recurring_transactions
+  #         scheduled_transactions = recurring_transactions.flat_map(expand)
+
+  #     scheduled_transactions.read!(where: something, budget.recurring_transactions.flat_map(expand o to_scheduled_transaction))
+
+  # Ended up on this version: read! denotes the data being needed on the client, regular member variable
+  # access (i.e. budget.recurring_transactions) denotes a query of the system state
+  #  budget.recurring_transactions.flat_map(expand(start_date, end_date)).read!()
+
+Maybe rename "infrastructure expand" to tier splitting, but expansion might be more than that. 
