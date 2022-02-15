@@ -1,6 +1,6 @@
 Program = _{ SOI ~ (Statement ~ NEWLINE*)* ~ EOI }
 
-Statement = { SchemaDef | TypeDef }
+Statement = { SchemaDef | SchemaMethod | TypeDef }
 
 WHITESPACE = _{ " " | "\t" }
 
@@ -12,7 +12,13 @@ Receiver = @{ Identifier }
 
 MethodArg = @{ Identifier }
 
-Expr = { (Term ~ "+" ~ Term) | (Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")") }
+LetExpr = { "let" ~ Identifier ~ "=" ~ Expr }
+
+FuncCall = { Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")" }
+
+Expr = { LetExpr | FuncCall | (Term ~ "+" ~ Term) | (Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")") }
+
+ExprList = { (Expr ~ NEWLINE)+ }
 
 Type = { Identifier }
 
@@ -28,9 +34,9 @@ MethodDefArgs = { Identifier ~ "(" ~ TypedIdentifier* ~ ("," ~ TypedIdentifier)*
 
 MethodDefNoArgs = { Identifier }
 
-MethodBody = { Expr | Identifier }
+MethodBody = { ExprList }
 
-SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ NEWLINE  ~ MethodBody ~ NEWLINE ~ "end" }
+SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ NEWLINE  ~ MethodBody ~ "end" }
 
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
