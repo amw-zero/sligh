@@ -45,6 +45,14 @@ enum AstNode {
         call_name: Box<AstNode>,
         args: Vec<AstNode>,
     },
+    ExprList(Vec<AstNode>),
+    LetExpr{
+        name: Box<AstNode>      // Identifier
+    },
+    FuncCall{
+        name: Box<AstNode>,
+        args: Vec<AstNode>
+    },
     // Expr(String),
 }
 
@@ -355,6 +363,16 @@ fn js_translate(ast: AstNode) -> JSAstNode {
                 args: js_args,
             }
         }
+        AstNode::ExprList(exprs) => {
+            let mut js_exprs: Vec<JSAstNode> = vec![];
+            for expr in exprs {
+                js_exprs.push(js_translate(expr));
+            }
+
+            JSAstNode::StatementList {
+                statements: js_exprs
+            }
+        }
         _ => JSAstNode::InvalidNode,
     }
 }
@@ -382,25 +400,36 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
     match node {
         JSAstNode::ClassDef { body, .. } => match *body {
             JSAstNode::ClassBody { definitions } => {
-                for def in definitions {
+                for def in &definitions {
                     match def.clone() {
                         JSAstNode::ClassMethod { body, .. } => {
                             match *body {
-                                JSAstNode::CallExpr { call_name, .. } => {
-                                    // The convention is that method names ending in ! are
-                                    // state transitions. Separate these for subsequent expansion
-                                    let method_name = js_gen_iden_name(*call_name);
-                                    let name_chars: Vec<char> = method_name.chars().collect();
-                                    if *name_chars.last().unwrap() == '!' {
-                                        state_transitions.push(def);
-                                    } else {
-                                        state_variables.push(def);
+                                JSAstNode::StatementList { statements } => {
+                                    println!("Found statement list");
+                                    for statement in &statements {
+                                        match statement {
+                                            JSAstNode::CallExpr { call_name, .. } => {
+                                                // The convention is that method names ending in ! are
+                                                // state transitions. Separate these for subsequent expansion
+                                                println!("Found call expr");
+                                                let method_name = js_gen_iden_name(*call_name.clone());
+                                                let name_chars: Vec<char> = method_name.chars().collect();
+                                                if *name_chars.last().unwrap() == '!' {
+                                                    println!("Detected state transition");
+                                                    state_transitions.push(def.clone());
+                                                    break
+                                                } else {
+                                                    state_variables.push(def.clone());
+                                                }
+                                            },
+                                            _ => state_variables.push(def.clone())
+                                        }
                                     }
                                 }
-                                _ => state_variables.push(def),
+                                _ => state_variables.push(def.clone()),
                             }
                         }
-                        JSAstNode::ClassProperty { .. } => state_variables.push(def),
+                        JSAstNode::ClassProperty { .. } => state_variables.push(def.clone()),
                         _ => panic!("Found unknown class body definition"),
                     }
                 }
@@ -447,6 +476,10 @@ fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransitionFunc) 
 
 enum StateTransitionFunc {
     Create,
+
+    // Note: Read is considered a state transition because it queries the 
+    // server state and applies it to the client state. It isn't a _read_ of the state,
+    // aka state function, but a transition where the client state is updated
     Read,
     Update,
     Delete,
@@ -650,11 +683,20 @@ fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
 fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     match class_method {
         JSAstNode::ClassMethod { name, args, body } => {
-            let expanded_body = Box::new(js_class_method_body_expand(*body.clone()));
-            JSAstNode::ClassMethod {
-                name: name,
-                args: args,
-                body: expanded_body,
+            match *body {
+                JSAstNode::StatementList { statements } => {
+                    let mut expanded_statements: Vec<JSAstNode> = vec![];
+                    for statement in statements {
+                        expanded_statements.push(js_class_method_body_expand(statement.clone()));                        
+                    }
+
+                    JSAstNode::ClassMethod {
+                        name: name,
+                        args: args,
+                        body: Box::new(JSAstNode::StatementList { statements: expanded_statements }),
+                    }
+                },
+                _ => panic!("Attempted to client-expand ")
             }
         }
         _ => JSAstNode::InvalidNode,
@@ -716,11 +758,23 @@ fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -
     for st in &class_defs.state_transitions {
         match st {
             JSAstNode::ClassMethod { body, args, .. } => {
-                endpoints.push(js_expand_class_method_to_endpoint(
-                    *body.clone(),
-                    &args,
-                    schemas,
-                ));
+                match &**body {
+                    JSAstNode::StatementList { statements } => {
+                        for statement in statements {
+                            match statement {
+                                JSAstNode::CallExpr { ..} => {
+                                    endpoints.push(js_expand_state_transition_to_endpoint(
+                                        statement.clone(),
+                                        &args,
+                                        schemas,
+                                    ));
+                                },
+                                _ => continue
+                            }
+                        }  
+                    },
+                    _ => continue
+                }
             }
             _ => continue,
         }
@@ -864,7 +918,7 @@ fn js_state_query_delete(state_var: &str) -> JSAstNode {
 }
 
 // Expand state transitions into SQL queries inside of server
-fn js_expand_class_method_to_endpoint(
+fn js_expand_state_transition_to_endpoint(
     body: JSAstNode,
     args: &Vec<JSAstNode>,
     schemas: &Schemas,
@@ -1021,19 +1075,22 @@ fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
 
 fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
     // Only handling methods with arguments right now
+    println!("Parsing schema method");
+    println!("{}", pair.to_json());
+
     let mut schema_method = pair.into_inner();
 
     let mut method_args = schema_method.next().unwrap().into_inner();
     let name = parse(method_args.next().unwrap());
     let args = method_args.map(parse).collect();
 
-    let schema_body = schema_method.next().unwrap();
-    let body = parse(schema_body);
+    let method_body = parse(schema_method.next().unwrap());
+//    let expr = method_body.map(parse).collect();
 
     return AstNode::SchemaMethod {
         name: Box::new(name),
         args: args,
-        body: Box::new(body),
+        body: Box::new(method_body),
         return_type: Box::new(AstNode::InvalidNode),
     };
 }
@@ -1093,6 +1150,15 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
                     .map(|e| AstNode::Identifier(e.as_str().into()))
                     .collect(),
             }
+        }
+        Rule::ExprList => {
+            AstNode::ExprList(pair.into_inner().map(parse).collect())
+        }
+        Rule::LetExpr => {
+            AstNode::InvalidNode
+        }
+        Rule::FuncCall => {
+            AstNode::InvalidNode
         }
         _ => {
             println!("Other");
@@ -1318,3 +1384,38 @@ fn main() {
     let server_code = js_expanded_server.join("\n\n");
     fs::write(args.server_output, server_code).expect("Unable to write server code file.");
 }
+
+
+// Goal:
+// 
+// budget.recurring_transactions
+//       .map { |rt| rt.expand(start_date, end_date) }
+//       .flatten
+//       .read!()
+
+
+
+// Client:
+// 
+// fetch("/scheduled_transactions")
+//
+// Server:
+//
+// res.send(
+//   (SELECT * from recurring_transactions)
+//     .map { |rt| rt.expand(start_date, end_date) }
+//     .flatten)
+// )
+// 
+
+// TODO: 
+// Lang -
+// top-level functions
+// let expressions
+// statement / expr list
+// closures
+// trailing closures
+// if statement
+// 
+// Infrastructure expansion -
+// Endpoint for derived state (recurring_transactions)
