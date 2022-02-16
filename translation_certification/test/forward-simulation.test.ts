@@ -12,10 +12,18 @@ let server;
 
 before((done) => {
   server = startApp(app, done);
-})
+});
 
 after((done) => {
   server.close(done);
+});
+
+[1,2,3].forEach((i) => {
+  describe(`Test ${i}`, () => {
+    it ("idk", () => {
+      expect(true).to.eq(true);
+    })
+  });
 })
 
 describe('FullstackBudget', function() {
@@ -59,7 +67,7 @@ describe('FullstackBudget', function() {
           });
         });
       }),
-      { numRuns: 10000 },
+      { numRuns: 5000 },
     );
   });
 });
