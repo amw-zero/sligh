@@ -24,50 +24,67 @@ after((done) => {
       expect(true).to.eq(true);
     })
   });
-})
+});
 
-describe('FullstackBudget', function() {
-  this.timeout(60000);
+function createRecurringTransactionsProperty() {
+  // derive generators from schema defs
+  return fc.asyncProperty(fc.record({ name: fc.string(), amount: fc.float() }), async (crt) => {
+    // TODO: Also generate starting states for the classes to test starting from
+    // arbitrary starting points.
+    let model = new Model();
+    let fullstack = new Fullstack(() => {});
 
-  it('simulates the model', async function() {
-    await fc.assert(
-      // derive generators from schema defs
-      fc.asyncProperty(fc.record({ name: fc.string(), amount: fc.float() }), async (crt) => {
-        let model = new Model();
-        let fullstack = new Fullstack(() => {});
+    // derive action name from state transition
+    let createdRt = await fullstack.create_recurring_transaction(crt);
+    model.create_recurring_transaction(crt, createdRt.id);
+        
+    expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
 
-        // derive action name from state transition
-        let createdRt = await fullstack.create_recurring_transaction(crt);
-        model.create_recurring_transaction(crt, createdRt.id);
-            
-        expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+    // make sure to call read!s
+    await fullstack.view_recurring_transactions();
 
-        // make sure to call read!s
-        await fullstack.view_recurring_transactions();
+    expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+  })
+}
 
-        expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
-      }).beforeEach(() => {
-        return new Promise((resolve, reject) => {
-          db.run("BEGIN TRANSACTION", (result, err) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(true);
-            }
+type StateTransitionTest = {
+  name: string;
+  property: any;
+};
+
+const tests: StateTransitionTest[] = [
+  { name: "createRecurringTransactions", property: createRecurringTransactionsProperty() }
+];
+
+tests.forEach(({ name, property}) => {
+  describe(`${name} - Forward Simulation`, function() {
+    this.timeout(60000);
+
+    it('simulates the model', async function() {
+      await fc.assert(
+        property.beforeEach(() => {
+          return new Promise((resolve, reject) => {
+            db.run("BEGIN TRANSACTION", (result, err) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(true);
+              }
+            });
           });
-        });
-      }).afterEach(() => {
-        return new Promise((resolve, reject) => {
-          db.run("ROLLBACK", (result, err) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(true);
-            }
+        }).afterEach(() => {
+          return new Promise((resolve, reject) => {
+            db.run("ROLLBACK", (result, err) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(true);
+              }
+            });
           });
-        });
-      }),
-      { numRuns: 5000 },
-    );
+        }),
+        { numRuns: 5000 },
+      );
+    })
   });
 });
