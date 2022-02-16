@@ -25,43 +25,22 @@ describe('FullstackBudget', function() {
     await fc.assert(
       // derive generators from schema defs
       fc.asyncProperty(fc.record({ name: fc.string(), amount: fc.float() }), async (crt) => {
-        console.log("Test body");
+        let model = new Model();
+        let fullstack = new Fullstack(() => {});
 
-        return new Promise(async (resolve, reject)=> {
-          try {
-            console.log("Begining transaction");
-            db.exec("BEGIN TRANSACTION");
-            let model = new Model();
-            let fullstack = new Fullstack(() => {});
-    
-            // derive action name from state transition
-            let createdRt = await fullstack.create_recurring_transaction(crt);
-            model.create_recurring_transaction(crt, createdRt.id);
-                
-            expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
-    
-            // make sure to call read!s
-            await fullstack.view_recurring_transactions();
+        // derive action name from state transition
+        let createdRt = await fullstack.create_recurring_transaction(crt);
+        model.create_recurring_transaction(crt, createdRt.id);
+            
+        expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
 
-            expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
-          } catch(e) {
-            console.log({error: e});
-            reject(e);
-          } finally {
-            console.log("Rolling back");              
-            db.exec("ROLLBACK", () => {
-              console.log("Done rolling back")
-              resolve(true);
-            });
-          }
-        });
-       
-      })/*.beforeEach(() => {
+        // make sure to call read!s
+        await fullstack.view_recurring_transactions();
+
+        expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+      }).beforeEach(() => {
         return new Promise((resolve, reject) => {
           db.run("BEGIN TRANSACTION", (result, err) => {
-            console.log("Begin  transaction");
-            console.log({result, err})
-
             if (err) {
               reject(err);
             } else {
@@ -72,8 +51,6 @@ describe('FullstackBudget', function() {
       }).afterEach(() => {
         return new Promise((resolve, reject) => {
           db.run("ROLLBACK", (result, err) => {
-            console.log("Rollback transaction")
-            console.log({result, err});
             if (err) {
               reject(err);
             } else {
@@ -81,8 +58,8 @@ describe('FullstackBudget', function() {
             }
           });
         });
-      })*/,
-      { numRuns: 10 },
+      }),
+      { numRuns: 10000 },
     );
   });
 });
