@@ -1,4 +1,4 @@
-function defineEndpoints(app, db) {
+export function defineEndpoints(app, db) {
   app.post("/recurring_transactions", (req, res) => {
     let data = req.body;
    db.serialize(() => {
@@ -22,5 +22,4 @@ function defineEndpoints(app, db) {
        res.send({  });
         });
 }
-  
-module.exports = defineEndpoints;
+
