@@ -50,7 +50,7 @@ class DeleteCommand implements fc.AsyncCommand<Model, Fullstack> {
   toString = () => `deleteRecurringTransaction(${this.indexToDelete})`;
 }
 
-describe('FullstackBudget', function() {
+xdescribe('FullstackBudget', function() {
   it('simulates the model', async function() {
     const cmds = [
       fc.record({ name: fc.string(), amount: fc.float(), id: fc.integer()}).map(({ name, amount, id }) => {
