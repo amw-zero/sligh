@@ -82,6 +82,12 @@ enum JSAstNode {
         args: Vec<JSAstNode>,
         body: Box<JSAstNode>,
     },
+    FuncDef {
+        name: Box<JSAstNode>,
+        args: Vec<JSAstNode>,
+        body: Box<JSAstNode>,
+        return_type: Box<JSAstNode>,
+    },
     FuncCallExpr {
         call_name: Box<JSAstNode>,
         args: Vec<JSAstNode>,
@@ -198,6 +204,22 @@ fn js_gen_string(node: JSAstNode) -> String {
             let property = js_gen_string(*typed_identifier);
             format!("{};\n", property)
         }
+        JSAstNode::FuncDef {
+            name, args, body, ..
+        } => {
+            let name_str = js_gen_string(*name);
+            let mut arg_strs: Vec<String> = vec![];
+            for arg in args {
+                arg_strs.push(js_gen_string(arg));
+            }
+            let comma_separated_args = arg_strs.join(", ");
+            let body_str = js_gen_string(*body);
+
+            format!(
+                "function {}({}) {{\n  {}\n}}",
+                name_str, comma_separated_args, body_str
+            )
+        }
         JSAstNode::CallExpr {
             receiver,
             call_name,
@@ -301,7 +323,7 @@ fn js_gen_iden_name(node: JSAstNode) -> String {
     }
 }
 
-fn js_translate_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAstNode {
+fn js_translate_to_class_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAstNode {
     let js_name = js_translate(name);
     let mut js_args: Vec<JSAstNode> = vec![];
     for arg in args {
@@ -338,11 +360,28 @@ fn js_translate(ast: AstNode) -> JSAstNode {
         AstNode::Identifier(n) => JSAstNode::Identifier(n),
         AstNode::SchemaMethod {
             name, args, body, ..
-        } => js_translate_method(*name, args, *body),
+        } => {
+            let mut js_args: Vec<JSAstNode> = vec![];
+            for arg in args {
+                js_args.push(js_translate(arg));
+            }
+
+            JSAstNode::FuncDef {
+                name: Box::new(js_translate(*name)),
+                args: js_args,
+                body: Box::new(js_translate(*body)),
+                return_type: Box::new(JSAstNode::InvalidNode),
+            }
+        }
         AstNode::SchemaBody { definitions } => {
             let mut js_definitions: Vec<JSAstNode> = vec![];
             for def in definitions {
-                js_definitions.push(js_translate(def));
+                match def {
+                    AstNode::SchemaMethod {
+                        name, args, body, ..
+                    } => js_definitions.push(js_translate_to_class_method(*name, args, *body)),
+                    _ => js_definitions.push(js_translate(def)),
+                }
             }
             JSAstNode::ClassBody {
                 definitions: js_definitions,
@@ -1084,8 +1123,8 @@ fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
 
 fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
     // Only handling methods with arguments right now
-    println!("Parsing schema method");
-    println!("{}", pair.to_json());
+    // println!("Parsing schema method");
+    // println!("{}", pair.to_json());
 
     let mut schema_method = pair.into_inner();
 
@@ -1339,6 +1378,7 @@ fn main() {
     let result = LangParser::parse(Rule::Program, &source);
     let mut schemas: Schemas = HashMap::new();
     let mut statements: Vec<AstNode> = vec![];
+    let mut js_model: Vec<String> = vec![];
     let mut js_expanded_client: Vec<String> = vec![];
     let mut js_expanded_server: Vec<String> = vec![];
     match result {
@@ -1362,6 +1402,8 @@ fn main() {
                 statements.push(parsed.clone());
                 // js_translate is a direct translation
                 let js_ast = js_translate(parsed.clone());
+                println!("{:?}", js_ast);
+                js_model.push(js_gen_string(js_ast.clone()));
 
                 // js_compile translates to executable JS, i.e. replaces state
                 // transition functions with real operations
@@ -1383,6 +1425,13 @@ fn main() {
 
     let server_code = js_expanded_server.join("\n\n");
     fs::write(args.server_output, server_code).expect("Unable to write server code file.");
+
+    let model_code = js_model.join("\n\n");
+    fs::write("./model.ts", model_code).expect("Unable to write model code file.");
+
+    // for statement in statements {
+    //     println!("{:?}", statement);
+    // }
 }
 
 // Goal:
