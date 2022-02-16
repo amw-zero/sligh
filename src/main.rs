@@ -444,19 +444,16 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
                         JSAstNode::ClassMethod { body, .. } => {
                             match *body {
                                 JSAstNode::StatementList { statements } => {
-                                    println!("Found statement list");
                                     for statement in &statements {
                                         match statement {
                                             JSAstNode::CallExpr { call_name, .. } => {
                                                 // The convention is that method names ending in ! are
                                                 // state transitions. Separate these for subsequent expansion
-                                                println!("Found call expr");
                                                 let method_name =
                                                     js_gen_iden_name(*call_name.clone());
                                                 let name_chars: Vec<char> =
                                                     method_name.chars().collect();
                                                 if *name_chars.last().unwrap() == '!' {
-                                                    println!("Detected state transition");
                                                     state_transitions.push(def.clone());
                                                     break;
                                                 } else {
@@ -1049,6 +1046,16 @@ fn js_infra_expand(node: JSAstNode, schemas: &Schemas) -> (JSAstNode, Vec<JSAstN
     match node {
         JSAstNode::ClassDef { ref name, .. } => {
             let partitioned_class_defs = js_partition_class_definitions(node.clone());
+            println!("State transitions: ");
+            for trans in &partitioned_class_defs.state_transitions {
+                match trans {
+                    JSAstNode::ClassMethod { name, .. } => {
+                        println!("{}", js_gen_string(*name.clone()));
+                    }
+                    _ => continue,
+                }
+            }
+
             // TODO: I don't know why &** is necessary here
             let class_name = match &**name {
                 JSAstNode::Identifier(n) => n,
@@ -1091,6 +1098,15 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
             args: args.clone(),
             body: Box::new(js_executable_translate(body)),
         },
+        JSAstNode::StatementList { statements } => {
+            let mut executable_statements: Vec<JSAstNode> = vec![];
+            for statement in statements {
+                executable_statements.push(js_executable_translate(statement));
+            }
+            JSAstNode::StatementList {
+                statements: executable_statements,
+            }
+        }
         JSAstNode::CallExpr {
             receiver,
             call_name,
@@ -1400,13 +1416,17 @@ fn main() {
                 }
 
                 statements.push(parsed.clone());
-                // js_translate is a direct translation
+                // js_translate is a direct translation, i.e. can contain conventions allowed in
+                // Sligh that aren't allowed in JS
                 let js_ast = js_translate(parsed.clone());
-                println!("{:?}", js_ast);
-                js_model.push(js_gen_string(js_ast.clone()));
+
+                // js_executable_translate converts Sligh constructs to executable JS, e.g. by
+                // replacing state transitions with array operations.
+                js_model.push(js_gen_string(js_executable_translate(&js_ast)));
 
                 // js_compile translates to executable JS, i.e. replaces state
                 // transition functions with real operations
+                //                let partitionedState transitions
                 let (client, server) = js_infra_expand(js_ast, &schemas);
 
                 js_expanded_client.push(js_gen_string(client.clone()));
