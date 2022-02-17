@@ -1,0 +1,45 @@
+/*
+let id = id_gen();
+let createdRt = await fullstack.create_recurring_transaction(crt, id);
+model.create_recurring_transaction(crt, id);
+
+is equivalent to:
+
+let createdRt = await fullstack.create_recurring_transaction(crt, id_gen);
+model.create_recurring_transaction(crt, createdRt.id);
+*/
+
+ID generation happens implicitly inside of the database. In order to have that implicit creation,
+but also create an entitiy in the model with the same id, we just use the id of the entity created
+in the implementation version first, i.e. we just pass along the database-generated id.
+
+But this is equivalent to the first form, where an ID is specified to both versions, and
+generated explicitly beforehand. Here's a proof:
+
+theory IdGen
+
+imports Main
+
+begin
+
+record entity =
+  id :: nat
+
+definition id_gen :: "nat ⇒ nat" where
+"id_gen n = n + 1"
+
+definition create_entity_implicit_impl :: "(nat ⇒ nat) ⇒ nat ⇒ entity" where
+"create_entity_implicit_impl id_gen_f curr_id = ⦇ id = id_gen_f curr_id ⦈"
+
+definition create_entity_explicit_model :: "nat ⇒ entity" where
+"create_entity_explicit_model id_i = ⦇ id = id_i ⦈"
+
+definition create_entity_explicit_impl :: "nat ⇒ entity" where
+"create_entity_explicit_impl id_i = ⦇ id = id_i ⦈"
+
+theorem "create_entity_explicit_model (id (create_entity_implicit_impl id_gen n))
+           = create_entity_explicit_model (id_gen n)"
+  unfolding create_entity_implicit_impl_def
+  by auto
+  
+end
