@@ -1114,17 +1114,7 @@ fn js_infra_expand(
 ) -> (JSAstNode, Vec<JSAstNode>) {
     match node {
         JSAstNode::ClassDef { ref name, .. } => {
-            println!("State transitions: ");
-            for trans in &partitioned_class_defs.state_transition_nodes {
-                match trans {
-                    JSAstNode::ClassMethod { name, .. } => {
-                        println!("{}", js_gen_string(*name.clone()));
-                    }
-                    _ => continue,
-                }
-            }
-
-            // TODO: I don't know why &** is necessary here
+             // TODO: I don't know why &** is necessary here
             let class_name = match &**name {
                 JSAstNode::Identifier(n) => n,
                 _ => panic!("Expected identifier"),
@@ -1474,7 +1464,6 @@ fn js_gen_certification_properties(
                 // Argument list for property body
                 let mut generated_data_vars: Vec<JSAstNode> = vec![];
                 for arg in &state_transition.args {
-                    println!("Looking for schema named  {}", arg.r#type);
                     let schema = &schemas[&arg.r#type];
                     let mut data_generator_props: Vec<Prop> = vec![];
                     for attr in &schema.attributes {
