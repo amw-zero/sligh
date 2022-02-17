@@ -26,7 +26,7 @@ loading bool to true - this is a "step." Then it fetches data, and when it's ret
 the created number into the local array and also sets the loading state back to false. Both of these together
 constitute another step. 
 
-A relation between them would be:
+A correctness state relation between them would be:
 
 function ImplemenationImplements(s: Sytem, i: Implementation) {
    s.numbers === i.numbers && i.loading === false;
@@ -36,6 +36,21 @@ If the loading state isn't set correctly, this relation fails and Implementation
 If any error happens where the numbers arrays aren't equal, it also isn't a valid implementation. Notably, Implementation
 is free to do anything it wants _in addition to_ the expected behavior of System, but it must _at least_ perform the System
 behaviors.
+
+
+---------------------
+
+Pagination:
+
+This one is tricky because introduces intermediate events. i.e. 
+
+if fetchList(arg) returns all results vs. fetchData(arg, page); only returns a subset. So for them to be equivalent,
+we'd have to check that all the pages can be retrieved, i.e.
+
+fetchList(arg) = map ((p) => fetchList(arg, p)) allPages |> flatten
+
+not sure how to properly capture this.
+
 
 From http://isabelle.informatik.tu-muenchen.de/~kleing/papers/klein_sw_10.pdf
 
