@@ -122,3 +122,5 @@ From building ScheduleTransaction feature which consists of derived data:
   #  budget.recurring_transactions.flat_map(expand(start_date, end_date)).read!()
 
 Maybe rename "infrastructure expand" to tier splitting, but expansion might be more than that. 
+
+* Probably should consider compiling to Rust.
