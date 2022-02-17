@@ -227,7 +227,7 @@ fn js_gen_string(node: JSAstNode) -> String {
             call_name,
             args,
         } => {
-            let receiver_name = js_gen_iden_name(*receiver);
+            let receiver_name = js_gen_string(*receiver);
 
             let method_call = js_gen_iden_name(*call_name);
             let mut arg_strs: Vec<String> = vec![];
@@ -713,17 +713,25 @@ fn js_expand_state_transition_client(
     };
     let expanded_statements: Vec<JSAstNode> = match state_trans_func {
         StateTransitionFunc::Create => {
-            // TODO: The fetch here should be of the form:
-            /*
-            async create_recurring_transaction(rtc: CreateRecurringTransaction) {
-            let resp = await fetch("http://localhost:3000/recurring_transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rtc) });
-            let rt = await resp.json()
-            console.log({createdTransaction: rt});
-            this.recurring_transactions.push(rt);
-            }
-            */
-            let update_client_state = js_push_var(&state_var, &args[0]);
-            vec![fetch, update_client_state]
+            let await_fetch = JSAstNode::LetExpr {
+                name: Box::new(JSAstNode::Identifier("resp".to_string())),
+                value: Box::new(JSAstNode::AwaitOperator {
+                    node: Box::new(fetch),
+                }),
+            };
+            let await_json = JSAstNode::AwaitOperator {
+                node: Box::new(JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("resp".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier("json".to_string())),
+                    args: vec![],
+                }),
+            };
+            let update_client_state = JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+                call_name: Box::new(JSAstNode::Identifier("push".to_string())),
+                args: vec![await_json],
+            };
+            vec![await_fetch, update_client_state]
         }
         StateTransitionFunc::Delete => {
             let update_client_state = js_delete_var(&state_var, &args[0]);
@@ -1440,29 +1448,6 @@ fn schema_attributes(schema_body: AstNode) -> Vec<SchemaAttribute> {
 
 // Translation Certification
 
-/*
-function createRecurringTransactionsProperty() {
-    // derive generators from schema defs
-    return fc.asyncProperty(fc.record({ name: fc.string(), amount: fc.float() }), async (crt) => {
-        // TODO: Also generate starting states for the classes to test starting from
-        // arbitrary starting points.
-        let model = new Model();
-        let fullstack = new Fullstack(() => {});
-
-        // derive action name from state transition
-        let createdRt = await fullstack.create_recurring_transaction(crt);
-        model.create_recurring_transaction(crt, createdRt.id);
-
-        expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
-
-        // make sure to call read!s
-        await fullstack.view_recurring_transactions();
-
-        expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
-    })
-}
-*/
-
 fn fast_check_arbitrary_from_type(type_name: &str) -> String {
     match type_name {
         "String" => "string".to_string(),
@@ -1474,11 +1459,14 @@ fn fast_check_arbitrary_from_type(type_name: &str) -> String {
 fn js_gen_certification_properties(
     partitioned_class_defs: &PartitionedClassDefinitions,
     schemas: &Schemas,
-) -> Vec<JSAstNode> {
+) -> (Vec<JSAstNode>, Vec<String>) {
     let mut js_property_defs: Vec<JSAstNode> = vec![];
+    let mut js_property_names: Vec<String> = vec![];
     for state_transition in &partitioned_class_defs.state_transitions {
-        let name_str = &state_transition.name;
+        let state_trans_name = &state_transition.name;
         let state_trans_func = &state_transition.transition_type;
+        js_property_names.push(state_trans_name.clone());
+
         match state_trans_func {
             StateTransitionFunc::Create => {
                 // Create data generators for all transition arguments
@@ -1509,7 +1497,7 @@ fn js_gen_certification_properties(
                     generated_data_vars.push(JSAstNode::Identifier(arg.name.clone()));
                 }
 
-                let property_func_name = format!("{}Property", name_str);
+                let property_func_name = format!("{}Property", state_trans_name);
 
                 let mut property_args: Vec<JSAstNode> = vec![];
                 for data_generator in data_generators {
@@ -1524,26 +1512,66 @@ fn js_gen_certification_properties(
                     statements: vec![
                         JSAstNode::LetExpr {
                             name: Box::new(JSAstNode::Identifier("model".to_string())),
-                            value: Box::new(JSAstNode::NewClass { 
-                                name: Box::new(JSAstNode::Identifier("Model".to_string())), 
-                                args: vec![] 
+                            value: Box::new(JSAstNode::NewClass {
+                                name: Box::new(JSAstNode::Identifier("Model".to_string())),
+                                args: vec![],
                             }),
                         },
                         JSAstNode::LetExpr {
                             name: Box::new(JSAstNode::Identifier("fullstack".to_string())),
-                            value: Box::new(
-                                JSAstNode::NewClass { 
-                                    name: Box::new(JSAstNode::Identifier("FullStack".to_string())), 
-                                    args: vec![
-                                        JSAstNode::ArrowClosure { 
-                                            args: vec![], 
-                                            body: Box::new(JSAstNode::StatementList { statements: vec![] })
-                                        }
-                                    ]
-                                }
-                            ),
-                        }
-                    ]
+                            value: Box::new(JSAstNode::NewClass {
+                                name: Box::new(JSAstNode::Identifier("FullStack".to_string())),
+                                args: vec![JSAstNode::ArrowClosure {
+                                    args: vec![],
+                                    body: Box::new(JSAstNode::StatementList { statements: vec![] }),
+                                }],
+                            }),
+                        },
+                        JSAstNode::LetExpr {
+                            name: Box::new(JSAstNode::Identifier("created".to_string())),
+                            value: Box::new(JSAstNode::AwaitOperator {
+                                node: Box::new(JSAstNode::CallExpr {
+                                    receiver: Box::new(JSAstNode::Identifier(
+                                        "fullstack".to_string(),
+                                    )),
+                                    call_name: Box::new(JSAstNode::Identifier(
+                                        state_trans_name.to_string(),
+                                    )),
+                                    // args[0] again - represents a state transition argument
+                                    args: vec![JSAstNode::Identifier(
+                                        state_transition.args[0].name.clone(),
+                                    )],
+                                }),
+                            }),
+                        },
+                        JSAstNode::CallExpr {
+                            receiver: Box::new(JSAstNode::Identifier("model".to_string())),
+                            call_name: Box::new(JSAstNode::Identifier(
+                                state_trans_name.to_string(),
+                            )),
+                            args: vec![
+                                JSAstNode::Identifier(state_transition.args[0].name.clone()),
+                                // Pass in id of created entity so that the model and implementation are creating
+                                // the same entity.
+                                JSAstNode::Identifier("created.id".to_string()),
+                            ],
+                        },
+                        // expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+                        JSAstNode::CallExpr {
+                            receiver: Box::new(JSAstNode::FuncCallExpr {
+                                call_name: Box::new(JSAstNode::Identifier("expect".to_string())),
+                                args: vec![JSAstNode::Identifier(format!(
+                                    "fullstack.{}",
+                                    state_transition.state_variable
+                                ))],
+                            }),
+                            call_name: Box::new(JSAstNode::Identifier("to.deep.eq".to_string())),
+                            args: vec![JSAstNode::Identifier(format!(
+                                "model.{}",
+                                state_transition.state_variable
+                            ))],
+                        },
+                    ],
                 };
 
                 property_args.push(JSAstNode::AsyncModifier(Box::new(
@@ -1575,7 +1603,7 @@ fn js_gen_certification_properties(
         }
     }
 
-    js_property_defs
+    (js_property_defs, js_property_names)
 }
 
 #[derive(ClapParser, Debug)]
@@ -1609,6 +1637,7 @@ fn main() {
     let mut js_expanded_client: Vec<String> = vec![];
     let mut js_expanded_server: Vec<String> = vec![];
     let mut certification_property_strs: Vec<String> = vec![];
+    let mut certification_property_names: Vec<String> = vec![];
 
     match result {
         Ok(pairs) => {
@@ -1647,11 +1676,13 @@ fn main() {
                     js_expanded_server.push(endpoint_str.clone());
                 }
 
-                let certification_properties =
+                let (certification_properties, mut names) =
                     js_gen_certification_properties(&partitioned_class_defs, &schemas);
+                    
                 for property in certification_properties {
                     certification_property_strs.push(js_gen_string(property));
                 }
+                certification_property_names.append(&mut names);
             }
         }
         Err(e) => println!("Error {:?}", e),
@@ -1666,8 +1697,38 @@ fn main() {
     let model_code = js_model.join("\n\n");
     fs::write(args.model_output, model_code).expect("Unable to write model code file.");
 
-    let certification_property_code = certification_property_strs.join("\n\n");
-    fs::write("./certification-properties.ts", certification_property_code)
+    let mut certification_file: Vec<String> = vec![
+        "import 'mocha'; \
+        import { expect } from \"chai\"; \
+        import fc from \"fast-check\"; \
+        import { Budget as Fullstack,  } from \"./generated-client\"; \
+        import { Budget as Model } from \"./generated-model\"".to_string()
+    ];
+    certification_file.push(certification_property_strs.join("\n\n"));
+
+    /*
+    export const transitionProperties = [
+        { name: "createRecurringTransaction", property: createRecurringTransactionsProperty() }
+    ];
+    */
+    let mut property_objects: Vec<String> = vec![];
+    for name in certification_property_names {
+        let property_obj = JSAstNode::Object { props: vec![
+            Prop { key: JSAstNode::Identifier("name".to_string()), value: JSAstNode::StringLiteral(format!("{}", name)) },
+            Prop { key: JSAstNode::Identifier("property".to_string()), value: JSAstNode::FuncCallExpr{ call_name: Box::new(JSAstNode::Identifier(format!("{}Property", name))), args: vec![] } }
+        ]};
+        property_objects.push(js_gen_string(property_obj))
+    }
+    
+    let mut transition_properties: Vec<String> = vec!["export const transitionProperties = [".to_string()];
+    let property_objects_str = property_objects.join(",\n");
+    let end_array = "];".to_string();
+    transition_properties.push(property_objects_str);
+    transition_properties.push(end_array);
+
+    certification_file.push(transition_properties.join("\n"));
+
+    fs::write("./certification-properties.ts", certification_file.join("\n\n"))
         .expect("Unable to write certification properties file.");
 }
 
