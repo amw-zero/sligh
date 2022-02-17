@@ -100,6 +100,10 @@ enum JSAstNode {
     Object {
         props: Vec<Prop>,
     },
+    NewClass {
+        name: Box<JSAstNode>,
+        args: Vec<JSAstNode>,
+    },
     ArrowClosure {
         args: Vec<JSAstNode>,
         body: Box<JSAstNode>,
@@ -108,9 +112,7 @@ enum JSAstNode {
         statements: Vec<JSAstNode>,
     },
     ReturnStatement(Box<JSAstNode>),
-    AsyncModifier {
-        node: Box<JSAstNode>, // ClassMethod
-    },
+    AsyncModifier(Box<JSAstNode>), // ClassMethod, ArrowClosure
     AwaitOperator {
         node: Box<JSAstNode>, // FuncCallExpr or CallExpr of an async-modified ClassMethod def
     },
@@ -176,7 +178,7 @@ fn js_gen_string(node: JSAstNode) -> String {
                 js_gen_string(*body),
             )
         }
-        JSAstNode::AsyncModifier { node } => {
+        JSAstNode::AsyncModifier(node) => {
             format!("async {}", js_gen_string(*node))
         }
         JSAstNode::AwaitOperator { node } => {
@@ -282,6 +284,14 @@ fn js_gen_string(node: JSAstNode) -> String {
                 ))
             }
             format!("{{ {} }}", key_values.join(", "))
+        }
+        JSAstNode::NewClass { name, args } => {
+            let mut arg_strs: Vec<String> = vec![];
+            for arg in args {
+                arg_strs.push(js_gen_string(arg));
+            }
+            let comma_separated_args = arg_strs.join(", ");
+            format!("new {}({})", js_gen_string(*name), comma_separated_args)
         }
         JSAstNode::ArrowClosure { args, body } => {
             let mut arg_strs: Vec<String> = vec![];
@@ -419,7 +429,8 @@ fn js_translate(ast: AstNode) -> JSAstNode {
 // Infrastructure expansion
 
 struct PartitionedClassDefinitions {
-    state_transitions: Vec<JSAstNode>,
+    state_transitions: Vec<StateTransition>,
+    state_transition_nodes: Vec<JSAstNode>,
     state_variables: Vec<JSAstNode>,
 }
 
@@ -433,40 +444,87 @@ fn js_ast_node_cmp(l: &JSAstNode, r: &JSAstNode) -> Ordering {
     }
 }
 
-fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinitions {
-    let mut state_transitions: Vec<JSAstNode> = vec![];
+struct TypedArgument {
+    name: String,
+    r#type: String,
+}
+
+struct StateTransition {
+    name: String,
+    state_variable: String,
+    transition_type: StateTransitionFunc,
+    args: Vec<TypedArgument>,
+    node: JSAstNode,
+}
+
+fn is_state_transition(func_name: &str) -> bool {
+    let name_chars: Vec<char> = func_name.chars().collect();
+
+    *name_chars.last().unwrap() == '!'
+}
+
+fn js_partition_class_definitions(node: &JSAstNode) -> PartitionedClassDefinitions {
+    let mut state_transitions: Vec<StateTransition> = vec![];
+    let mut state_transition_nodes: Vec<JSAstNode> = vec![];
     let mut state_variables: Vec<JSAstNode> = vec![];
     match node {
-        JSAstNode::ClassDef { body, .. } => match *body {
+        JSAstNode::ClassDef { body, .. } => match &**body {
             JSAstNode::ClassBody { definitions } => {
-                for def in &definitions {
+                for def in definitions {
                     match def.clone() {
-                        JSAstNode::ClassMethod { body, .. } => {
-                            match *body {
-                                JSAstNode::StatementList { statements } => {
-                                    for statement in &statements {
-                                        match statement {
-                                            JSAstNode::CallExpr { call_name, .. } => {
-                                                // The convention is that method names ending in ! are
-                                                // state transitions. Separate these for subsequent expansion
-                                                let method_name =
-                                                    js_gen_iden_name(*call_name.clone());
-                                                let name_chars: Vec<char> =
-                                                    method_name.chars().collect();
-                                                if *name_chars.last().unwrap() == '!' {
-                                                    state_transitions.push(def.clone());
-                                                    break;
-                                                } else {
-                                                    state_variables.push(def.clone());
+                        JSAstNode::ClassMethod {
+                            body,
+                            name,
+                            args: method_def_args,
+                        } => match *body {
+                            JSAstNode::StatementList { statements } => {
+                                for statement in &statements {
+                                    match statement {
+                                        JSAstNode::CallExpr {
+                                            call_name,
+                                            receiver,
+                                            ..
+                                        } => {
+                                            let method_name = js_gen_iden_name(*name.clone());
+                                            let receiver_name = js_gen_iden_name(*receiver.clone());
+                                            let state_transition_name =
+                                                js_gen_iden_name(*call_name.clone());
+                                            if is_state_transition(&state_transition_name) {
+                                                let mut state_trans_args: Vec<TypedArgument> =
+                                                    vec![];
+                                                for arg in method_def_args {
+                                                    match arg {
+                                                        JSAstNode::TypedIdentifier {
+                                                            identifier,
+                                                            r#type,
+                                                        } => state_trans_args.push(TypedArgument {
+                                                            name: js_gen_iden_name(*identifier),
+                                                            r#type: js_gen_iden_name(*r#type),
+                                                        }),
+                                                        _ => continue,
+                                                    }
                                                 }
+                                                state_transitions.push(StateTransition {
+                                                    name: method_name,
+                                                    state_variable: receiver_name,
+                                                    args: state_trans_args,
+                                                    transition_type: state_transition_func_from_str(
+                                                        &state_transition_name,
+                                                    ),
+                                                    node: def.clone(),
+                                                });
+                                                state_transition_nodes.push(def.clone());
+                                                break;
+                                            } else {
+                                                state_variables.push(def.clone());
                                             }
-                                            _ => state_variables.push(def.clone()),
                                         }
+                                        _ => state_variables.push(def.clone()),
                                     }
                                 }
-                                _ => state_variables.push(def.clone()),
                             }
-                        }
+                            _ => state_variables.push(def.clone()),
+                        },
                         JSAstNode::ClassProperty { .. } => state_variables.push(def.clone()),
                         _ => panic!("Found unknown class body definition"),
                     }
@@ -479,6 +537,7 @@ fn js_partition_class_definitions(node: JSAstNode) -> PartitionedClassDefinition
 
     PartitionedClassDefinitions {
         state_transitions: state_transitions,
+        state_transition_nodes: state_transition_nodes,
         state_variables: state_variables,
     }
 }
@@ -740,7 +799,7 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
 
 fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) -> JSAstNode {
     let mut expanded_definitions: Vec<JSAstNode> = vec![];
-    for st in &class_defs.state_transitions {
+    for st in &class_defs.state_transition_nodes {
         expanded_definitions.push(js_expand_client(st.clone()))
     }
     for cm in &class_defs.state_variables {
@@ -754,9 +813,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
     for def in expanded_definitions {
         match def {
             JSAstNode::ClassMethod { .. } => {
-                defs_with_async_state_transitions.push(JSAstNode::AsyncModifier {
-                    node: Box::new(def),
-                })
+                defs_with_async_state_transitions.push(JSAstNode::AsyncModifier(Box::new(def)))
             }
             _ => defs_with_async_state_transitions.push(def),
         }
@@ -794,7 +851,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
 // We generate a set of endpoints corresponding to all each state transition
 fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -> Vec<JSAstNode> {
     let mut endpoints: Vec<JSAstNode> = vec![];
-    for st in &class_defs.state_transitions {
+    for st in &class_defs.state_transition_nodes {
         match st {
             JSAstNode::ClassMethod { body, args, .. } => match &**body {
                 JSAstNode::StatementList { statements } => {
@@ -1042,12 +1099,15 @@ fn js_expand_state_transition_to_endpoint(
 // MyLang first before translating to target lang ?. Every
 // func call / symbol in MyLang would have to be translated
 // by the backend. I.e. client.request() maps to fetch in JS.
-fn js_infra_expand(node: JSAstNode, schemas: &Schemas) -> (JSAstNode, Vec<JSAstNode>) {
+fn js_infra_expand(
+    node: JSAstNode,
+    schemas: &Schemas,
+    partitioned_class_defs: &PartitionedClassDefinitions,
+) -> (JSAstNode, Vec<JSAstNode>) {
     match node {
         JSAstNode::ClassDef { ref name, .. } => {
-            let partitioned_class_defs = js_partition_class_definitions(node.clone());
             println!("State transitions: ");
-            for trans in &partitioned_class_defs.state_transitions {
+            for trans in &partitioned_class_defs.state_transition_nodes {
                 match trans {
                     JSAstNode::ClassMethod { name, .. } => {
                         println!("{}", js_gen_string(*name.clone()));
@@ -1335,7 +1395,7 @@ type Schemas = HashMap<String, Schema>;
 
 struct SchemaAttribute {
     name: String,
-    // r#type: String
+    r#type: String,
 }
 
 struct Schema {
@@ -1357,13 +1417,16 @@ fn schema_attributes(schema_body: AstNode) -> Vec<SchemaAttribute> {
             for def in definitions {
                 match def {
                     AstNode::SchemaAttribute { typed_identifier } => match *typed_identifier {
-                        AstNode::TypedIdentifier { identifier, .. /*, r#type*/ } => {
+                        AstNode::TypedIdentifier { identifier, r#type } => {
                             let attr_name = iden_name(*identifier);
-                            // let attr_type = iden_name(*r#type);
+                            let attr_type = iden_name(*r#type);
 
-                            attrs.push(SchemaAttribute { name: attr_name /*, r#type: attr_type*/ });
-                        },
-                        _ => continue
+                            attrs.push(SchemaAttribute {
+                                name: attr_name,
+                                r#type: attr_type,
+                            });
+                        }
+                        _ => continue,
                     },
                     _ => continue,
                 }
@@ -1373,6 +1436,146 @@ fn schema_attributes(schema_body: AstNode) -> Vec<SchemaAttribute> {
         }
         _ => panic!("Can only extract schema attributes out of SchemaBodies"),
     }
+}
+
+// Translation Certification
+
+/*
+function createRecurringTransactionsProperty() {
+    // derive generators from schema defs
+    return fc.asyncProperty(fc.record({ name: fc.string(), amount: fc.float() }), async (crt) => {
+        // TODO: Also generate starting states for the classes to test starting from
+        // arbitrary starting points.
+        let model = new Model();
+        let fullstack = new Fullstack(() => {});
+
+        // derive action name from state transition
+        let createdRt = await fullstack.create_recurring_transaction(crt);
+        model.create_recurring_transaction(crt, createdRt.id);
+
+        expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+
+        // make sure to call read!s
+        await fullstack.view_recurring_transactions();
+
+        expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+    })
+}
+*/
+
+fn fast_check_arbitrary_from_type(type_name: &str) -> String {
+    match type_name {
+        "String" => "string".to_string(),
+        "Numeric" => "float".to_string(),
+        _ => panic!("Trying to convert unknown type name to a fast-check arbitrary"),
+    }
+}
+
+fn js_gen_certification_properties(
+    partitioned_class_defs: &PartitionedClassDefinitions,
+    schemas: &Schemas,
+) -> Vec<JSAstNode> {
+    let mut js_property_defs: Vec<JSAstNode> = vec![];
+    for state_transition in &partitioned_class_defs.state_transitions {
+        let name_str = &state_transition.name;
+        let state_trans_func = &state_transition.transition_type;
+        match state_trans_func {
+            StateTransitionFunc::Create => {
+                // Create data generators for all transition arguments
+                let mut data_generators: Vec<JSAstNode> = vec![];
+                // Argument list for property body
+                let mut generated_data_vars: Vec<JSAstNode> = vec![];
+                for arg in &state_transition.args {
+                    println!("Looking for schema named  {}", arg.r#type);
+                    let schema = &schemas[&arg.r#type];
+                    let mut data_generator_props: Vec<Prop> = vec![];
+                    for attr in &schema.attributes {
+                        let key_node = JSAstNode::Identifier(attr.name.clone());
+                        let value_generator = JSAstNode::CallExpr {
+                            receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                            call_name: Box::new(JSAstNode::Identifier(
+                                fast_check_arbitrary_from_type(&attr.r#type),
+                            )),
+                            args: vec![],
+                        };
+                        data_generator_props.push(Prop {
+                            key: key_node,
+                            value: value_generator,
+                        })
+                    }
+                    data_generators.push(JSAstNode::Object {
+                        props: data_generator_props,
+                    });
+                    generated_data_vars.push(JSAstNode::Identifier(arg.name.clone()));
+                }
+
+                let property_func_name = format!("{}Property", name_str);
+
+                let mut property_args: Vec<JSAstNode> = vec![];
+                for data_generator in data_generators {
+                    property_args.push(JSAstNode::CallExpr {
+                        receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                        call_name: Box::new(JSAstNode::Identifier("record".to_string())),
+                        args: vec![data_generator],
+                    })
+                }
+
+                let test_body = JSAstNode::StatementList {
+                    statements: vec![
+                        JSAstNode::LetExpr {
+                            name: Box::new(JSAstNode::Identifier("model".to_string())),
+                            value: Box::new(JSAstNode::NewClass { 
+                                name: Box::new(JSAstNode::Identifier("Model".to_string())), 
+                                args: vec![] 
+                            }),
+                        },
+                        JSAstNode::LetExpr {
+                            name: Box::new(JSAstNode::Identifier("fullstack".to_string())),
+                            value: Box::new(
+                                JSAstNode::NewClass { 
+                                    name: Box::new(JSAstNode::Identifier("FullStack".to_string())), 
+                                    args: vec![
+                                        JSAstNode::ArrowClosure { 
+                                            args: vec![], 
+                                            body: Box::new(JSAstNode::StatementList { statements: vec![] })
+                                        }
+                                    ]
+                                }
+                            ),
+                        }
+                    ]
+                };
+
+                property_args.push(JSAstNode::AsyncModifier(Box::new(
+                    JSAstNode::ArrowClosure {
+                        args: generated_data_vars,
+                        body: Box::new(test_body),
+                    },
+                )));
+                let property_func = JSAstNode::FuncDef {
+                    name: Box::new(JSAstNode::Identifier(property_func_name)),
+                    body: Box::new(JSAstNode::StatementList {
+                        statements: vec![JSAstNode::ReturnStatement(Box::new(
+                            JSAstNode::CallExpr {
+                                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                                call_name: Box::new(JSAstNode::Identifier(
+                                    "asyncProperty".to_string(),
+                                )),
+                                args: property_args,
+                            },
+                        ))],
+                    }),
+                    args: vec![],
+                    return_type: Box::new(JSAstNode::InvalidNode),
+                };
+
+                js_property_defs.push(property_func)
+            }
+            _ => (),
+        }
+    }
+
+    js_property_defs
 }
 
 #[derive(ClapParser, Debug)]
@@ -1386,6 +1589,14 @@ struct Args {
     /// Generated server output
     #[clap(short, long, default_value = "./server.js")]
     server_output: String,
+
+    /// Generated model output
+    #[clap(short, long, default_value = "./model.ts")]
+    model_output: String,
+
+    /// Generated certification output
+    #[clap(short = 't', long, default_value = "./state-transition-properties.ts")]
+    state_transition_properties_output: String,
 }
 
 fn main() {
@@ -1397,6 +1608,8 @@ fn main() {
     let mut js_model: Vec<String> = vec![];
     let mut js_expanded_client: Vec<String> = vec![];
     let mut js_expanded_server: Vec<String> = vec![];
+    let mut certification_property_strs: Vec<String> = vec![];
+
     match result {
         Ok(pairs) => {
             for pair in pairs {
@@ -1422,18 +1635,22 @@ fn main() {
 
                 // js_executable_translate converts Sligh constructs to executable JS, e.g. by
                 // replacing state transitions with array operations.
+                // TODO: This also has to prepare model for testing, i.e. add an id param to create functions
                 js_model.push(js_gen_string(js_executable_translate(&js_ast)));
 
-                // js_compile translates to executable JS, i.e. replaces state
-                // transition functions with real operations
-                //                let partitionedState transitions
-                let (client, server) = js_infra_expand(js_ast, &schemas);
-
+                let partitioned_class_defs = js_partition_class_definitions(&js_ast);
+                let (client, server) = js_infra_expand(js_ast, &schemas, &partitioned_class_defs);
                 js_expanded_client.push(js_gen_string(client.clone()));
 
                 for endpoint in server {
                     let endpoint_str = js_gen_string(endpoint);
                     js_expanded_server.push(endpoint_str.clone());
+                }
+
+                let certification_properties =
+                    js_gen_certification_properties(&partitioned_class_defs, &schemas);
+                for property in certification_properties {
+                    certification_property_strs.push(js_gen_string(property));
                 }
             }
         }
@@ -1447,11 +1664,11 @@ fn main() {
     fs::write(args.server_output, server_code).expect("Unable to write server code file.");
 
     let model_code = js_model.join("\n\n");
-    fs::write("./model.ts", model_code).expect("Unable to write model code file.");
+    fs::write(args.model_output, model_code).expect("Unable to write model code file.");
 
-    // for statement in statements {
-    //     println!("{:?}", statement);
-    // }
+    let certification_property_code = certification_property_strs.join("\n\n");
+    fs::write("./certification-properties.ts", certification_property_code)
+        .expect("Unable to write certification properties file.");
 }
 
 // Goal:

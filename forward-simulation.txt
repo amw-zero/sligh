@@ -1,3 +1,42 @@
+A great example is comparing a synchronous model to an asynchronous implementation that makes a 
+network request and introduces a loading state:
+
+class System {
+   numbers: number[] = [];
+
+   addSomething(i: number) {
+      this.numbers.push(i);
+   }
+}
+
+class Implementation {
+   numbers: number[] = [];
+   loading: bool = false;
+
+   addSomething(i: number) {
+      this.loading = true;
+      let createdNumber = await api.createNumber(i);
+      this.numbers.push(createdNumber);
+      this.loading = false;
+   }
+}
+
+A single step in System corresponds to two steps in Implementation. First, Implementation sets its 
+loading bool to true - this is a "step." Then it fetches data, and when it's returned it pushes
+the created number into the local array and also sets the loading state back to false. Both of these together
+constitute another step. 
+
+A relation between them would be:
+
+function ImplemenationImplements(s: Sytem, i: Implementation) {
+   s.numbers === i.numbers && i.loading === false;
+}
+
+If the loading state isn't set correctly, this relation fails and Implementation isn't a simulation of System.
+If any error happens where the numbers arrays aren't equal, it also isn't a valid implementation. Notably, Implementation
+is free to do anything it wants _in addition to_ the expected behavior of System, but it must _at least_ perform the System
+behaviors.
+
 From http://isabelle.informatik.tu-muenchen.de/~kleing/papers/klein_sw_10.pdf
 
 record process = Init :: ’external ⇒ ’state set
@@ -17,6 +56,10 @@ A relation is a set of pairs, i.e. {(s1,s2), (s2,s3) ...}
 process C: external, event, state_c
 process A: external, event, state_a
 
+Init C s :: state_c set
+Init A s :: state_a set
+SR '' Init A s :: 
+
 Step C event :: (state_c x state_c) set
 SR           :: (state_c, state_a) set
 Step A event :: (state_a, state_a) set
@@ -28,3 +71,20 @@ SR O Step A event :: (state_c x state_a) set
    under the allowable initial states of A
 2. for all events, the state relation applied to a step taken from the event in C produces
    a subset of the state relation applied to a step taken from the event in A
+
+Deterministic version:
+
+record process = Init :: ’external ⇒ ’state set
+                 Step :: ’event ⇒ (’state × ’state)
+                  Fin :: ’state ⇒ ’external
+
+fw-sim SR C A ≡ (∀s. Init C s \in SF Init A s)
+              ∧ (∀event. Step C event o SF ⊆ SF O Step A event)
+              ∧ (∀s s’. (s, s’) ∈ SR −→ Fin C s’ = Fin A s)
+
+Step C event :: (state_c x state_c) = { (s1, s2), (s2, s3), ... }
+SF           :: state_c => state_a
+Step A event :: (state_a x state_a)
+
+
+
