@@ -1520,7 +1520,7 @@ fn js_gen_certification_properties(
                         JSAstNode::LetExpr {
                             name: Box::new(JSAstNode::Identifier("fullstack".to_string())),
                             value: Box::new(JSAstNode::NewClass {
-                                name: Box::new(JSAstNode::Identifier("FullStack".to_string())),
+                                name: Box::new(JSAstNode::Identifier("Fullstack".to_string())),
                                 args: vec![JSAstNode::ArrowClosure {
                                     args: vec![],
                                     body: Box::new(JSAstNode::StatementList { statements: vec![] }),
