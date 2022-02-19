@@ -1,7 +1,7 @@
-export class RecurringTransaction {
-    amount: number = 0;
-  name: string = "";
-  id: number = 0;
+export interface RecurringTransaction {
+    amount: number;
+  name: string;
+  id: number;
   }
 
 export interface CreateRecurringTransaction {
