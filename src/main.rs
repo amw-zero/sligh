@@ -67,6 +67,10 @@ struct Prop {
 #[derive(Debug, Clone)]
 enum JSAstNode {
     InvalidNode,
+    InterfaceDef {
+        name: Box<JSAstNode>,
+        properties: Vec<JSAstNode>,
+    },
     ClassDef {
         name: Box<JSAstNode>,
         body: Box<JSAstNode>,
@@ -176,6 +180,19 @@ fn js_gen_string(node: JSAstNode) -> String {
                 js_gen_iden_name(*name),
                 comma_separated_args,
                 js_gen_string(*body),
+            )
+        }
+        JSAstNode::InterfaceDef { name, properties } => {
+            let semicolon_separated_properties: String = properties
+                .into_iter()
+                .map(|prop| js_gen_string(prop))
+                .collect::<Vec<String>>()
+                .join(";");
+
+            format!(
+                "interface {} {{ {} }}",
+                js_gen_string(*name),
+                semicolon_separated_properties
             )
         }
         JSAstNode::AsyncModifier(node) => {
@@ -356,10 +373,40 @@ fn js_translate_to_class_method(name: AstNode, args: Vec<AstNode>, body: AstNode
 // in the source, but not in JS.
 fn js_translate(ast: AstNode) -> JSAstNode {
     match ast {
-        AstNode::SchemaDef { name, body } => JSAstNode::ClassDef {
-            name: Box::new(js_translate(*name)),
-            body: Box::new(js_translate(*body)),
-        },
+        AstNode::SchemaDef { name, body } => {
+            let no_methods = match *body.clone() {
+                AstNode::SchemaBody { definitions } => {
+                    definitions.into_iter().all(|def| match def {
+                        AstNode::SchemaAttribute { .. } => true,
+                        _ => false,
+                    })
+                }
+                _ => false,
+            };
+
+            if no_methods {
+                JSAstNode::InterfaceDef {
+                    name: Box::new(js_translate(*name)),
+                    properties: match *body.clone() {
+                        AstNode::SchemaBody { definitions } => definitions
+                            .into_iter()
+                            .map(|def| match def {
+                                AstNode::SchemaAttribute { typed_identifier } => {
+                                    js_translate(*typed_identifier)
+                                }
+                                _ => panic!("Expected AstNode::SchemaAttribute"),
+                            })
+                            .collect(),
+                        _ => vec![],
+                    },
+                }
+            } else {
+                JSAstNode::ClassDef {
+                    name: Box::new(js_translate(*name)),
+                    body: Box::new(js_translate(*body)),
+                }
+            }
+        }
         AstNode::SchemaAttribute { typed_identifier } => JSAstNode::ClassProperty {
             typed_identifier: Box::new(js_translate(*typed_identifier)),
         },
@@ -1114,7 +1161,7 @@ fn js_infra_expand(
 ) -> (JSAstNode, Vec<JSAstNode>) {
     match node {
         JSAstNode::ClassDef { ref name, .. } => {
-             // TODO: I don't know why &** is necessary here
+            // TODO: I don't know why &** is necessary here
             let class_name = match &**name {
                 JSAstNode::Identifier(n) => n,
                 _ => panic!("Expected identifier"),
@@ -1124,7 +1171,7 @@ fn js_infra_expand(
 
             (client, server)
         }
-        _ => (JSAstNode::InvalidNode, vec![]),
+        _ => (node, vec![]),
     }
 }
 
@@ -1595,6 +1642,50 @@ fn js_gen_certification_properties(
     (js_property_defs, js_property_names)
 }
 
+fn gen_certification_property_file(
+    certification_properties: &Vec<String>,
+    certification_property_names: &Vec<String>,
+) -> Vec<String> {
+    let mut certification_file: Vec<String> = vec!["import 'mocha';\n\
+        import { expect } from \"chai\";\n\
+        import fc from \"fast-check\"\n\
+        import { Budget as Fullstack,  } from \"./generated-client\";\n\
+        import { Budget as Model } from \"./generated-model\n"
+        .to_string()];
+    certification_file.push(certification_properties.join("\n\n"));
+
+    let mut property_objects: Vec<String> = vec![];
+    for name in certification_property_names {
+        let property_obj = JSAstNode::Object {
+            props: vec![
+                Prop {
+                    key: JSAstNode::Identifier("name".to_string()),
+                    value: JSAstNode::StringLiteral(format!("{}", name)),
+                },
+                Prop {
+                    key: JSAstNode::Identifier("property".to_string()),
+                    value: JSAstNode::FuncCallExpr {
+                        call_name: Box::new(JSAstNode::Identifier(format!("{}Property", name))),
+                        args: vec![],
+                    },
+                },
+            ],
+        };
+        property_objects.push(js_gen_string(property_obj))
+    }
+
+    let mut transition_properties: Vec<String> =
+        vec!["export const transitionProperties = [".to_string()];
+    let property_objects_str = property_objects.join(",\n");
+    let end_array = "];".to_string();
+    transition_properties.push(property_objects_str);
+    transition_properties.push(end_array);
+
+    certification_file.push(transition_properties.join("\n"));
+
+    certification_file
+}
+
 #[derive(ClapParser, Debug)]
 struct Args {
     input_file: String,
@@ -1621,7 +1712,6 @@ fn main() {
     let source = std::fs::read_to_string(args.input_file).expect("No input file provided.");
     let result = LangParser::parse(Rule::Program, &source);
     let mut schemas: Schemas = HashMap::new();
-    let mut statements: Vec<AstNode> = vec![];
     let mut js_model: Vec<String> = vec![];
     let mut js_expanded_client: Vec<String> = vec![];
     let mut js_expanded_server: Vec<String> = vec![];
@@ -1646,7 +1736,6 @@ fn main() {
                     _ => (),
                 }
 
-                statements.push(parsed.clone());
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS
                 let js_ast = js_translate(parsed.clone());
@@ -1667,7 +1756,7 @@ fn main() {
 
                 let (certification_properties, mut names) =
                     js_gen_certification_properties(&partitioned_class_defs, &schemas);
-                    
+
                 for property in certification_properties {
                     certification_property_strs.push(js_gen_string(property));
                 }
@@ -1686,39 +1775,15 @@ fn main() {
     let model_code = js_model.join("\n\n");
     fs::write(args.model_output, model_code).expect("Unable to write model code file.");
 
-    let mut certification_file: Vec<String> = vec![
-        "import 'mocha'; \
-        import { expect } from \"chai\"; \
-        import fc from \"fast-check\"; \
-        import { Budget as Fullstack,  } from \"./generated-client\"; \
-        import { Budget as Model } from \"./generated-model\"".to_string()
-    ];
-    certification_file.push(certification_property_strs.join("\n\n"));
-
-    /*
-    export const transitionProperties = [
-        { name: "createRecurringTransaction", property: createRecurringTransactionsProperty() }
-    ];
-    */
-    let mut property_objects: Vec<String> = vec![];
-    for name in certification_property_names {
-        let property_obj = JSAstNode::Object { props: vec![
-            Prop { key: JSAstNode::Identifier("name".to_string()), value: JSAstNode::StringLiteral(format!("{}", name)) },
-            Prop { key: JSAstNode::Identifier("property".to_string()), value: JSAstNode::FuncCallExpr{ call_name: Box::new(JSAstNode::Identifier(format!("{}Property", name))), args: vec![] } }
-        ]};
-        property_objects.push(js_gen_string(property_obj))
-    }
-    
-    let mut transition_properties: Vec<String> = vec!["export const transitionProperties = [".to_string()];
-    let property_objects_str = property_objects.join(",\n");
-    let end_array = "];".to_string();
-    transition_properties.push(property_objects_str);
-    transition_properties.push(end_array);
-
-    certification_file.push(transition_properties.join("\n"));
-
-    fs::write("./certification-properties.ts", certification_file.join("\n\n"))
-        .expect("Unable to write certification properties file.");
+    let certification_code = gen_certification_property_file(
+        &certification_property_strs,
+        &certification_property_names,
+    );
+    fs::write(
+        "./certification-properties.ts",
+        certification_code.join("\n\n"),
+    )
+    .expect("Unable to write certification properties file.");
 }
 
 // Goal:
