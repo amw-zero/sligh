@@ -785,11 +785,6 @@ fn js_expand_state_transition_client(
             vec![fetch, update_client_state]
         }
         StateTransitionFunc::Read => {
-            /*
-            let rts = await fetch("http://localhost:3000/recurring_transactions", { method: "GET", headers: { "Content-Type": "application/json" } });
-            let rts_json = await rts.json();
-            this.recurring_transactions = rts_json;
-            */
             let await_fetch = JSAstNode::LetExpr {
                 name: Box::new(JSAstNode::Identifier("data".to_string())),
                 value: Box::new(JSAstNode::AwaitOperator {
@@ -852,18 +847,39 @@ fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
     }
 }
 
+fn js_apply_defaults(state_var: &JSAstNode) -> JSAstNode {
+    state_var.clone()
+    // match state_var {
+    //     JSAstNode::ClassProperty { typed_identifier } => {
+    //         match typed_identifier {
+    //             JSAstNode::TypedIdentifier { name, r#type } => {
+
+    //             }
+    //         }
+    //     }
+    // }
+}
+
 fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) -> JSAstNode {
     let mut expanded_definitions: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transition_nodes {
         expanded_definitions.push(js_expand_client(st.clone()))
     }
-    for cm in &class_defs.state_variables {
-        expanded_definitions.push(cm.clone());
+
+    for state_var in &class_defs.state_variables {
+        // State variables require default values to be valid 
+        // JS class syntax. Would like to possibly have a separate
+        // pass for this similar to js_executable_translate, but 
+        // focused on client-side executability
+        let with_defaults = js_apply_defaults(state_var);
+        expanded_definitions.push(with_defaults);
     }
 
+    // This is purely aesthetic: place state variables before method definitions
+    // in a class definition
     expanded_definitions.sort_by(js_ast_node_cmp);
 
-    //
+    // TODO: Move this logic to a pass similar to js_executable_translate
     let mut defs_with_async_state_transitions: Vec<JSAstNode> = vec![];
     for def in expanded_definitions {
         match def {
@@ -1083,12 +1099,9 @@ fn js_expand_state_transition_to_endpoint(
             let state_transition_func = state_transition_func_from_str(&call_name_str);
             let express_method = state_transition_func.as_express_http_method();
             let endpoint_path = js_state_var_endpoint_server(&state_var, &state_transition_func);
-
-            // TODO: For state transitions like Create, need a "request" type that does not
-            // have an id so data can be passed to such methods before creation
             let state_body = match state_transition_func {
                 StateTransitionFunc::Create => {
-                    // Again - only handling one method arg here.
+                    // TODO - only handling one method arg here.
                     // also need to switch on StateTransitionFunc here.
                     let state_var_type = match &args[0] {
                         JSAstNode::TypedIdentifier { r#type, .. } => {
@@ -1324,8 +1337,11 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
         Rule::LetExpr => AstNode::InvalidNode,
         Rule::FuncCall => AstNode::InvalidNode,
         _ => {
-            println!("Other");
-            return AstNode::InvalidNode;
+            if DEBUG {
+                println!("Attempted to parse unknown node");
+            }
+
+            AstNode::InvalidNode
         }
     }
 }
@@ -1642,6 +1658,17 @@ fn js_gen_certification_properties(
     (js_property_defs, js_property_names)
 }
 
+fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
+    let define_endpoints_func = JSAstNode::FuncDef {
+        name: Box::new(JSAstNode::Identifier("defineEndpoints".to_string())),
+        args: vec![JSAstNode::Identifier("app".to_string()), JSAstNode::Identifier("db".to_string())],
+        body: Box::new(JSAstNode::StatementList { statements: endpoints.clone() }),
+        return_type: Box::new(JSAstNode::InvalidNode),
+    };
+    
+    return js_gen_string(define_endpoints_func);
+}
+
 fn gen_certification_property_file(
     certification_properties: &Vec<String>,
     certification_property_names: &Vec<String>,
@@ -1714,7 +1741,7 @@ fn main() {
     let mut schemas: Schemas = HashMap::new();
     let mut js_model: Vec<String> = vec![];
     let mut js_expanded_client: Vec<String> = vec![];
-    let mut js_expanded_server: Vec<String> = vec![];
+    let mut js_endpoints: Vec<JSAstNode> = vec![];
     let mut certification_property_strs: Vec<String> = vec![];
     let mut certification_property_names: Vec<String> = vec![];
 
@@ -1750,8 +1777,7 @@ fn main() {
                 js_expanded_client.push(js_gen_string(client.clone()));
 
                 for endpoint in server {
-                    let endpoint_str = js_gen_string(endpoint);
-                    js_expanded_server.push(endpoint_str.clone());
+                    js_endpoints.push(endpoint);
                 }
 
                 let (certification_properties, mut names) =
@@ -1769,8 +1795,7 @@ fn main() {
     let client_code = js_expanded_client.join("\n\n");
     fs::write(args.client_output, client_code).expect("Unable to write client code file.");
 
-    let server_code = js_expanded_server.join("\n\n");
-    fs::write(args.server_output, server_code).expect("Unable to write server code file.");
+    fs::write(args.server_output, gen_server_endpoint_file(&js_endpoints)).expect("Unable to write server code file.");
 
     let model_code = js_model.join("\n\n");
     fs::write(args.model_output, model_code).expect("Unable to write model code file.");
