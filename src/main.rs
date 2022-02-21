@@ -563,6 +563,8 @@ fn js_partition_class_definitions(node: &JSAstNode) -> PartitionedClassDefinitio
                                                 state_transition_nodes.push(def.clone());
                                                 break;
                                             } else {
+                                                // TODO: Should have state variables and 'other' separated
+                                                // to support other statements inside schema definitions
                                                 state_variables.push(def.clone());
                                             }
                                         }
@@ -994,14 +996,6 @@ fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schema
         sql_attr_names.push(SQLAstNode::Identifier(attr.name.clone()));
         sql_value_placeholders.push(SQLAstNode::Identifier("?".to_string()))
     }
-    /*
-    db.serialize(() => {
-        db.run("INSERT INTO recurring_transactions (amount, name) VALUES (?, ?)", [data.amount, data.name]);
-        db.get("SELECT last_insert_rowid()", (err, row) => {
-          res.send({...data, id: row});
-        });
-      });
-      */
     let insert_sql = SQLAstNode::Insert {
         into: Box::new(SQLAstNode::Identifier(state_var.to_string())),
         attributes: sql_attr_names,
@@ -1231,6 +1225,10 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
             args,
         } => {
             let call_str = js_gen_string(*call_name.clone());
+            if !is_state_transition(&call_str) {
+                return node.clone();
+            }
+
             let state_trans_func = state_transition_func_from_str(&call_str);
             let state_var = js_gen_string(*receiver.clone());
             match state_trans_func {
@@ -1322,8 +1320,7 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
             name: Box::new(parse(pair.into_inner().next().unwrap())),
             arguments: vec![],
         },
-        Rule::MethodBody => parse(pair.into_inner().next().unwrap()),
-        Rule::Expr => {
+        Rule::MethodCall => {
             let mut expr = pair.into_inner();
             AstNode::CallExpr {
                 receiver: Box::new(AstNode::Identifier(expr.next().unwrap().as_str().into())),
@@ -1332,7 +1329,9 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
                     .map(|e| AstNode::Identifier(e.as_str().into()))
                     .collect(),
             }
-        }
+        },
+        Rule::DotAccess => AstNode::InvalidNode,
+        Rule::MethodBody => parse(pair.into_inner().next().unwrap()),
         Rule::ExprList => AstNode::ExprList(pair.into_inner().map(parse).collect()),
         Rule::LetExpr => AstNode::InvalidNode,
         Rule::FuncCall => AstNode::InvalidNode,
