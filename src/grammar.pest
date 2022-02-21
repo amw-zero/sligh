@@ -4,19 +4,23 @@ Statement = { SchemaDef | SchemaMethod | TypeDef }
 
 WHITESPACE = _{ " " | "\t" }
 
-Identifier = @{ (ASCII_ALPHANUMERIC | "_" | "!")+ }
-
-Term = { ASCII_ALPHANUMERIC+ }
+Identifier = @{ !"end" ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "!")* }
 
 Receiver = @{ Identifier }
 
-MethodArg = @{ Identifier }
+MethodArg = {  Expr  }
 
 LetExpr = { "let" ~ Identifier ~ "=" ~ Expr }
 
 FuncCall = { Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")" }
 
-Expr = { LetExpr | FuncCall | (Term ~ "+" ~ Term) | (Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")") }
+Constructor = { Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")" }
+
+DotAccess = { Identifier ~ "." ~ Identifier }
+
+MethodCall = _{ Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")" }
+
+Expr = {  MethodCall f| DotAccess | LetExpr | FuncCall | Identifier }
 
 ExprList = { (Expr ~ NEWLINE)+ }
 

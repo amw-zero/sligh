@@ -1,3 +1,18 @@
+# Derived data:
+
+# Domain represents an area of activity. Mostly exists as a way to name 
+# a group of state transitions / operations.
+domain Schedule:
+  def view_scheduled_transactions()
+    # referring to stored state variable
+    Budget.recurring_transactions
+       # convert them to a derived data type 
+      .map { |rt| rt.expand() }
+      # make this data available to client
+      .read!()                      
+  end
+end
+
 # Sum types:
 
 type MonthRecurrence:
