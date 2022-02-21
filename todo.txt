@@ -3,8 +3,6 @@
   Note: this will require parsing the target language, TS currently. Svelte does this 
   via code-red: https://www.npmjs.com/package/code-red.
 
-* Generate translation certification test.
-
 * Format output JS with prettier
 
 * Get rid of args[0] assumption for state transition arguments.
