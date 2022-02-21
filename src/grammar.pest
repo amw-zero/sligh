@@ -18,9 +18,9 @@ Constructor = { Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")" }
 
 DotAccess = { Identifier ~ "." ~ Identifier }
 
-MethodCall = _{ Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")" }
+MethodCall = { Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")" }
 
-Expr = {  MethodCall f| DotAccess | LetExpr | FuncCall | Identifier }
+Expr = _{  MethodCall | DotAccess | LetExpr | FuncCall | Identifier }
 
 ExprList = { (Expr ~ NEWLINE)+ }
 
@@ -44,7 +44,7 @@ SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ NEWLINE  ~ MethodBo
 
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
-SchemaDef = { "schema" ~ Identifier ~ ":" ~ NEWLINE ~ SchemaBody ~ "end" }
+SchemaDef = { ("schema" | "domain") ~ Identifier ~ ":" ~ NEWLINE ~ SchemaBody ~ "end" }
 
 Variant = { Identifier ~ ("(" ~ Type ~ ("," ~ Type)* ~ ")")* }
 
