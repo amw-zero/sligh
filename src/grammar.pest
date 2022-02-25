@@ -6,7 +6,7 @@ WHITESPACE = _{ " " | "\t" }
 
 Identifier = @{ !"end" ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "!")* }
 
-Receiver = @{ Identifier }
+Receiver = { Identifier }
 
 MethodArg = {  Expr  }
 
