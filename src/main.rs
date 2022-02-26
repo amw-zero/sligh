@@ -1,3 +1,4 @@
+use pest::iterators::Pair;
 use clap::Parser as ClapParser;
 use pest::{self, Parser as PestParser};
 use std::cmp::Ordering;
@@ -64,6 +65,8 @@ struct Prop {
     value: JSAstNode,
 }
 
+// This is more of an intermediate representation. Not necessarily
+// executable JS.
 #[derive(Debug, Clone)]
 enum JSAstNode {
     InvalidNode,
@@ -514,6 +517,7 @@ fn js_partition_class_definitions(node: &JSAstNode) -> PartitionedClassDefinitio
     let mut state_transitions: Vec<StateTransition> = vec![];
     let mut state_transition_nodes: Vec<JSAstNode> = vec![];
     let mut state_variables: Vec<JSAstNode> = vec![];
+
     match node {
         JSAstNode::ClassDef { body, .. } => match &**body {
             JSAstNode::ClassBody { definitions } => {
@@ -922,7 +926,7 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
 }
 
 // We generate a set of endpoints corresponding to all each state transition
-fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -> Vec<JSAstNode> {
+fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas, type_environment: &TypeEnvironment) -> Vec<JSAstNode> {
     let mut endpoints: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transition_nodes {
         match st {
@@ -935,6 +939,7 @@ fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas) -
                                     statement.clone(),
                                     &args,
                                     schemas,
+                                    type_environment,
                                 ));
                             }
                             _ => continue,
@@ -1081,6 +1086,7 @@ fn js_expand_state_transition_to_endpoint(
     body: JSAstNode,
     args: &Vec<JSAstNode>,
     schemas: &Schemas,
+    type_env: &TypeEnvironment,
 ) -> JSAstNode {
     match body {
         JSAstNode::CallExpr {
@@ -1088,6 +1094,7 @@ fn js_expand_state_transition_to_endpoint(
             call_name,
             ..
         } => {
+            // State var actually comes from the type of the receiver
             let state_var = js_gen_iden_name(*receiver);
             let call_name_str = js_gen_iden_name(*call_name);
             let state_transition_func = state_transition_func_from_str(&call_name_str);
@@ -1165,6 +1172,7 @@ fn js_infra_expand(
     node: JSAstNode,
     schemas: &Schemas,
     partitioned_class_defs: &PartitionedClassDefinitions,
+    type_environment: &TypeEnvironment,
 ) -> (JSAstNode, Vec<JSAstNode>) {
     match node {
         JSAstNode::ClassDef { ref name, .. } => {
@@ -1174,7 +1182,7 @@ fn js_infra_expand(
                 _ => panic!("Expected identifier"),
             };
             let client = js_make_client(class_name.clone(), &partitioned_class_defs);
-            let server = js_make_server(&partitioned_class_defs, schemas);
+            let server = js_make_server(&partitioned_class_defs, schemas, type_environment);
 
             (client, server)
         }
@@ -1453,11 +1461,13 @@ fn sql_gen_string(node: &SQLAstNode) -> String {
 
 type Schemas = HashMap<String, Schema>;
 
+#[derive(Clone)]
 struct SchemaAttribute {
     name: String,
     r#type: String,
 }
 
+#[derive(Clone)]
 struct Schema {
     /* name: String, */
     attributes: Vec<SchemaAttribute>,
@@ -1550,6 +1560,7 @@ fn js_gen_certification_properties(
 
                 let property_func_name = format!("{}Property", state_trans_name);
 
+                // TODO: For each state variable, add a data generator for it here
                 let mut property_args: Vec<JSAstNode> = vec![];
                 for data_generator in data_generators {
                     property_args.push(JSAstNode::CallExpr {
@@ -1640,7 +1651,7 @@ fn js_gen_certification_properties(
                                 call_name: Box::new(JSAstNode::Identifier(
                                     "asyncProperty".to_string(),
                                 )),
-                                args: property_args,
+                                    args: property_args,
                             },
                         ))],
                     }),
@@ -1711,6 +1722,30 @@ fn gen_certification_property_file(
 
     certification_file
 }
+enum PrimitiveType {
+    // Integers
+    Int,
+    // Fixed-point real numbers
+    Numeric,
+    // Strings
+    String,
+}
+
+enum CustomType {
+    Schema(Schema),
+    Variant,
+}
+
+enum Type {
+    Primitive(PrimitiveType),
+    Custom(CustomType),
+    Polymorphic {
+        custom_type: CustomType,
+        type_param: Box<Type>
+    }
+}
+
+type TypeEnvironment = HashMap<String, Type>;
 
 #[derive(ClapParser, Debug)]
 struct Args {
@@ -1733,34 +1768,71 @@ struct Args {
     state_transition_properties_output: String,
 }
 
+fn update_environment(pair: &Pair<Rule>, parsed: &AstNode, schemas: &mut Schemas, type_environment: &mut TypeEnvironment) {
+    match parsed.clone() {
+        AstNode::SchemaDef { name, body } => {
+            let schema_name = iden_name(*name);
+            let attributes = schema_attributes(*body);
+            let schema = Schema {
+                /*name: schema_name.clone(),*/
+                attributes: attributes.clone(),
+            };
+
+            schemas.insert(schema_name, schema);
+            for attribute in attributes {
+                match attribute.r#type.as_str() {
+                    "Int" => type_environment.insert(attribute.name.clone(), Type::Primitive(PrimitiveType::Int)),
+                    "Numeric" => type_environment.insert(attribute.name.clone(), Type::Primitive(PrimitiveType::Numeric)),
+                    "String" => type_environment.insert(attribute.name.clone(), Type::Primitive(PrimitiveType::String)),
+                    _ => None
+                };
+                match schemas.get(&attribute.r#type) {
+                    Some(s) => { 
+                        type_environment.insert(attribute.name, Type::Custom(CustomType::Schema(s.clone())));
+                    },
+                    None => {
+                        let span = pair.as_span();
+                        let (line, _) = span.start_pos().line_col();
+                        println!("Error on line {}: {} refers to unknown type: {}", line, attribute.name, attribute.r#type)
+                    }
+                }
+            }
+        }
+        _ => (),
+    }
+}
+
 fn main() {
     let args = Args::parse();
     let source = std::fs::read_to_string(args.input_file).expect("No input file provided.");
     let result = LangParser::parse(Rule::Program, &source);
+
+    // Mapping of names to Schema definitions
     let mut schemas: Schemas = HashMap::new();
+
+    // Mapping of variables to their types
+    let mut type_environment: TypeEnvironment = HashMap::new();
+
+    // Executable JS model representation of program
     let mut js_model: Vec<String> = vec![];
+
+    // Expanded client representation of program
     let mut js_expanded_client: Vec<String> = vec![];
+
+    // Expanded server endpoints for infrastructure-expanded program
     let mut js_endpoints: Vec<JSAstNode> = vec![];
+
+    // Generated properties for certifying the semantic equivalence of
+    // infrastructure-expanded program to source program (model)
     let mut certification_property_strs: Vec<String> = vec![];
     let mut certification_property_names: Vec<String> = vec![];
 
     match result {
         Ok(pairs) => {
             for pair in pairs {
-                let parsed = parse(pair);
-                match parsed.clone() {
-                    AstNode::SchemaDef { name, body } => {
-                        let schema_name = iden_name(*name);
-                        let attributes = schema_attributes(*body);
-                        let schema = Schema {
-                            /*name: schema_name.clone(),*/
-                            attributes: attributes,
-                        };
+                let parsed = parse(pair.clone());
 
-                        schemas.insert(schema_name, schema);
-                    }
-                    _ => (),
-                }
+                update_environment(&pair, &parsed, &mut schemas, &mut type_environment);                
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS
@@ -1772,7 +1844,7 @@ fn main() {
                 js_model.push(js_gen_string(js_executable_translate(&js_ast)));
 
                 let partitioned_class_defs = js_partition_class_definitions(&js_ast);
-                let (client, server) = js_infra_expand(js_ast, &schemas, &partitioned_class_defs);
+                let (client, server) = js_infra_expand(js_ast, &schemas, &partitioned_class_defs, &type_environment);
                 js_expanded_client.push(js_gen_string(client.clone()));
 
                 for endpoint in server {
