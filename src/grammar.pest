@@ -26,9 +26,9 @@ ExprList = { (Expr ~ NEWLINE)+ }
 
 Type = { Identifier }
 
-ArrayType = { "[" ~ Type ~ "]" }
+ArrayType = { "[" ~ Identifier ~ "]" }
 
-SchemaType = { Type | ArrayType }
+SchemaType = _{ Type | ArrayType }
 
 TypedIdentifier = { Identifier ~ ":" ~ SchemaType }
 

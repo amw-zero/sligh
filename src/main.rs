@@ -1,5 +1,5 @@
-use pest::iterators::Pair;
 use clap::Parser as ClapParser;
+use pest::iterators::Pair;
 use pest::{self, Parser as PestParser};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -27,7 +27,7 @@ enum AstNode {
         identifier: Box<AstNode>, // Identifier
         r#type: Box<AstNode>,     // Identifier
     },
-    Type(Box<AstNode>),
+    ArrayType(Box<AstNode>),     // Identifier
     SchemaAttribute {
         typed_identifier: Box<AstNode>, // TypedIdentifier
     },
@@ -147,9 +147,10 @@ enum JSAstNode {
     StringLiteral(String),
     // Expr(String),
     Identifier(String),
+    ArrayType(Box<JSAstNode>),
     TypedIdentifier {
         identifier: Box<JSAstNode>, // Identifier,
-        r#type: Box<JSAstNode>,     // Identifier
+        r#type: Box<JSAstNode>,     // Identifier | ArrayType
     },
 }
 
@@ -275,23 +276,11 @@ fn js_gen_string(node: JSAstNode) -> String {
         }
         JSAstNode::TypedIdentifier { identifier, r#type } => {
             let iden_str = js_gen_string(*identifier);
-            let type_str = js_gen_string(*r#type);
-
-            let type_str_chars: Vec<char> = type_str.chars().collect();
-            let last_char = *type_str_chars.last().unwrap();
-            let num_chars = type_str_chars.len();
-            let gen_type_str = if type_str_chars[0] == '[' && last_char == ']' {
-                let type_name: String = type_str_chars
-                    .into_iter()
-                    .skip(1)
-                    .take(num_chars - 2)
-                    .collect();
-                format!("{}[]", type_name)
-            } else {
-                type_str
-            };
-
-            format!("{}: {}", iden_str, gen_type_str)
+            match *r#type {
+                JSAstNode::Identifier(i) => format!("{}: {}", iden_str, i),
+                JSAstNode::ArrayType(i) => format!("{}: {}[]", iden_str, js_gen_string(*i)),
+                _ => panic!("Should only be translating types")
+            }
         }
         JSAstNode::Identifier(_) => js_gen_iden_name(node),
         JSAstNode::Object { props } => {
@@ -418,6 +407,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
             r#type: Box::new(js_translate(*r#type)),
         },
         AstNode::Identifier(n) => JSAstNode::Identifier(n),
+        AstNode::ArrayType(i) => JSAstNode::ArrayType(Box::new(js_translate(*i))),
         AstNode::SchemaMethod {
             name, args, body, ..
         } => {
@@ -873,9 +863,9 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
     }
 
     for state_var in &class_defs.state_variables {
-        // State variables require default values to be valid 
+        // State variables require default values to be valid
         // JS class syntax. Would like to possibly have a separate
-        // pass for this similar to js_executable_translate, but 
+        // pass for this similar to js_executable_translate, but
         // focused on client-side executability
         let with_defaults = js_apply_defaults(state_var);
         expanded_definitions.push(with_defaults);
@@ -926,7 +916,11 @@ fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) 
 }
 
 // We generate a set of endpoints corresponding to all each state transition
-fn js_make_server(class_defs: &PartitionedClassDefinitions, schemas: &Schemas, type_environment: &TypeEnvironment) -> Vec<JSAstNode> {
+fn js_make_server(
+    class_defs: &PartitionedClassDefinitions,
+    schemas: &Schemas,
+    type_environment: &TypeEnvironment,
+) -> Vec<JSAstNode> {
     let mut endpoints: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transition_nodes {
         match st {
@@ -1297,8 +1291,11 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
                 r#type: Box::new(parse(inner.next().unwrap())),
             }
         }
-        Rule::SchemaType => AstNode::Identifier(pair.as_str().into()),
-        Rule::Type => AstNode::Type(Box::new(parse(pair.into_inner().next().unwrap()))),
+        Rule::Type => parse(pair.into_inner().next().unwrap()),
+        Rule::ArrayType => {
+            let type_iden = parse(pair.into_inner().next().unwrap());
+            AstNode::ArrayType(Box::new(type_iden))
+        }
         Rule::SchemaDef => {
             let mut inner = pair.into_inner();
             let name = identifier(inner.next().unwrap());
@@ -1337,7 +1334,7 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
                     .map(|e| AstNode::Identifier(e.as_str().into()))
                     .collect(),
             }
-        },
+        }
         Rule::DotAccess => AstNode::InvalidNode,
         Rule::MethodBody => parse(pair.into_inner().next().unwrap()),
         Rule::ExprList => AstNode::ExprList(pair.into_inner().map(parse).collect()),
@@ -1461,15 +1458,15 @@ fn sql_gen_string(node: &SQLAstNode) -> String {
 
 type Schemas = HashMap<String, Schema>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct SchemaAttribute {
     name: String,
-    r#type: String,
+    r#type: Type,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Schema {
-    /* name: String, */
+    name: String,
     attributes: Vec<SchemaAttribute>,
 }
 
@@ -1480,17 +1477,47 @@ fn iden_name(iden: AstNode) -> String {
     }
 }
 
-fn schema_attributes(schema_body: AstNode) -> Vec<SchemaAttribute> {
+fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
+    if let Some(primitive_type) = match type_str {
+        "Int" => Some(Type::Primitive(PrimitiveType::Int)),
+        "Numeric" => Some(Type::Primitive(PrimitiveType::Numeric)),
+        "String" => Some(Type::Primitive(PrimitiveType::String)),
+        _ => None,
+    } {
+        primitive_type
+    } else {
+        let schema = schemas.get(type_str);
+        if !schema.is_some() {
+            panic!("Unable to find schema during attribute type resolution")
+        }
+
+        Type::Custom(CustomType::Schema(schema.unwrap().name.clone()))
+    }
+}
+
+fn schema_attributes(schema_body: AstNode, schemas: &Schemas) -> Vec<SchemaAttribute> {
     let mut attrs: Vec<SchemaAttribute> = vec![];
     match schema_body {
         AstNode::SchemaBody { definitions } => {
             for def in definitions {
                 match def {
-                    AstNode::SchemaAttribute { typed_identifier } => match *typed_identifier {
+                    AstNode::SchemaAttribute { typed_identifier } => match *typed_identifier.clone() {
                         AstNode::TypedIdentifier { identifier, r#type } => {
                             let attr_name = iden_name(*identifier);
-                            let attr_type = iden_name(*r#type);
 
+                            println!("Parsing schema attributes for {}:  {:?}", attr_name, typed_identifier);
+                            let attr_type = match *r#type {
+                                AstNode::Identifier(i) => type_from_str(&i, schemas),
+                                AstNode::ArrayType(i) => {
+                                    let schema = schemas.get(&iden_name(*i));
+                                    Type::Polymorphic {
+                                        r#type: Box::new(Type::Primitive(PrimitiveType::Array)),
+                                        type_param: Box::new(Type::Custom(CustomType::Schema(schema.unwrap().name.clone()))) 
+                                    }
+                                },
+                                _ => panic!("Should only be parsing information out of type nodes")
+                            };
+                            
                             attrs.push(SchemaAttribute {
                                 name: attr_name,
                                 r#type: attr_type,
@@ -1510,10 +1537,13 @@ fn schema_attributes(schema_body: AstNode) -> Vec<SchemaAttribute> {
 
 // Translation Certification
 
-fn fast_check_arbitrary_from_type(type_name: &str) -> String {
-    match type_name {
-        "String" => "string".to_string(),
-        "Numeric" => "float".to_string(),
+fn fast_check_arbitrary_from_type(r#type: &Type) -> String {
+    match r#type {
+        Type::Primitive(pt) => match pt {
+            PrimitiveType::String => "string".to_string(),
+            PrimitiveType::Numeric => "float".to_string(),
+            _ => panic!("Trying to convert unknown primitive type to a fast-check arbitrary")
+        }
         _ => panic!("Trying to convert unknown type name to a fast-check arbitrary"),
     }
 }
@@ -1651,7 +1681,7 @@ fn js_gen_certification_properties(
                                 call_name: Box::new(JSAstNode::Identifier(
                                     "asyncProperty".to_string(),
                                 )),
-                                    args: property_args,
+                                args: property_args,
                             },
                         ))],
                     }),
@@ -1671,11 +1701,16 @@ fn js_gen_certification_properties(
 fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
     let define_endpoints_func = JSAstNode::FuncDef {
         name: Box::new(JSAstNode::Identifier("defineEndpoints".to_string())),
-        args: vec![JSAstNode::Identifier("app".to_string()), JSAstNode::Identifier("db".to_string())],
-        body: Box::new(JSAstNode::StatementList { statements: endpoints.clone() }),
+        args: vec![
+            JSAstNode::Identifier("app".to_string()),
+            JSAstNode::Identifier("db".to_string()),
+        ],
+        body: Box::new(JSAstNode::StatementList {
+            statements: endpoints.clone(),
+        }),
         return_type: Box::new(JSAstNode::InvalidNode),
     };
-    
+
     return js_gen_string(define_endpoints_func);
 }
 
@@ -1722,6 +1757,8 @@ fn gen_certification_property_file(
 
     certification_file
 }
+
+#[derive(Debug, Clone)]
 enum PrimitiveType {
     // Integers
     Int,
@@ -1729,20 +1766,23 @@ enum PrimitiveType {
     Numeric,
     // Strings
     String,
+    Array,
 }
 
+#[derive(Debug, Clone)]
 enum CustomType {
-    Schema(Schema),
+    Schema(String),  // Schema name
     Variant,
 }
 
+#[derive(Debug, Clone)]
 enum Type {
     Primitive(PrimitiveType),
     Custom(CustomType),
     Polymorphic {
-        custom_type: CustomType,
-        type_param: Box<Type>
-    }
+        r#type: Box<Type>,
+        type_param: Box<Type>,
+    },
 }
 
 type TypeEnvironment = HashMap<String, Type>;
@@ -1768,34 +1808,38 @@ struct Args {
     state_transition_properties_output: String,
 }
 
-fn update_environment(pair: &Pair<Rule>, parsed: &AstNode, schemas: &mut Schemas, type_environment: &mut TypeEnvironment) {
+// To enforce uniqueness of names in the type environment
+fn type_env_name(schema_name: &str, var_name: &str) -> String {
+    format!("{}.{}", schema_name, var_name)
+}
+
+// Display errors with line number:
+//         let span = pair.as_span();
+//         let (line, _) = span.start_pos().line_col();
+//         println!(
+//             "Error on line {}: {} refers to unknown type: {}",
+//             line, attribute.name, attribute.r#type
+//         )
+//     }
+
+fn update_environment(
+    pair: &Pair<Rule>,
+    parsed: &AstNode,
+    schemas: &mut Schemas,
+    type_environment: &mut TypeEnvironment,
+) {
     match parsed.clone() {
         AstNode::SchemaDef { name, body } => {
             let schema_name = iden_name(*name);
-            let attributes = schema_attributes(*body);
+            let attributes = schema_attributes(*body, schemas);
             let schema = Schema {
-                /*name: schema_name.clone(),*/
+                name: schema_name.clone(),
                 attributes: attributes.clone(),
             };
 
-            schemas.insert(schema_name, schema);
+            schemas.insert(schema_name.clone(), schema);
             for attribute in attributes {
-                match attribute.r#type.as_str() {
-                    "Int" => type_environment.insert(attribute.name.clone(), Type::Primitive(PrimitiveType::Int)),
-                    "Numeric" => type_environment.insert(attribute.name.clone(), Type::Primitive(PrimitiveType::Numeric)),
-                    "String" => type_environment.insert(attribute.name.clone(), Type::Primitive(PrimitiveType::String)),
-                    _ => None
-                };
-                match schemas.get(&attribute.r#type) {
-                    Some(s) => { 
-                        type_environment.insert(attribute.name, Type::Custom(CustomType::Schema(s.clone())));
-                    },
-                    None => {
-                        let span = pair.as_span();
-                        let (line, _) = span.start_pos().line_col();
-                        println!("Error on line {}: {} refers to unknown type: {}", line, attribute.name, attribute.r#type)
-                    }
-                }
+                type_environment.insert(type_env_name(&schema_name, &attribute.name), attribute.r#type);
             }
         }
         _ => (),
@@ -1831,11 +1875,12 @@ fn main() {
         Ok(pairs) => {
             for pair in pairs {
                 let parsed = parse(pair.clone());
+                println!("{:?}", parsed);
 
-                update_environment(&pair, &parsed, &mut schemas, &mut type_environment);                
+                update_environment(&pair, &parsed, &mut schemas, &mut type_environment);
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
-                // Sligh that aren't allowed in JS
+                // Sligh that aren't allowed in JS. It is more of an intermediate representation.
                 let js_ast = js_translate(parsed.clone());
 
                 // js_executable_translate converts Sligh constructs to executable JS, e.g. by
@@ -1844,7 +1889,8 @@ fn main() {
                 js_model.push(js_gen_string(js_executable_translate(&js_ast)));
 
                 let partitioned_class_defs = js_partition_class_definitions(&js_ast);
-                let (client, server) = js_infra_expand(js_ast, &schemas, &partitioned_class_defs, &type_environment);
+                let (client, server) =
+                    js_infra_expand(js_ast, &schemas, &partitioned_class_defs, &type_environment);
                 js_expanded_client.push(js_gen_string(client.clone()));
 
                 for endpoint in server {
@@ -1863,10 +1909,18 @@ fn main() {
         Err(e) => println!("Error {:?}", e),
     }
 
+    if true {
+        println!("Type environment:");
+        for (var, r#type) in type_environment {
+            println!("{}: {:?}", var, r#type);
+        }
+    }
+
     let client_code = js_expanded_client.join("\n\n");
     fs::write(args.client_output, client_code).expect("Unable to write client code file.");
 
-    fs::write(args.server_output, gen_server_endpoint_file(&js_endpoints)).expect("Unable to write server code file.");
+    fs::write(args.server_output, gen_server_endpoint_file(&js_endpoints))
+        .expect("Unable to write server code file.");
 
     let model_code = js_model.join("\n\n");
     fs::write(args.model_output, model_code).expect("Unable to write model code file.");
