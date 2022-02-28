@@ -56,10 +56,12 @@ enum AstNode {
         receiver: Box<AstNode>, // Identifier
         property: Box<AstNode>, // Identifier
     },
+    /*
     FuncCall {
         name: Box<AstNode>,
         args: Vec<AstNode>,
     },
+    */
     // Expr(String),
 }
 
@@ -500,7 +502,6 @@ struct StateTransition {
     state_variable: String,
     transition_type: StateTransitionFunc,
     args: Vec<TypedArgument>,
-    node: JSAstNode,
 }
 
 fn is_state_transition(func_name: &str) -> bool {
@@ -558,7 +559,6 @@ fn js_partition_class_definitions(node: &JSAstNode) -> PartitionedClassDefinitio
                                                     transition_type: state_transition_func_from_str(
                                                         &state_transition_name,
                                                     ),
-                                                    node: def.clone(),
                                                 });
                                                 state_transition_nodes.push(def.clone());
                                                 break;
