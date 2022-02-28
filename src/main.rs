@@ -565,14 +565,14 @@ fn js_partition_class_definitions(node: &JSAstNode) -> PartitionedClassDefinitio
                                             } else {
                                                 // TODO: Should have state variables and 'other' separated
                                                 // to support other statements inside schema definitions
-                                                state_variables.push(def.clone());
+                                                continue
                                             }
                                         }
-                                        _ => state_variables.push(def.clone()),
+                                        _ => continue,
                                     }
                                 }
                             }
-                            _ => state_variables.push(def.clone()),
+                            _ => (),
                         },
                         JSAstNode::ClassProperty { .. } => state_variables.push(def.clone()),
                         _ => panic!("Found unknown class body definition"),
@@ -805,7 +805,7 @@ fn js_expand_state_transition_client(
 }
 
 // Replace class methods (state transitions) with network requests
-fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
+fn js_class_method_body_expand(body: JSAstNode, class_name: &str, method_name: &str, type_env: &TypeEnvironment) -> JSAstNode {
     match body {
         JSAstNode::CallExpr {
             receiver,
@@ -818,7 +818,10 @@ fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
             for arg in args {
                 arg_names.push(js_gen_iden_name(arg));
             }
-            let action = js_expand_state_transition_client(call_name, receiver_name, arg_names);
+            let name_path = vec![class_name.to_string(), method_name.to_string(), receiver_name.to_string()];
+            let r#type = resolve_variable_type(&name_path, type_env).expect("Making client-side network request - variable must be present in type environment");
+            let endpoint_name = relation_name_from_type(&r#type);
+            let action = js_expand_state_transition_client(call_name, endpoint_name, arg_names);
 
             action.clone()
         }
@@ -826,13 +829,14 @@ fn js_class_method_body_expand(body: JSAstNode) -> JSAstNode {
     }
 }
 
-fn js_expand_client(class_method: JSAstNode) -> JSAstNode {
+fn js_expand_client(class_method: JSAstNode, class_name: &str, type_env: &TypeEnvironment) -> JSAstNode {
     match class_method {
         JSAstNode::ClassMethod { name, args, body } => match *body {
             JSAstNode::StatementList { statements } => {
+                let method_name = js_gen_iden_name(*name.clone());
                 let mut expanded_statements: Vec<JSAstNode> = vec![];
                 for statement in statements {
-                    expanded_statements.push(js_class_method_body_expand(statement.clone()));
+                    expanded_statements.push(js_class_method_body_expand(statement.clone(), class_name, &method_name, type_env));
                 }
 
                 JSAstNode::ClassMethod {
@@ -862,10 +866,10 @@ fn js_apply_defaults(state_var: &JSAstNode) -> JSAstNode {
     // }
 }
 
-fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions) -> JSAstNode {
+fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions, type_env: &TypeEnvironment) -> JSAstNode {
     let mut expanded_definitions: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transition_nodes {
-        expanded_definitions.push(js_expand_client(st.clone()))
+        expanded_definitions.push(js_expand_client(st.clone(), &class_name, type_env))
     }
 
     for state_var in &class_defs.state_variables {
@@ -1092,7 +1096,7 @@ fn relation_name_from_type(r#type: &Type) -> String {
                 CustomType::Schema(schema_name) => {
                     let mut relation_name = schema_name.to_case(Case::Snake);
                     relation_name.push('s');
-                    
+
                     relation_name
                 },
                 _ => panic!("Can only get relation name from Array types")
@@ -1118,17 +1122,10 @@ fn js_expand_state_transition_to_endpoint(
             call_name,
             ..
         } => {
-            // State var actually comes from the type of the receiver
+            // State var comes from the type of the receiver
             let receiver_name = js_gen_iden_name(*receiver);
-            println!("Receiver name: {}", receiver_name);
-            for (var, r#type) in type_env {
-                println!("{}: {:?}", var, r#type);
-            }
-
             let name_path = vec![class_name.to_string(), method_name.to_string(), receiver_name];
-//            let qualified_receiver_name = type_env_name(&name_path);
-            println!("Qualified receiver name: {:?}", name_path);
-            let receiver_type = resolve_variable_type(&name_path, type_env).expect("Variable must be present in type environment");
+            let receiver_type = resolve_variable_type(&name_path, type_env).expect("Making server-side endpoint definition: variable must be present in type environment");
             let state_var = relation_name_from_type(&receiver_type);
             let call_name_str = js_gen_iden_name(*call_name);
             let state_transition_func = state_transition_func_from_str(&call_name_str);
@@ -1215,7 +1212,7 @@ fn js_infra_expand(
                 JSAstNode::Identifier(n) => n,
                 _ => panic!("Expected identifier"),
             };
-            let client = js_make_client(class_name.clone(), &partitioned_class_defs);
+            let client = js_make_client(class_name.clone(), &partitioned_class_defs, type_environment);
             let server = js_make_server(&partitioned_class_defs, schemas, type_environment, &class_name);
 
             (client, server)
@@ -1296,10 +1293,6 @@ fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
 }
 
 fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
-    // Only handling methods with arguments right now
-    // println!("Parsing schema method");
-    // println!("{}", pair.to_json());
-
     let mut schema_method = pair.into_inner();
 
     let mut method_args = schema_method.next().unwrap().into_inner();
@@ -1930,8 +1923,6 @@ fn update_environment(
                 _ => panic!("Should only be parsing information out of type nodes")
             };
 
-            println!("Adding to type environment {}:  {:?}", attr_name, node);
-            println!("{:?}", name_qualification_path);
             let mut updated_name_path = name_qualification_path.clone();
             updated_name_path.push(attr_name);
             type_environment.insert(type_env_name(&updated_name_path), attr_type);
@@ -1961,7 +1952,7 @@ fn update_environment(
                 panic!("Cannot find type of right hand side of let expression");
             }
         },
-        _ => println!("Attempted to add type information for unhandled node")
+        _ => () /*println!("Attempted to add type information for unhandled node")*/
     }
 }
 
@@ -2023,21 +2014,10 @@ fn main() {
     match result {
         Ok(pairs) => {
             for pair in pairs {
-                println!("\n\nParsing statement");
                 let parsed = parse(pair.clone());
-                println!("{:?}", parsed);
 
                 let name_path = vec![];
                 update_environment(&pair, &parsed, &mut schemas, &mut type_environment, name_path);
-
-
-                if true {
-                    println!("Type environment:");
-                    for (var, r#type) in &type_environment {
-                        println!("{}: {:?}", var, r#type);
-                    }
-                    println!("\n\n")
-                }
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
@@ -2049,6 +2029,7 @@ fn main() {
                 js_model.push(js_gen_string(js_executable_translate(&js_ast)));
 
                 let partitioned_class_defs = js_partition_class_definitions(&js_ast);
+
                 let (client, server) =
                     js_infra_expand(js_ast, &schemas, &partitioned_class_defs, &type_environment);
                 js_expanded_client.push(js_gen_string(client.clone()));
