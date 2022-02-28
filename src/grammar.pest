@@ -6,6 +6,8 @@ WHITESPACE = _{ " " | "\t" }
 
 Identifier = @{ !"end" ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "!")* }
 
+NumberLiteral = @{ ASCII_DIGIT }
+
 Receiver = { Identifier }
 
 MethodArg = {  Expr  }
@@ -20,7 +22,7 @@ DotAccess = { Identifier ~ "." ~ Identifier }
 
 MethodCall = { Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg)* ~ ")" }
 
-Expr = _{  MethodCall | DotAccess | LetExpr | FuncCall | Identifier }
+Expr = _{  MethodCall | DotAccess | LetExpr | FuncCall | Identifier | NumberLiteral }
 
 ExprList = { (Expr ~ NEWLINE)+ }
 
