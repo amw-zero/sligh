@@ -1,10 +1,10 @@
 use clap::Parser as ClapParser;
+use convert_case::{Case, Casing};
 use pest::iterators::Pair;
 use pest::{self, Parser as PestParser};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
-use convert_case::{Case, Casing};
 
 const DEBUG: bool = false;
 const API_HOST: &str = "http://localhost:3000";
@@ -28,7 +28,7 @@ enum AstNode {
         identifier: Box<AstNode>, // Identifier
         r#type: Box<AstNode>,     // Identifier
     },
-    ArrayType(Box<AstNode>),     // Identifier
+    ArrayType(Box<AstNode>), // Identifier
     SchemaAttribute {
         typed_identifier: Box<AstNode>, // TypedIdentifier
     },
@@ -49,12 +49,12 @@ enum AstNode {
     },
     ExprList(Vec<AstNode>),
     LetExpr {
-        name: Box<AstNode>, // Identifier
+        name: Box<AstNode>,  // Identifier
         value: Box<AstNode>, // Expr
     },
     DotAccess {
         receiver: Box<AstNode>, // Identifier
-        property: Box<AstNode>  // Identifier
+        property: Box<AstNode>, // Identifier
     },
     FuncCall {
         name: Box<AstNode>,
@@ -285,7 +285,7 @@ fn js_gen_string(node: JSAstNode) -> String {
             match *r#type {
                 JSAstNode::Identifier(i) => format!("{}: {}", iden_str, i),
                 JSAstNode::ArrayType(i) => format!("{}: {}[]", iden_str, js_gen_string(*i)),
-                _ => panic!("Should only be translating types")
+                _ => panic!("Should only be translating types"),
             }
         }
         JSAstNode::Identifier(_) => js_gen_iden_name(node),
@@ -565,7 +565,7 @@ fn js_partition_class_definitions(node: &JSAstNode) -> PartitionedClassDefinitio
                                             } else {
                                                 // TODO: Should have state variables and 'other' separated
                                                 // to support other statements inside schema definitions
-                                                continue
+                                                continue;
                                             }
                                         }
                                         _ => continue,
@@ -805,7 +805,12 @@ fn js_expand_state_transition_client(
 }
 
 // Replace class methods (state transitions) with network requests
-fn js_class_method_body_expand(body: JSAstNode, class_name: &str, method_name: &str, type_env: &TypeEnvironment) -> JSAstNode {
+fn js_class_method_body_expand(
+    body: JSAstNode,
+    class_name: &str,
+    method_name: &str,
+    type_env: &TypeEnvironment,
+) -> JSAstNode {
     match body {
         JSAstNode::CallExpr {
             receiver,
@@ -818,8 +823,14 @@ fn js_class_method_body_expand(body: JSAstNode, class_name: &str, method_name: &
             for arg in args {
                 arg_names.push(js_gen_iden_name(arg));
             }
-            let name_path = vec![class_name.to_string(), method_name.to_string(), receiver_name.to_string()];
-            let r#type = resolve_variable_type(&name_path, type_env).expect("Making client-side network request - variable must be present in type environment");
+            let name_path = vec![
+                class_name.to_string(),
+                method_name.to_string(),
+                receiver_name.to_string(),
+            ];
+            let r#type = resolve_variable_type(&name_path, type_env).expect(
+                "Making client-side network request - variable must be present in type environment",
+            );
             let endpoint_name = relation_name_from_type(&r#type);
             let action = js_expand_state_transition_client(call_name, endpoint_name, arg_names);
 
@@ -829,14 +840,23 @@ fn js_class_method_body_expand(body: JSAstNode, class_name: &str, method_name: &
     }
 }
 
-fn js_expand_client(class_method: JSAstNode, class_name: &str, type_env: &TypeEnvironment) -> JSAstNode {
+fn js_expand_client(
+    class_method: JSAstNode,
+    class_name: &str,
+    type_env: &TypeEnvironment,
+) -> JSAstNode {
     match class_method {
         JSAstNode::ClassMethod { name, args, body } => match *body {
             JSAstNode::StatementList { statements } => {
                 let method_name = js_gen_iden_name(*name.clone());
                 let mut expanded_statements: Vec<JSAstNode> = vec![];
                 for statement in statements {
-                    expanded_statements.push(js_class_method_body_expand(statement.clone(), class_name, &method_name, type_env));
+                    expanded_statements.push(js_class_method_body_expand(
+                        statement.clone(),
+                        class_name,
+                        &method_name,
+                        type_env,
+                    ));
                 }
 
                 JSAstNode::ClassMethod {
@@ -866,7 +886,11 @@ fn js_apply_defaults(state_var: &JSAstNode) -> JSAstNode {
     // }
 }
 
-fn js_make_client(class_name: String, class_defs: &PartitionedClassDefinitions, type_env: &TypeEnvironment) -> JSAstNode {
+fn js_make_client(
+    class_name: String,
+    class_defs: &PartitionedClassDefinitions,
+    type_env: &TypeEnvironment,
+) -> JSAstNode {
     let mut expanded_definitions: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transition_nodes {
         expanded_definitions.push(js_expand_client(st.clone(), &class_name, type_env))
@@ -935,7 +959,12 @@ fn js_make_server(
     let mut endpoints: Vec<JSAstNode> = vec![];
     for st in &class_defs.state_transition_nodes {
         match st {
-            JSAstNode::ClassMethod { body, args, name: method_name, .. } => match &**body {
+            JSAstNode::ClassMethod {
+                body,
+                args,
+                name: method_name,
+                ..
+            } => match &**body {
                 JSAstNode::StatementList { statements } => {
                     for statement in statements {
                         match statement {
@@ -1098,12 +1127,12 @@ fn relation_name_from_type(r#type: &Type) -> String {
                     relation_name.push('s');
 
                     relation_name
-                },
-                _ => panic!("Can only get relation name from Array types")
-            }
-            _ => panic!("Can only get relation name from Array types")
+                }
+                _ => panic!("Can only get relation name from Array types"),
+            },
+            _ => panic!("Can only get relation name from Array types"),
         },
-        _ => panic!("Can only get relation name from Array types")
+        _ => panic!("Can only get relation name from Array types"),
     }
 }
 
@@ -1124,7 +1153,11 @@ fn js_expand_state_transition_to_endpoint(
         } => {
             // State var comes from the type of the receiver
             let receiver_name = js_gen_iden_name(*receiver);
-            let name_path = vec![class_name.to_string(), method_name.to_string(), receiver_name];
+            let name_path = vec![
+                class_name.to_string(),
+                method_name.to_string(),
+                receiver_name,
+            ];
             let receiver_type = resolve_variable_type(&name_path, type_env).expect("Making server-side endpoint definition: variable must be present in type environment");
             let state_var = relation_name_from_type(&receiver_type);
             let call_name_str = js_gen_iden_name(*call_name);
@@ -1212,8 +1245,17 @@ fn js_infra_expand(
                 JSAstNode::Identifier(n) => n,
                 _ => panic!("Expected identifier"),
             };
-            let client = js_make_client(class_name.clone(), &partitioned_class_defs, type_environment);
-            let server = js_make_server(&partitioned_class_defs, schemas, type_environment, &class_name);
+            let client = js_make_client(
+                class_name.clone(),
+                &partitioned_class_defs,
+                type_environment,
+            );
+            let server = js_make_server(
+                &partitioned_class_defs,
+                schemas,
+                type_environment,
+                &class_name,
+            );
 
             (client, server)
         }
@@ -1373,8 +1415,11 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
             let receiver = parse(dot_access.next().unwrap());
             let property = parse(dot_access.next().unwrap());
 
-            AstNode::DotAccess { receiver: Box::new(receiver), property: Box::new(property) }
-        },
+            AstNode::DotAccess {
+                receiver: Box::new(receiver),
+                property: Box::new(property),
+            }
+        }
         Rule::MethodBody => parse(pair.into_inner().next().unwrap()),
         Rule::ExprList => AstNode::ExprList(pair.into_inner().map(parse).collect()),
         Rule::LetExpr => {
@@ -1382,11 +1427,11 @@ fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
             let mut let_expr = pair.into_inner();
             let var_name = parse(let_expr.next().unwrap());
             let expr = parse(let_expr.next().unwrap());
-            AstNode::LetExpr { 
+            AstNode::LetExpr {
                 name: Box::new(var_name),
                 value: Box::new(expr),
             }
-        },
+        }
         Rule::FuncCall => AstNode::InvalidNode,
         _ => {
             if DEBUG {
@@ -1549,7 +1594,8 @@ fn schema_attributes(schema_body: &AstNode, schemas: &Schemas) -> Vec<SchemaAttr
         AstNode::SchemaBody { definitions } => {
             for def in definitions {
                 match def {
-                        AstNode::SchemaAttribute { typed_identifier } => match *typed_identifier.clone() {
+                    AstNode::SchemaAttribute { typed_identifier } => {
+                        match *typed_identifier.clone() {
                             AstNode::TypedIdentifier { identifier, r#type } => {
                                 let attr_name = iden_name(&*identifier);
                                 let attr_type = match *r#type {
@@ -1558,21 +1604,26 @@ fn schema_attributes(schema_body: &AstNode, schemas: &Schemas) -> Vec<SchemaAttr
                                         let schema = schemas.get(&iden_name(&*i));
                                         Type::Polymorphic {
                                             r#type: Box::new(Type::Primitive(PrimitiveType::Array)),
-                                            type_param: Box::new(Type::Custom(CustomType::Schema(schema.unwrap().name.clone()))) 
+                                            type_param: Box::new(Type::Custom(CustomType::Schema(
+                                                schema.unwrap().name.clone(),
+                                            ))),
                                         }
-                                    },
-                                    _ => panic!("Should only be parsing information out of type nodes")
+                                    }
+                                    _ => panic!(
+                                        "Should only be parsing information out of type nodes"
+                                    ),
                                 };
-                                
+
                                 attrs.push(SchemaAttribute {
                                     name: attr_name,
                                     r#type: attr_type,
                                 });
                             }
                             _ => continue,
-                        },
-                        _ => continue,
+                        }
                     }
+                    _ => continue,
+                }
             }
 
             attrs
@@ -1588,8 +1639,8 @@ fn fast_check_arbitrary_from_type(r#type: &Type) -> String {
         Type::Primitive(pt) => match pt {
             PrimitiveType::String => "string".to_string(),
             PrimitiveType::Numeric => "float".to_string(),
-            _ => panic!("Trying to convert unknown primitive type to a fast-check arbitrary")
-        }
+            _ => panic!("Trying to convert unknown primitive type to a fast-check arbitrary"),
+        },
         _ => panic!("Trying to convert unknown type name to a fast-check arbitrary"),
     }
 }
@@ -1824,7 +1875,7 @@ enum PrimitiveType {
 
 #[derive(Debug, Clone)]
 enum CustomType {
-    Schema(String),  // Schema name
+    Schema(String), // Schema name
     Variant,
 }
 
@@ -1845,8 +1896,8 @@ type TypeEnvironment = HashMap<String, Type>;
 fn resolve_variable_type(name_path: &Vec<String>, type_env: &TypeEnvironment) -> Option<Type> {
     // Remove each parent until only the variable name is left
     if name_path.len() == 1 {
-        return None
-    } 
+        return None;
+    }
 
     let qualified_name = type_env_name(name_path);
     match type_env.get(&qualified_name) {
@@ -1869,8 +1920,8 @@ fn resolve_type(node: &AstNode, type_env: &TypeEnvironment) -> Option<Type> {
             let qualified_name = type_env_name(&name_path);
 
             type_env.get(&qualified_name).cloned()
-        },
-        _ => None
+        }
+        _ => None,
     }
 }
 
@@ -1891,9 +1942,9 @@ fn update_environment(
                 name: schema_name.clone(),
                 attributes: attributes.clone(),
             };
-           schemas.insert(schema_name.clone(), schema);
-        },
-        _ => ()
+            schemas.insert(schema_name.clone(), schema);
+        }
+        _ => (),
     };
     // Add to Type environment:
     match node {
@@ -1905,10 +1956,22 @@ fn update_environment(
         }
         AstNode::SchemaBody { definitions } => {
             for def in definitions {
-                update_environment(pair, def, schemas, type_environment, name_qualification_path.clone());
+                update_environment(
+                    pair,
+                    def,
+                    schemas,
+                    type_environment,
+                    name_qualification_path.clone(),
+                );
             }
-        },
-        AstNode::SchemaAttribute { typed_identifier } => update_environment(pair, typed_identifier, schemas, type_environment, name_qualification_path),
+        }
+        AstNode::SchemaAttribute { typed_identifier } => update_environment(
+            pair,
+            typed_identifier,
+            schemas,
+            type_environment,
+            name_qualification_path,
+        ),
         AstNode::TypedIdentifier { identifier, r#type } => {
             let attr_name = iden_name(&**identifier);
             let attr_type = match &**r#type {
@@ -1917,29 +1980,51 @@ fn update_environment(
                     let schema = schemas.get(&iden_name(&*i));
                     Type::Polymorphic {
                         r#type: Box::new(Type::Primitive(PrimitiveType::Array)),
-                        type_param: Box::new(Type::Custom(CustomType::Schema(schema.unwrap().name.clone()))) 
+                        type_param: Box::new(Type::Custom(CustomType::Schema(
+                            schema.unwrap().name.clone(),
+                        ))),
                     }
-                },
-                _ => panic!("Should only be parsing information out of type nodes")
+                }
+                _ => panic!("Should only be parsing information out of type nodes"),
             };
 
             let mut updated_name_path = name_qualification_path.clone();
             updated_name_path.push(attr_name);
             type_environment.insert(type_env_name(&updated_name_path), attr_type);
-        },
-        AstNode::SchemaMethod { name, args, body, .. } => {
+        }
+        AstNode::SchemaMethod {
+            name, args, body, ..
+        } => {
             let method_name = iden_name(&**name);
             let mut updated_name_path = name_qualification_path.clone();
             updated_name_path.push(method_name);
             for arg in args {
-                update_environment(pair, arg, schemas, type_environment, updated_name_path.clone());
+                update_environment(
+                    pair,
+                    arg,
+                    schemas,
+                    type_environment,
+                    updated_name_path.clone(),
+                );
             }
 
-            update_environment(pair, body, schemas, type_environment, updated_name_path.clone());
+            update_environment(
+                pair,
+                body,
+                schemas,
+                type_environment,
+                updated_name_path.clone(),
+            );
         }
         AstNode::ExprList(exprs) => {
             for expr in exprs {
-                update_environment(pair, expr, schemas, type_environment, name_qualification_path.clone())
+                update_environment(
+                    pair,
+                    expr,
+                    schemas,
+                    type_environment,
+                    name_qualification_path.clone(),
+                )
             }
         }
         AstNode::LetExpr { name, value } => {
@@ -1951,8 +2036,8 @@ fn update_environment(
             } else {
                 panic!("Cannot find type of right hand side of let expression");
             }
-        },
-        _ => () /*println!("Attempted to add type information for unhandled node")*/
+        }
+        _ => (), /*println!("Attempted to add type information for unhandled node")*/
     }
 }
 
@@ -2017,7 +2102,13 @@ fn main() {
                 let parsed = parse(pair.clone());
 
                 let name_path = vec![];
-                update_environment(&pair, &parsed, &mut schemas, &mut type_environment, name_path);
+                update_environment(
+                    &pair,
+                    &parsed,
+                    &mut schemas,
+                    &mut type_environment,
+                    name_path,
+                );
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
@@ -2048,7 +2139,7 @@ fn main() {
             }
         }
         Err(e) => println!("Error {:?}", e),
-    }    
+    }
 
     let client_code = js_expanded_client.join("\n\n");
     fs::write(args.client_output, client_code).expect("Unable to write client code file.");
