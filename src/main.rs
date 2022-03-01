@@ -1819,7 +1819,7 @@ fn gen_certification_property_file(
         import { expect } from \"chai\";\n\
         import fc from \"fast-check\"\n\
         import { Budget as Fullstack,  } from \"./generated-client\";\n\
-        import { Budget as Model } from \"./generated-model\n"
+        import { Budget as Model } from \"./generated-model\"\n"
         .to_string()];
     certification_file.push(certification_properties.join("\n\n"));
 
@@ -2071,6 +2071,9 @@ struct Args {
 //         )
 //     }
 
+// Next: map recurring transactions into Scheduled Transactions.
+// Currently only a read! will trigger a client-side fetch plus
+// a server-side endpoint + query.
 fn main() {
     let args = Args::parse();
     let source = std::fs::read_to_string(args.input_file).expect("No input file provided.");
