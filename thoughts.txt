@@ -1,3 +1,12 @@
+I like Koka's 'with' statements:
+
+let scheduled_transactions = 
+  with rt <- transactions.map:
+  with other <- something:
+  with another <- another():
+    expand(rt, other, another)
+
+
 Handling endpoint backwards compatibility? Services that an external party 
 consumes, or something like blue-green deployments where there are multiple
 versions of the application running in tandem. Since endpoint names and implementations
@@ -22,6 +31,9 @@ intuitive. i.e.:
   end
 ```
 
+Could use something like an "unsafe" block
+
+
 The expanded implementation can have a larger state space than the spec. 
 The simplest example of this is network errors. When you make a network request, 
 it can fail for many different reasons - timeout, server error, response parsing error,
@@ -33,8 +45,6 @@ Make example of denormalized data, i.e. view / paginating 4 different tables
 Should incremental migrations still be possible? I.e., only applying a new pattern to 
 certain endpoints / behaviors for testing. Might be able to solve this with versioning
 / canaray deployment.
-
-Name: Sollemnis? Mystique? Sligh?
 
 How to handle application-specific logic, like pagination / ordering? Example - ordering of
 data in table. Pagination might live in the compiler, ordering might be a domain rule. Or,
@@ -124,3 +134,91 @@ From building ScheduleTransaction feature which consists of derived data:
 Maybe rename "infrastructure expand" to tier splitting, but expansion might be more than that. 
 
 * Probably should consider compiling to Rust.
+
+* There are several kinds of data:
+  * System data
+  * Derived server-data
+  * Derived client-data
+  * Persisted derived server-data
+
+System data is the essential state of the system.
+Persisted derived server-data is derived from the system state but persisted usually
+ for performance reasons.
+Derived server-data is data that can be derived from system state but can be computed
+before being returned in a server response. Note: This might not be an important distinction,
+because where the derived computation is done might not be important since this code is being
+generated?
+
+Either way, with the current system API of create!, read! etc., all that has to be detected is 
+which "side" of the API logic is on. If it's before a read!, it must be performed on the server.
+If it's after, it can be performed on the client.
+
+Example of each side:
+
+
+domain Schedule:
+  def scheduled_transactions()
+    let transactions = Budget.recurring_transactions
+
+    # read! at end
+    transactions.read!()
+  end
+
+  def something_else
+    let client_data = Budget.recurring_transactions.read!()
+
+    # function after read
+    client_data.transform(5)
+  end
+end
+
+Effect inference might be what's needed here. The something_else method above
+could be inferred to:
+
+[
+  StateQuery(RecurringTransaction),
+  StateTransition(Budget.RecurringTransaction, Read),
+  Logic(Call(client_data.transform))
+]
+
+The order here is important as well. In this order, the results of a query will be returned
+in an endpoint. and the Logic can be placed on the client. For the following code:
+
+def something_else
+  let filter = gen_filter(params)
+  budget.recurring_transactions.read!(filter)   
+end
+
+[
+  Logic(Call(gen_filter(params)))
+  StateQuery(RecurringTransaction),
+  StateTransition(Budget.RecurringTransaction, Create)
+]
+
+The logic appears first, so can be run on the server.
+
+Finally, this order is also possible, for derived data:
+
+def something_else
+  let transactions = budget.recurring_transactions
+  let scheduled_transactions = transactions.map { |t| expand(t) }
+
+  scheduled_transactions.read!()
+end
+
+[
+  StateQuery(RecurringTransaction)
+  Logic(map(expand(t)))
+  StateTransition
+]
+
+I think StateTransitions must always come after StateQueries? Probably an invariant.
+
+def expand(recurring_transaction: RecurringTransaction)
+  ScheduledTransaction(recurring_transaction.name)
+end
+
+[
+  StateQuery(recurring_transactions),
+  Logic(Call(ScheduledTransaction)),
+]
