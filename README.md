@@ -150,9 +150,13 @@ function create_recurring_transactionProperty() {
 
 Forward simulation essentially means that, for all state transitions, the result of the transition is the same in both the model and the implementation.
 
+# Examples
+
+[Recur](https://github.com/amw-zero/recur_app) is an in-progress personal finance budgeting application being built using `Sligh`. This has an example of how the generated client-side code is integrated into a React application, and how the generated endpoints are integrated into an Express.js application.
+
 
 # Technical Info
-Technically, `Sligh` is a language with a certifying source-to-source compiler. It is source-to-source because it compiles to Typescript and Javascript, and it is certifying because it generates a test that can be run indepdently to informally verify that the target code is semantically equivalent to the source model.
+Technically, `Sligh` is a language with a certifying source-to-source compiler. It is source-to-source because it compiles to Typescript and Javascript, and it is certifying because it generates a test that can be run independently to informally verify that the target code is semantically equivalent to the source model.
 
 # Future
 
