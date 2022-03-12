@@ -9,62 +9,7 @@ use std::fs;
 const DEBUG: bool = false;
 const API_HOST: &str = "http://localhost:3000";
 
-#[derive(pest_derive::Parser)]
-#[grammar = "grammar.pest"]
-struct LangParser;
-
-#[derive(Debug, Clone)]
-enum AstNode {
-    InvalidNode,
-    SchemaDef {
-        name: Box<AstNode>,
-        body: Box<AstNode>,
-    },
-    SchemaBody {
-        definitions: Vec<AstNode>, // Vec<SchemaAttribute | SchemaMethod>
-    },
-    Identifier(String),
-    TypedIdentifier {
-        identifier: Box<AstNode>, // Identifier
-        r#type: Box<AstNode>,     // Identifier
-    },
-    ArrayType(Box<AstNode>), // Identifier
-    SchemaAttribute {
-        typed_identifier: Box<AstNode>, // TypedIdentifier
-    },
-    SchemaMethod {
-        name: Box<AstNode>,
-        args: Vec<AstNode>,
-        body: Box<AstNode>,
-        return_type: Box<AstNode>,
-    },
-    MethodArgs {
-        name: Box<AstNode>,
-        arguments: Vec<AstNode>,
-    },
-    CallExpr {
-        receiver: Box<AstNode>,
-        call_name: Box<AstNode>,
-        args: Vec<AstNode>,
-    },
-    ExprList(Vec<AstNode>),
-    LetExpr {
-        name: Box<AstNode>,  // Identifier
-        value: Box<AstNode>, // Expr
-    },
-    DotAccess {
-        receiver: Box<AstNode>, // Identifier
-        property: Box<AstNode>, // Identifier
-    },
-    /*
-    FuncCall {
-        name: Box<AstNode>,
-        args: Vec<AstNode>,
-    },
-    */
-    // Expr(String),
-}
-
+/*
 // JS Translation
 
 #[derive(Debug, Clone)]
@@ -386,7 +331,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
 
             if no_methods {
                 JSAstNode::InterfaceDef {
-                    name: Box::new(js_translate(*name)),
+                    name: Box::new(JSAstNode::Identifier(name.name)),
                     properties: match *body.clone() {
                         AstNode::SchemaBody { definitions } => definitions
                             .into_iter()
@@ -402,7 +347,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
                 }
             } else {
                 JSAstNode::ClassDef {
-                    name: Box::new(js_translate(*name)),
+                    name: Box::new(JSAstNode::Identifier(name.name)),
                     body: Box::new(js_translate(*body)),
                 }
             }
@@ -1118,24 +1063,6 @@ fn js_state_query_delete(state_var: &str) -> JSAstNode {
     }
 }
 
-fn relation_name_from_type(r#type: &Type) -> String {
-    match r#type {
-        Type::Polymorphic { type_param, .. } => match &**type_param {
-            Type::Custom(custom_type) => match custom_type {
-                CustomType::Schema(schema_name) => {
-                    let mut relation_name = schema_name.to_case(Case::Snake);
-                    relation_name.push('s');
-
-                    relation_name
-                }
-                _ => panic!("Can only get relation name from Array types"),
-            },
-            _ => panic!("Can only get relation name from Array types"),
-        },
-        _ => panic!("Can only get relation name from Array types"),
-    }
-}
-
 // Expand state transitions into SQL queries inside of server
 fn js_expand_state_transition_to_endpoint(
     body: JSAstNode,
@@ -1328,108 +1255,296 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
     }
 }
 
+*/
+
 // Parser
 
-fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
-    return AstNode::Identifier(pair.as_str().into());
+// fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
+//     return AstNode::Identifier(pair.as_str().into());
+// }
+
+// fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
+
+// }
+
+fn relation_name_from_type(r#type: &Type) -> String {
+    match r#type {
+        Type::Polymorphic { type_param, .. } => match &**type_param {
+            Type::Custom(custom_type) => match custom_type {
+                CustomType::Schema(schema_name) => {
+                    let mut relation_name = schema_name.to_case(Case::Snake);
+                    relation_name.push('s');
+
+                    relation_name
+                }
+                _ => panic!("Can only get relation name from Array types"),
+            },
+            _ => panic!("Can only get relation name from Array types"),
+        },
+        _ => panic!("Can only get relation name from Array types"),
+    }
 }
 
-fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
-    let mut schema_method = pair.into_inner();
+#[derive(pest_derive::Parser)]
+#[grammar = "grammar.pest"]
+struct LangParser;
 
-    let mut method_args = schema_method.next().unwrap().into_inner();
-    let name = parse(method_args.next().unwrap());
-    let args = method_args.map(parse).collect();
-
-    let method_body = parse(schema_method.next().unwrap());
-    //    let expr = method_body.map(parse).collect();
-
-    return AstNode::SchemaMethod {
-        name: Box::new(name),
-        args: args,
-        body: Box::new(method_body),
-        return_type: Box::new(AstNode::InvalidNode),
-    };
+#[derive(Debug, Clone)]
+struct AstIdentifier {
+    name: String,
 }
 
-fn parse(pair: pest::iterators::Pair<Rule>) -> AstNode {
+#[derive(Debug, Clone)]
+struct MethodArgs {
+    name: Box<AstNode>,
+    arguments: Vec<AstNode>,
+}
+
+#[derive(Debug, Clone)]
+enum AstExpr {
+    CallExpr {
+        receiver: AstIdentifier,
+        call_name: AstIdentifier,
+        args: Vec<AstExpr>,
+    },
+    DotAccess {
+        receiver: AstIdentifier,
+        property: AstIdentifier,
+    },
+    NumberLiteral(i64),
+    Identifier(AstIdentifier),
+}
+
+#[derive(Debug, Clone)]
+enum AstStatement {
+    LetDecl { name: AstIdentifier, value: AstExpr },
+    Expr(AstExpr),
+}
+
+#[derive(Debug, Clone)]
+struct AstStatementList {
+    statements: Vec<AstStatement>,
+}
+
+// Rename SchemaAttribute struct to TypedIdentifier
+#[derive(Debug, Clone)]
+enum SchemaDefinition {
+    SchemaAttribute {
+        name: AstIdentifier,
+        r#type: Type,
+    },
+    SchemaMethod {
+        name: AstIdentifier,
+        args: Vec<TypedIdentifier>,
+        body: AstStatementList,
+        return_type: Option<Type>,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct TypedIdentifier {
+    identifier: AstIdentifier,
+    r#type: Type,
+}
+
+#[derive(Debug, Clone)]
+struct ArrayType {
+    r#type: AstIdentifier,
+}
+
+#[derive(Debug, Clone)]
+enum AstNode {
+    InvalidNode,
+    SchemaDef {
+        name: AstIdentifier,
+        body: Vec<SchemaDefinition>,
+    },
+}
+
+fn parse_type(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Type {
+    match pair.as_rule() {
+        Rule::TypedIdentifier => parse_type(pair.into_inner().next().unwrap(), schemas),
+        Rule::Type => {
+            let iden = pair.into_inner().next().unwrap().as_str();
+
+            type_from_str(iden, schemas)
+        }
+        Rule::ArrayType => {
+            let type_iden = pair.into_inner().next().unwrap().as_str();
+            let schema = schemas.get(type_iden);
+            Type::Polymorphic {
+                r#type: Box::new(Type::Primitive(PrimitiveType::Array)),
+                type_param: Box::new(Type::Custom(CustomType::Schema(
+                    schema.unwrap().name.clone(),
+                ))),
+            }
+        }
+        other => panic!("Attempted to parse unexpected type: {:?}", other),
+    }
+}
+
+fn parse_typed_identifier(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> TypedIdentifier {
+    match pair.as_rule() {
+        Rule::TypedIdentifier => {
+            let mut typed_iden = pair.into_inner();
+            let iden = typed_iden.next().unwrap().as_str();
+            let r#type = parse_type(typed_iden.next().unwrap(), schemas);
+
+            TypedIdentifier {
+                identifier: AstIdentifier {
+                    name: iden.to_string(),
+                },
+                r#type: r#type,
+            }
+        }
+        other => panic!(
+            "Found unknown node during type identifier parsing: {:?}",
+            other
+        ),
+    }
+}
+
+fn parse_expr(pair: pest::iterators::Pair<Rule>) -> AstExpr {
+    match pair.as_rule() {
+        Rule::NumberLiteral => {
+            AstExpr::NumberLiteral(pair.into_inner().as_str().parse::<i64>().unwrap())
+        }
+        Rule::Identifier => AstExpr::Identifier(AstIdentifier {
+            name: pair.as_str().to_string(),
+        }),
+        Rule::MethodCall => {
+            let mut expr = pair.into_inner();
+            let receiver = expr.next().unwrap().as_str();
+            let call_name = expr.next().unwrap().as_str();
+            let mut args: Vec<AstExpr> = vec![];
+            for call_arg in expr {
+                args.push(parse_expr(call_arg))
+            }
+
+            AstExpr::CallExpr {
+                receiver: AstIdentifier {
+                    name: receiver.to_string(),
+                },
+                call_name: AstIdentifier {
+                    name: call_name.to_string(),
+                },
+                args: args,
+            }
+        }
+        Rule::MethodArg => parse_expr(pair.into_inner().next().unwrap()),
+        Rule::DotAccess => {
+            let mut dot_access = pair.into_inner();
+            let receiver = dot_access.next().unwrap().as_str();
+            let property = dot_access.next().unwrap().as_str();
+
+            AstExpr::DotAccess {
+                receiver: AstIdentifier {
+                    name: receiver.to_string(),
+                },
+                property: AstIdentifier {
+                    name: property.to_string(),
+                },
+            }
+        }
+        other => panic!("Found unknown node during expression parsing: {:?}", other),
+    }
+}
+
+fn parse_statement(pair: pest::iterators::Pair<Rule>) -> AstStatement {
+    match pair.as_rule() {
+        Rule::LetExpr => {
+            let mut let_expr = pair.into_inner();
+            let iden = let_expr.next().unwrap().as_str();
+            let value = parse_expr(let_expr.next().unwrap());
+
+            AstStatement::LetDecl {
+                name: AstIdentifier {
+                    name: iden.to_string(),
+                },
+                value: value,
+            }
+        }
+        Rule::MethodCall => AstStatement::Expr(parse_expr(pair)),
+        other => panic!("Unexpected node during statement parsing: {:?}", other),
+    }
+}
+
+fn parse_schema_def(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> SchemaDefinition {
+    match pair.as_rule() {
+        Rule::SchemaAttribute => {
+            let mut typed_iden = pair.into_inner().next().unwrap().into_inner();
+            let attr_name = typed_iden.next().unwrap().as_str();
+            let attr_type = parse_type(typed_iden.next().unwrap(), schemas);
+
+            SchemaDefinition::SchemaAttribute {
+                name: AstIdentifier {
+                    name: attr_name.to_string(),
+                },
+                r#type: attr_type,
+            }
+        }
+        Rule::SchemaMethod => {
+            let mut schema_method = pair.into_inner();
+
+            let mut method_args = schema_method.next().unwrap().into_inner();
+            let method_name = method_args.next().unwrap().as_str();
+            let mut args: Vec<TypedIdentifier> = vec![];
+            for method_arg in method_args {
+                args.push(parse_typed_identifier(method_arg, schemas))
+            }
+
+            let method_statement_list = schema_method
+                .next()
+                .unwrap()
+                .into_inner()
+                .next()
+                .unwrap()
+                .into_inner();
+
+            let mut statements: Vec<AstStatement> = vec![];
+            for method_statement in method_statement_list {
+                statements.push(parse_statement(method_statement));
+            }
+
+            return SchemaDefinition::SchemaMethod {
+                name: AstIdentifier {
+                    name: method_name.to_string(),
+                },
+                args: args,
+                body: AstStatementList {
+                    statements: statements,
+                },
+                return_type: None,
+            };
+        }
+        other => panic!(
+            "Unexpected node during SchemaDefinition parsing: {:?}",
+            other
+        ),
+    }
+}
+
+fn parse(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> AstNode {
     if DEBUG {
         println!("Parsing");
         println!("{}", pair.to_json());
     }
     match pair.as_rule() {
-        Rule::Statement => parse(pair.into_inner().next().unwrap()),
-        Rule::TypedIdentifier => {
-            let mut inner = pair.into_inner();
-            AstNode::TypedIdentifier {
-                identifier: Box::new(parse(inner.next().unwrap())),
-                r#type: Box::new(parse(inner.next().unwrap())),
-            }
-        }
-        Rule::Type => parse(pair.into_inner().next().unwrap()),
-        Rule::ArrayType => {
-            let type_iden = parse(pair.into_inner().next().unwrap());
-            AstNode::ArrayType(Box::new(type_iden))
-        }
+        Rule::Statement => parse(pair.into_inner().next().unwrap(), schemas),
         Rule::SchemaDef => {
             let mut inner = pair.into_inner();
-            let name = identifier(inner.next().unwrap());
-            let body = parse(inner.next().unwrap());
-
-            let schema = AstNode::SchemaDef {
-                name: Box::new(name),
-                body: Box::new(body),
-            };
-
-            schema
-        }
-        Rule::SchemaBody => {
-            let inner = pair.into_inner();
-            let definitions = inner.map(parse).collect();
-
-            AstNode::SchemaBody {
-                definitions: definitions,
+            let name = inner.next().unwrap().as_str();
+            let schema_body = inner.next().unwrap();
+            let mut schema_defs: Vec<SchemaDefinition> = vec![];
+            for def in schema_body.into_inner() {
+                schema_defs.push(parse_schema_def(def, schemas));
             }
-        }
-        Rule::SchemaAttribute => AstNode::SchemaAttribute {
-            typed_identifier: Box::new(parse(pair.into_inner().next().unwrap())),
-        },
-        Rule::SchemaMethod => schema_method(pair),
-        Rule::Identifier => AstNode::Identifier(pair.as_str().into()),
-        Rule::MethodDefArgs => AstNode::MethodArgs {
-            name: Box::new(parse(pair.into_inner().next().unwrap())),
-            arguments: vec![],
-        },
-        Rule::MethodCall => {
-            let mut expr = pair.into_inner();
-            AstNode::CallExpr {
-                receiver: Box::new(AstNode::Identifier(expr.next().unwrap().as_str().into())),
-                call_name: Box::new(AstNode::Identifier(expr.next().unwrap().as_str().into())),
-                args: expr
-                    .map(|e| AstNode::Identifier(e.as_str().into()))
-                    .collect(),
-            }
-        }
-        Rule::DotAccess => {
-            let mut dot_access = pair.into_inner();
-            let receiver = parse(dot_access.next().unwrap());
-            let property = parse(dot_access.next().unwrap());
 
-            AstNode::DotAccess {
-                receiver: Box::new(receiver),
-                property: Box::new(property),
-            }
-        }
-        Rule::MethodBody => parse(pair.into_inner().next().unwrap()),
-        Rule::ExprList => AstNode::ExprList(pair.into_inner().map(parse).collect()),
-        Rule::LetExpr => {
-            // add to type env
-            let mut let_expr = pair.into_inner();
-            let var_name = parse(let_expr.next().unwrap());
-            let expr = parse(let_expr.next().unwrap());
-            AstNode::LetExpr {
-                name: Box::new(var_name),
-                value: Box::new(expr),
+            AstNode::SchemaDef {
+                name: AstIdentifier {
+                    name: name.to_string(),
+                },
+                body: schema_defs,
             }
         }
         Rule::FuncCall => AstNode::InvalidNode,
@@ -1563,13 +1678,6 @@ struct Schema {
     attributes: Vec<SchemaAttribute>,
 }
 
-fn iden_name(iden: &AstNode) -> String {
-    match iden {
-        AstNode::Identifier(s) => s.to_string(),
-        _ => panic!("This is for extracting names out of Identifiers only"),
-    }
-}
-
 fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
     if let Some(primitive_type) = match type_str {
         "Int" => Some(Type::Primitive(PrimitiveType::Int)),
@@ -1588,50 +1696,7 @@ fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
     }
 }
 
-fn schema_attributes(schema_body: &AstNode, schemas: &Schemas) -> Vec<SchemaAttribute> {
-    let mut attrs: Vec<SchemaAttribute> = vec![];
-    match schema_body {
-        AstNode::SchemaBody { definitions } => {
-            for def in definitions {
-                match def {
-                    AstNode::SchemaAttribute { typed_identifier } => {
-                        match *typed_identifier.clone() {
-                            AstNode::TypedIdentifier { identifier, r#type } => {
-                                let attr_name = iden_name(&*identifier);
-                                let attr_type = match *r#type {
-                                    AstNode::Identifier(i) => type_from_str(&i, schemas),
-                                    AstNode::ArrayType(i) => {
-                                        let schema = schemas.get(&iden_name(&*i));
-                                        Type::Polymorphic {
-                                            r#type: Box::new(Type::Primitive(PrimitiveType::Array)),
-                                            type_param: Box::new(Type::Custom(CustomType::Schema(
-                                                schema.unwrap().name.clone(),
-                                            ))),
-                                        }
-                                    }
-                                    _ => panic!(
-                                        "Should only be parsing information out of type nodes"
-                                    ),
-                                };
-
-                                attrs.push(SchemaAttribute {
-                                    name: attr_name,
-                                    r#type: attr_type,
-                                });
-                            }
-                            _ => continue,
-                        }
-                    }
-                    _ => continue,
-                }
-            }
-
-            attrs
-        }
-        _ => panic!("Can only extract schema attributes out of SchemaBodies"),
-    }
-}
-
+/*
 // Translation Certification
 
 fn fast_check_arbitrary_from_type(r#type: &Type) -> String {
@@ -1855,6 +1920,8 @@ fn gen_certification_property_file(
     certification_file
 }
 
+*/
+
 // Type system
 
 // To enforce uniqueness of names in the type environment
@@ -1911,12 +1978,10 @@ fn resolve_variable_type(name_path: &Vec<String>, type_env: &TypeEnvironment) ->
 }
 
 // Resolves the type of an expression
-fn resolve_type(node: &AstNode, type_env: &TypeEnvironment) -> Option<Type> {
+fn resolve_type(node: &AstExpr, type_env: &TypeEnvironment) -> Option<Type> {
     match node {
-        AstNode::DotAccess { receiver, property } => {
-            let receiver_name = iden_name(&**receiver);
-            let property_name = iden_name(&**property);
-            let name_path = vec![receiver_name, property_name];
+        AstExpr::DotAccess { receiver, property } => {
+            let name_path = vec![receiver.name.clone(), property.name.clone()];
             let qualified_name = type_env_name(&name_path);
 
             type_env.get(&qualified_name).cloned()
@@ -1925,19 +1990,50 @@ fn resolve_type(node: &AstNode, type_env: &TypeEnvironment) -> Option<Type> {
     }
 }
 
+fn update_type_environment_statement(
+    stmt_list: &AstStatementList,
+    name_path: Vec<String>,
+    type_env: &mut TypeEnvironment,
+) {
+    for stmt in &stmt_list.statements {
+        match stmt {
+            AstStatement::LetDecl { name, value } => {
+                let err_str = format!("Type error - cannot resolve type for {}", name.name);
+                let r#type = resolve_type(&value, type_env).expect(&err_str);
+                let mut statement_name_path = name_path.clone();
+                statement_name_path.push(name.name.clone());
+
+                type_env.insert(type_env_name(&statement_name_path), r#type);
+            }
+            _ => (),
+        }
+    }
+}
+
 // Add parsed code to collection of schemas and type environment
 fn update_environment(
     pair: &Pair<Rule>,
     node: &AstNode,
     schemas: &mut Schemas,
-    type_environment: &mut TypeEnvironment,
+    type_env: &mut TypeEnvironment,
     name_qualification_path: Vec<String>,
 ) {
     // Add to Schemas:
     match node {
         AstNode::SchemaDef { name, body } => {
-            let schema_name = iden_name(&**name);
-            let attributes = schema_attributes(&*body, schemas);
+            let schema_name = name.name.clone();
+            let mut attributes: Vec<SchemaAttribute> = vec![];
+            for schema_def in body {
+                match schema_def {
+                    SchemaDefinition::SchemaAttribute { name, r#type } => {
+                        attributes.push(SchemaAttribute {
+                            name: name.name.clone(),
+                            r#type: r#type.clone(),
+                        })
+                    }
+                    _ => continue,
+                }
+            }
             let schema = Schema {
                 name: schema_name.clone(),
                 attributes: attributes.clone(),
@@ -1949,92 +2045,32 @@ fn update_environment(
     // Add to Type environment:
     match node {
         AstNode::SchemaDef { name, body } => {
-            let schema_name = iden_name(&**name);
-            let mut updated_name_path = name_qualification_path.clone();
-            updated_name_path.push(schema_name);
-            update_environment(pair, body, schemas, type_environment, updated_name_path);
-        }
-        AstNode::SchemaBody { definitions } => {
-            for def in definitions {
-                update_environment(
-                    pair,
-                    def,
-                    schemas,
-                    type_environment,
-                    name_qualification_path.clone(),
-                );
-            }
-        }
-        AstNode::SchemaAttribute { typed_identifier } => update_environment(
-            pair,
-            typed_identifier,
-            schemas,
-            type_environment,
-            name_qualification_path,
-        ),
-        AstNode::TypedIdentifier { identifier, r#type } => {
-            let attr_name = iden_name(&**identifier);
-            let attr_type = match &**r#type {
-                AstNode::Identifier(i) => type_from_str(&i, schemas),
-                AstNode::ArrayType(i) => {
-                    let schema = schemas.get(&iden_name(&*i));
-                    Type::Polymorphic {
-                        r#type: Box::new(Type::Primitive(PrimitiveType::Array)),
-                        type_param: Box::new(Type::Custom(CustomType::Schema(
-                            schema.unwrap().name.clone(),
-                        ))),
+            let schema_name = name.name.clone();
+            let schema_name_path = vec![schema_name.clone()];
+            type_env.insert(
+                type_env_name(&schema_name_path),
+                Type::Custom(CustomType::Schema(schema_name.clone())),
+            );
+            for def in body {
+                match def {
+                    SchemaDefinition::SchemaAttribute { name, r#type } => {
+                        let name_path = vec![schema_name.clone(), name.name.clone()];
+                        type_env.insert(type_env_name(&name_path), r#type.clone());
+                    }
+                    // Todo: This should add function signature to type env, including return type
+                    SchemaDefinition::SchemaMethod {
+                        name, args, body, ..
+                    } => {
+                        let method_name = name.name.clone();
+                        let method_name_path = vec![schema_name.clone(), method_name];
+                        for arg in args {
+                            let mut arg_name_path = method_name_path.clone();
+                            arg_name_path.push(arg.identifier.name.clone());
+                            type_env.insert(type_env_name(&arg_name_path), arg.r#type.clone());
+                        }
+                        update_type_environment_statement(body, method_name_path.clone(), type_env);
                     }
                 }
-                _ => panic!("Should only be parsing information out of type nodes"),
-            };
-
-            let mut updated_name_path = name_qualification_path.clone();
-            updated_name_path.push(attr_name);
-            type_environment.insert(type_env_name(&updated_name_path), attr_type);
-        }
-        AstNode::SchemaMethod {
-            name, args, body, ..
-        } => {
-            let method_name = iden_name(&**name);
-            let mut updated_name_path = name_qualification_path.clone();
-            updated_name_path.push(method_name);
-            for arg in args {
-                update_environment(
-                    pair,
-                    arg,
-                    schemas,
-                    type_environment,
-                    updated_name_path.clone(),
-                );
-            }
-
-            update_environment(
-                pair,
-                body,
-                schemas,
-                type_environment,
-                updated_name_path.clone(),
-            );
-        }
-        AstNode::ExprList(exprs) => {
-            for expr in exprs {
-                update_environment(
-                    pair,
-                    expr,
-                    schemas,
-                    type_environment,
-                    name_qualification_path.clone(),
-                )
-            }
-        }
-        AstNode::LetExpr { name, value } => {
-            let var_name = iden_name(&**name);
-            if let Some(r#type) = resolve_type(value, type_environment) {
-                let mut updated_name_path = name_qualification_path.clone();
-                updated_name_path.push(var_name);
-                type_environment.insert(type_env_name(&updated_name_path), r#type.clone());
-            } else {
-                panic!("Cannot find type of right hand side of let expression");
             }
         }
         _ => (), /*println!("Attempted to add type information for unhandled node")*/
@@ -2092,7 +2128,7 @@ fn main() {
     let mut js_expanded_client: Vec<String> = vec![];
 
     // Expanded server endpoints for infrastructure-expanded program
-    let mut js_endpoints: Vec<JSAstNode> = vec![];
+    //    let mut js_endpoints: Vec<JSAstNode> = vec![];
 
     // Generated properties for certifying the semantic equivalence of
     // infrastructure-expanded program to source program (model)
@@ -2102,7 +2138,7 @@ fn main() {
     match result {
         Ok(pairs) => {
             for pair in pairs {
-                let parsed = parse(pair.clone());
+                let parsed = parse(pair.clone(), &schemas);
 
                 let name_path = vec![];
                 update_environment(
@@ -2113,6 +2149,9 @@ fn main() {
                     name_path,
                 );
 
+                println!("Parsed: {:#?}", parsed);
+
+                /*
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
                 let js_ast = js_translate(parsed.clone());
@@ -2139,10 +2178,13 @@ fn main() {
                     certification_property_strs.push(js_gen_string(property));
                 }
                 certification_property_names.append(&mut names);
+                */
             }
         }
         Err(e) => println!("Error {:?}", e),
     }
+
+    /*
 
     let client_code = js_expanded_client.join("\n\n");
     fs::write(args.client_output, client_code).expect("Unable to write client code file.");
@@ -2162,6 +2204,7 @@ fn main() {
         certification_code.join("\n\n"),
     )
     .expect("Unable to write certification properties file.");
+    */
 }
 
 // Goal:
