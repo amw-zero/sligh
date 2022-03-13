@@ -1299,14 +1299,6 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
 
 // Parser
 
-// fn identifier(pair: pest::iterators::Pair<Rule>) -> AstNode {
-//     return AstNode::Identifier(pair.as_str().into());
-// }
-
-// fn schema_method(pair: pest::iterators::Pair<Rule>) -> AstNode {
-
-// }
-
 fn relation_name_from_type(r#type: &Type) -> String {
     match r#type {
         Type::Polymorphic { type_param, .. } => match &**type_param {
@@ -2053,7 +2045,6 @@ fn update_environment(
     node: &AstNode,
     schemas: &mut Schemas,
     type_env: &mut TypeEnvironment,
-    name_qualification_path: Vec<String>,
 ) {
     // Add to Schemas:
     match node {
@@ -2177,13 +2168,11 @@ fn main() {
             for pair in pairs {
                 let parsed = parse(pair.clone(), &schemas);
 
-                let name_path = vec![];
                 update_environment(
                     &pair,
                     &parsed,
                     &mut schemas,
                     &mut type_environment,
-                    name_path,
                 );
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
