@@ -9,7 +9,6 @@ use std::fs;
 const DEBUG: bool = false;
 const API_HOST: &str = "http://localhost:3000";
 
-/*
 // JS Translation
 
 #[derive(Debug, Clone)]
@@ -295,18 +294,96 @@ fn js_gen_iden_name(node: JSAstNode) -> String {
     }
 }
 
-fn js_translate_to_class_method(name: AstNode, args: Vec<AstNode>, body: AstNode) -> JSAstNode {
-    let js_name = js_translate(name);
+fn js_translate_expr(expr: &AstExpr) -> JSAstNode {
+    match expr {
+        AstExpr::CallExpr {
+            receiver,
+            call_name,
+            args,
+        } => JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier(receiver.name.clone())),
+            call_name: Box::new(JSAstNode::Identifier(call_name.name.clone())),
+            args: args.into_iter().map(js_translate_expr).collect(),
+        },
+        /*
+        AstExpr::DotAccess { receiver, property } => {
+            JSAstNode::DotAccess { receiver: Box::new(JSAstNode::Identifier(receiver.name))}
+        },
+        */
+        AstExpr::NumberLiteral(i) => JSAstNode::Identifier(i.to_string()),
+        AstExpr::Identifier(i) => JSAstNode::Identifier(i.name.clone()),
+        _ => JSAstNode::InvalidNode,
+    }
+}
+
+fn js_translate_statement(stmt: &AstStatement) -> JSAstNode {
+    match stmt {
+        AstStatement::LetDecl { name, value } => JSAstNode::LetExpr {
+            name: Box::new(JSAstNode::Identifier(name.name.clone())),
+            value: Box::new(js_translate_expr(&value)),
+        },
+        AstStatement::Expr(e) => js_translate_expr(&e),
+    }
+}
+
+fn js_translate_schema_method(
+    name: &AstIdentifier,
+    args: &Vec<TypedIdentifier>,
+    body: &AstStatementList,
+) -> JSAstNode {
+    let js_name = JSAstNode::Identifier(name.name.clone());
     let mut js_args: Vec<JSAstNode> = vec![];
     for arg in args {
-        js_args.push(js_translate(arg));
+        js_args.push(JSAstNode::TypedIdentifier {
+            identifier: Box::new(JSAstNode::Identifier(arg.identifier.name.clone())),
+            r#type: Box::new(js_translate_type(&arg.r#type)),
+        });
     }
-    let js_body = js_translate(body);
+    let mut js_statements: Vec<JSAstNode> = vec![];
+    for stmt in &body.statements {
+        js_statements.push(js_translate_statement(&stmt));
+    }
 
     JSAstNode::ClassMethod {
         name: Box::new(js_name),
         args: js_args,
-        body: Box::new(js_body),
+        body: Box::new(JSAstNode::StatementList {
+            statements: js_statements,
+        }),
+    }
+}
+
+fn js_translate_type(r#type: &Type) -> JSAstNode {
+    match r#type {
+        Type::Primitive(pt) => match pt {
+            PrimitiveType::Int | PrimitiveType::Numeric => {
+                JSAstNode::Identifier("number".to_string())
+            }
+            PrimitiveType::String => JSAstNode::Identifier("string".to_string()),
+            other => panic!("Cannot JS translate type {:?}", other),
+        },
+        Type::Custom(ct) => match ct {
+            CustomType::Schema(s) => JSAstNode::Identifier(s.clone()),
+            CustomType::Variant => panic!("Unimplemented JS translation for Variant"),
+        },
+        Type::Polymorphic { r#type, type_param } => match &**r#type {
+            Type::Primitive(pt) => match pt {
+                PrimitiveType::Array => {
+                    JSAstNode::ArrayType(Box::new(js_translate_type(type_param)))
+                }
+                _ => panic!("Unimplemented JS translation for non-Array generic type"),
+            },
+            _ => panic!("Unimplemented JS translation for non-primitive generic type"),
+        },
+    }
+}
+
+fn js_translate_schema_attribute(name: &AstIdentifier, r#type: &Type) -> JSAstNode {
+    JSAstNode::ClassProperty {
+        typed_identifier: Box::new(JSAstNode::TypedIdentifier {
+            identifier: Box::new(JSAstNode::Identifier(name.name.clone())),
+            r#type: Box::new(js_translate_type(r#type)),
+        }),
     }
 }
 
@@ -319,49 +396,50 @@ fn js_translate_to_class_method(name: AstNode, args: Vec<AstNode>, body: AstNode
 fn js_translate(ast: AstNode) -> JSAstNode {
     match ast {
         AstNode::SchemaDef { name, body } => {
-            let no_methods = match *body.clone() {
-                AstNode::SchemaBody { definitions } => {
-                    definitions.into_iter().all(|def| match def {
-                        AstNode::SchemaAttribute { .. } => true,
-                        _ => false,
-                    })
-                }
+            let no_methods = body.clone().into_iter().all(|def| match def {
+                SchemaDefinition::SchemaAttribute { .. } => true,
                 _ => false,
-            };
+            });
 
             if no_methods {
                 JSAstNode::InterfaceDef {
                     name: Box::new(JSAstNode::Identifier(name.name)),
-                    properties: match *body.clone() {
-                        AstNode::SchemaBody { definitions } => definitions
-                            .into_iter()
-                            .map(|def| match def {
-                                AstNode::SchemaAttribute { typed_identifier } => {
-                                    js_translate(*typed_identifier)
+                    properties: body
+                        .into_iter()
+                        .map(|def| match def {
+                            SchemaDefinition::SchemaAttribute { name, r#type } => {
+                                JSAstNode::TypedIdentifier {
+                                    identifier: Box::new(JSAstNode::Identifier(name.name)),
+                                    r#type: Box::new(js_translate_type(&r#type)),
                                 }
-                                _ => panic!("Expected AstNode::SchemaAttribute"),
-                            })
-                            .collect(),
-                        _ => vec![],
-                    },
+                            }
+                            _ => panic!("Expected AstNode::SchemaAttribute"),
+                        })
+                        .collect(),
                 }
             } else {
+                let mut js_definitions: Vec<JSAstNode> = vec![];
+                for def in body {
+                    match def {
+                        SchemaDefinition::SchemaMethod {
+                            name, args, body, ..
+                        } => js_definitions.push(js_translate_schema_method(&name, &args, &body)),
+                        SchemaDefinition::SchemaAttribute { name, r#type } => {
+                            js_definitions.push(js_translate_schema_attribute(&name, &r#type))
+                        }
+                    }
+                }
+                let body = JSAstNode::ClassBody {
+                    definitions: js_definitions,
+                };
                 JSAstNode::ClassDef {
                     name: Box::new(JSAstNode::Identifier(name.name)),
-                    body: Box::new(js_translate(*body)),
+                    body: Box::new(body),
                 }
             }
         }
-        AstNode::SchemaAttribute { typed_identifier } => JSAstNode::ClassProperty {
-            typed_identifier: Box::new(js_translate(*typed_identifier)),
-        },
-        AstNode::TypedIdentifier { identifier, r#type } => JSAstNode::TypedIdentifier {
-            identifier: Box::new(js_translate(*identifier)),
-            r#type: Box::new(js_translate(*r#type)),
-        },
-        AstNode::Identifier(n) => JSAstNode::Identifier(n),
-        AstNode::ArrayType(i) => JSAstNode::ArrayType(Box::new(js_translate(*i))),
-        AstNode::SchemaMethod {
+        /*
+        AstNode::Function {
             name, args, body, ..
         } => {
             let mut js_args: Vec<JSAstNode> = vec![];
@@ -376,45 +454,7 @@ fn js_translate(ast: AstNode) -> JSAstNode {
                 return_type: Box::new(JSAstNode::InvalidNode),
             }
         }
-        AstNode::SchemaBody { definitions } => {
-            let mut js_definitions: Vec<JSAstNode> = vec![];
-            for def in definitions {
-                match def {
-                    AstNode::SchemaMethod {
-                        name, args, body, ..
-                    } => js_definitions.push(js_translate_to_class_method(*name, args, *body)),
-                    _ => js_definitions.push(js_translate(def)),
-                }
-            }
-            JSAstNode::ClassBody {
-                definitions: js_definitions,
-            }
-        }
-        AstNode::CallExpr {
-            receiver,
-            call_name,
-            args,
-        } => {
-            let mut js_args: Vec<JSAstNode> = vec![];
-            for arg in args {
-                js_args.push(js_translate(arg));
-            }
-            JSAstNode::CallExpr {
-                receiver: Box::new(js_translate(*receiver)),
-                call_name: Box::new(js_translate(*call_name)),
-                args: js_args,
-            }
-        }
-        AstNode::ExprList(exprs) => {
-            let mut js_exprs: Vec<JSAstNode> = vec![];
-            for expr in exprs {
-                js_exprs.push(js_translate(expr));
-            }
-
-            JSAstNode::StatementList {
-                statements: js_exprs,
-            }
-        }
+        */
         _ => JSAstNode::InvalidNode,
     }
 }
@@ -969,6 +1009,8 @@ fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schema
     let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
     let mut js_attr_values: Vec<JSAstNode> = vec![];
     let mut response_props: Vec<Prop> = vec![];
+    println!("state_var_type: {}", state_var_type);
+    println!("Schemas: {:#?}", schemas);
     let schema = &schemas[state_var_type];
     for attr in &schema.attributes {
         attr_names.push(attr.name.clone());
@@ -1254,8 +1296,6 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
         _ => node.clone(),
     }
 }
-
-*/
 
 // Parser
 
@@ -1696,7 +1736,6 @@ fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
     }
 }
 
-/*
 // Translation Certification
 
 fn fast_check_arbitrary_from_type(r#type: &Type) -> String {
@@ -1920,8 +1959,6 @@ fn gen_certification_property_file(
     certification_file
 }
 
-*/
-
 // Type system
 
 // To enforce uniqueness of names in the type environment
@@ -2128,7 +2165,7 @@ fn main() {
     let mut js_expanded_client: Vec<String> = vec![];
 
     // Expanded server endpoints for infrastructure-expanded program
-    //    let mut js_endpoints: Vec<JSAstNode> = vec![];
+    let mut js_endpoints: Vec<JSAstNode> = vec![];
 
     // Generated properties for certifying the semantic equivalence of
     // infrastructure-expanded program to source program (model)
@@ -2149,9 +2186,6 @@ fn main() {
                     name_path,
                 );
 
-                println!("Parsed: {:#?}", parsed);
-
-                /*
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
                 let js_ast = js_translate(parsed.clone());
@@ -2178,13 +2212,10 @@ fn main() {
                     certification_property_strs.push(js_gen_string(property));
                 }
                 certification_property_names.append(&mut names);
-                */
             }
         }
         Err(e) => println!("Error {:?}", e),
     }
-
-    /*
 
     let client_code = js_expanded_client.join("\n\n");
     fs::write(args.client_output, client_code).expect("Unable to write client code file.");
@@ -2204,7 +2235,6 @@ fn main() {
         certification_code.join("\n\n"),
     )
     .expect("Unable to write certification properties file.");
-    */
 }
 
 // Goal:
