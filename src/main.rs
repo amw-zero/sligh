@@ -1009,8 +1009,6 @@ fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schema
     let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
     let mut js_attr_values: Vec<JSAstNode> = vec![];
     let mut response_props: Vec<Prop> = vec![];
-    println!("state_var_type: {}", state_var_type);
-    println!("Schemas: {:#?}", schemas);
     let schema = &schemas[state_var_type];
     for attr in &schema.attributes {
         attr_names.push(attr.name.clone());
