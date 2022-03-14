@@ -605,6 +605,7 @@ fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransitionFunc) 
     }
 }
 
+#[derive(Debug)]
 enum StateTransitionFunc {
     Create,
 
@@ -2103,6 +2104,148 @@ fn update_environment(
     }
 }
 
+// SLIR
+
+#[derive(Debug)]
+struct StateCollection {
+    name: AstIdentifier,
+}
+
+#[derive(Debug)]
+enum Query {
+    Where,
+}
+
+#[derive(Debug)]
+enum SLIRNode {
+    StateQuery {
+        collection: StateCollection,
+        query: Query,
+        transition: StateTransitionFunc,
+    },
+    StateTransfer {
+        collection: StateCollection,
+        transition: StateTransitionFunc,
+        /*args: Vec<TypedIdentifier>*/
+    },
+    Logic(AstStatement),
+}
+fn state_variable_collection_name(
+    name: &str,
+    name_path: &Vec<String>,
+    schemas: &Schemas,
+    type_env: &TypeEnvironment,
+) -> Option<String> {
+    let r#type = resolve_variable_type(&name_path, type_env).expect("Type error - slir_expr_nodes");
+
+    Some(relation_name_from_type(&r#type))
+}
+
+/*
+fn slir_expr_nodes(expr: &AstExpr, schemas: &Schemas, type_env: &TypeEnvironment, slir_nodes: &mut Vec<SLIRNode>) {
+    match expr {
+        AstExpr::DotAccess { receiver, property } => {
+            let name_path = vec![
+                receiver.name.clone(),
+                property.name.clone()
+            ];
+            if let Some(collection_name) = state_variable_collection_name(&receiver.name, &name_path, schemas, type_env) {
+                slir_nodes.push(SLIRNode::StateQuery {
+                    collection: StateCollection { name: AstIdentifier { name: collection_name } },
+                    query: Query::Where,
+                })
+            } else {
+                slir_nodes.push(SLIRNode::Logic(AstStatement::Expr(AstExpr::NumberLiteral(5))));
+            }
+        }
+        AstExpr::CallExpr { receiver, call_name, args } => {
+            for arg in args {
+                slir_expr_nodes(arg, schemas, type_env, slir_nodes)
+            }
+        }
+        _ => {
+            println!("Warning - slir_expr_nodes uknown expr type")
+        }
+    }
+}
+*/
+
+fn slir_translate(
+    schema_name: &str,
+    method_name: &str,
+    body: &AstStatementList,
+    schemas: &Schemas,
+    type_env: &TypeEnvironment,
+) -> Vec<SLIRNode> {
+    let mut slir_nodes: Vec<SLIRNode> = vec![];
+    for stmt in &body.statements {
+        // Currently adding too many SLIR nodes - adding one for Let expr, then one again
+        // for rts.read!()
+        match stmt {
+            AstStatement::LetDecl { name, value } => {
+                // let mut let_nodes: Vec<SLIRNode> = vec![];
+                // slir_expr_nodes(&value, schemas, type_env, &mut let_nodes);
+                // slir_nodes.append(&mut let_nodes);
+            }
+            AstStatement::Expr(e) => {
+                match e {
+                    AstExpr::CallExpr {
+                        receiver,
+                        call_name,
+                        args,
+                        ..
+                    } => {
+                        println!("Call expr");
+                        if is_state_transition(&call_name.name) {
+                            println!("State transition?");
+                            let name_path = vec![
+                                schema_name.to_string(),
+                                method_name.to_string(),
+                                receiver.name.to_string(),
+                            ];
+                            if let Some(collection_name) = state_variable_collection_name(
+                                &receiver.name,
+                                &name_path,
+                                schemas,
+                                type_env,
+                            ) {
+                                slir_nodes.push(SLIRNode::StateQuery {
+                                    collection: StateCollection {
+                                        name: AstIdentifier {
+                                            name: collection_name,
+                                        },
+                                    },
+                                    query: Query::Where,
+                                    transition: state_transition_func_from_str(&call_name.name),
+                                });
+                            } else {
+                                println!("Warning - calling state transition func on a non state variable");
+                            }
+                            slir_nodes.push(SLIRNode::StateTransfer {
+                                collection: StateCollection {
+                                    name: AstIdentifier {
+                                        name: relation_name_from_type(
+                                            &resolve_variable_type(&name_path, type_env)
+                                                .expect("Type error - slir translate"),
+                                        ),
+                                    },
+                                },
+                                transition: state_transition_func_from_str(&call_name.name),
+                                /*args: args.clone()*/
+                            })
+                        } else {
+                            slir_nodes.push(SLIRNode::Logic(stmt.clone()))
+                        }
+                    }
+                    _ => println!("Warning - unhandled expr node in slir_translate"),
+                }
+            }
+        }
+    }
+
+    slir_nodes
+}
+
 #[derive(ClapParser, Debug)]
 struct Args {
     input_file: String,
@@ -2166,12 +2309,37 @@ fn main() {
             for pair in pairs {
                 let parsed = parse(pair.clone(), &schemas);
 
-                update_environment(
-                    &pair,
-                    &parsed,
-                    &mut schemas,
-                    &mut type_environment,
-                );
+                update_environment(&pair, &parsed, &mut schemas, &mut type_environment);
+
+                // println!("Parsed: {:#?}", parsed);
+                // println!("\n\nTypeEnv: {:#?}", type_environment);
+
+                let slir = match &parsed {
+                    AstNode::SchemaDef {
+                        name: schema_name,
+                        body,
+                    } => body
+                        .into_iter()
+                        .filter_map(|def| match def {
+                            SchemaDefinition::SchemaMethod {
+                                name: method_name,
+                                args,
+                                body,
+                                ..
+                            } => Some(slir_translate(
+                                &schema_name.name,
+                                &method_name.name,
+                                &body,
+                                &schemas,
+                                &type_environment,
+                            )),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => vec![],
+                };
+
+                println!("{:#?}", slir);
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
