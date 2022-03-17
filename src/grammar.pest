@@ -24,7 +24,7 @@ MethodCall = { Receiver ~ "." ~ Identifier ~ "(" ~ MethodArg* ~ ("," ~ MethodArg
 
 Expr = _{  MethodCall | DotAccess | LetExpr | FuncCall | Identifier | NumberLiteral }
 
-ExprList = { (Expr ~ NEWLINE)+ }
+ExprList = { (Expr ~ NEWLINE+)+ }
 
 Type = { Identifier }
 
@@ -42,7 +42,7 @@ MethodDefNoArgs = { Identifier }
 
 MethodBody = { ExprList }
 
-SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ NEWLINE  ~ MethodBody ~ "end" }
+SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ ("->" ~ Identifier)? ~ NEWLINE  ~ MethodBody ~ "end" }
 
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
