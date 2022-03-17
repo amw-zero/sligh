@@ -1390,6 +1390,12 @@ enum AstNode {
         name: AstIdentifier,
         body: Vec<SchemaDefinition>,
     },
+    FunctionDef {
+        name: AstIdentifier,
+        body: AstStatementList,
+        args: Vec<TypedIdentifier>,
+        return_type: Option<Type>,
+    }
 }
 
 fn parse_type(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Type {
@@ -1500,6 +1506,51 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>) -> AstStatement {
     }
 }
 
+fn parse_function_like(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> (AstIdentifier, Vec<TypedIdentifier>, AstStatementList, Option<Type>) {
+    let mut schema_method = pair.into_inner();
+
+    let mut method_args = schema_method.next().unwrap().into_inner();
+    let method_name = method_args.next().unwrap().as_str();
+    let mut args: Vec<TypedIdentifier> = vec![];
+    for method_arg in method_args {
+        args.push(parse_typed_identifier(method_arg, schemas))
+    }
+
+    let return_type_or_body = schema_method.next().unwrap();
+    let mut return_type: Option<Type> = None;
+    let mut body = return_type_or_body.clone();
+    match return_type_or_body.as_rule() {
+        Rule::Identifier => {
+            return_type = Some(type_from_str(return_type_or_body.as_str(), schemas));
+            body = schema_method.next().unwrap()
+        }
+        Rule::MethodBody => (),
+        _ => panic!("Uknown node when parsing method definition")
+    }
+
+    let method_statement_list = body
+        .into_inner()
+        .next()
+        .unwrap()
+        .into_inner();
+
+    let mut statements: Vec<AstStatement> = vec![];
+    for method_statement in method_statement_list {
+        statements.push(parse_statement(method_statement));
+    }
+
+    (
+        AstIdentifier {
+            name: method_name.to_string(),
+        },
+        args,
+        AstStatementList {
+            statements: statements,
+        },
+        return_type
+    )
+}
+
 fn parse_schema_def(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> SchemaDefinition {
     match pair.as_rule() {
         Rule::SchemaAttribute => {
@@ -1515,37 +1566,13 @@ fn parse_schema_def(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Sch
             }
         }
         Rule::SchemaMethod => {
-            let mut schema_method = pair.into_inner();
-
-            let mut method_args = schema_method.next().unwrap().into_inner();
-            let method_name = method_args.next().unwrap().as_str();
-            let mut args: Vec<TypedIdentifier> = vec![];
-            for method_arg in method_args {
-                args.push(parse_typed_identifier(method_arg, schemas))
-            }
-
-            let method_statement_list = schema_method
-                .next()
-                .unwrap()
-                .into_inner()
-                .next()
-                .unwrap()
-                .into_inner();
-
-            let mut statements: Vec<AstStatement> = vec![];
-            for method_statement in method_statement_list {
-                statements.push(parse_statement(method_statement));
-            }
+            let (name, args, body, return_type) = parse_function_like(pair, schemas);
 
             return SchemaDefinition::SchemaMethod {
-                name: AstIdentifier {
-                    name: method_name.to_string(),
-                },
+                name: name,
                 args: args,
-                body: AstStatementList {
-                    statements: statements,
-                },
-                return_type: None,
+                body: body,
+                return_type: return_type,
             };
         }
         other => panic!(
@@ -1578,7 +1605,16 @@ fn parse(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> AstNode {
                 body: schema_defs,
             }
         }
-        Rule::FuncCall => AstNode::InvalidNode,
+        Rule::SchemaMethod => {
+            let (name, args, body, return_type) = parse_function_like(pair, schemas);
+
+            AstNode::FunctionDef {
+                name: name,
+                args: args,
+                body: body,
+                return_type: return_type,
+            }
+        }
         _ => {
             if DEBUG {
                 println!("Attempted to parse unknown node");
@@ -2006,11 +2042,18 @@ fn resolve_variable_type(name_path: &Vec<String>, type_env: &TypeEnvironment) ->
 }
 
 // Resolves the type of an expression
-fn resolve_type(node: &AstExpr, type_env: &TypeEnvironment) -> Option<Type> {
+fn resolve_type(node: &AstExpr, name_path: &Vec<String>, type_env: &TypeEnvironment) -> Option<Type> {
     match node {
         AstExpr::DotAccess { receiver, property } => {
             let name_path = vec![receiver.name.clone(), property.name.clone()];
             let qualified_name = type_env_name(&name_path);
+
+            type_env.get(&qualified_name).cloned()
+        }
+        AstExpr::CallExpr { receiver, call_name, args } => {
+            let mut call_name_path = name_path.clone();
+            call_name_path.push(call_name.name.clone());
+            let qualified_name = type_env_name(&call_name_path);
 
             type_env.get(&qualified_name).cloned()
         }
@@ -2027,7 +2070,7 @@ fn update_type_environment_statement(
         match stmt {
             AstStatement::LetDecl { name, value } => {
                 let err_str = format!("Type error - cannot resolve type for {}", name.name);
-                let r#type = resolve_type(&value, type_env).expect(&err_str);
+                let r#type = resolve_type(&value, &name_path, type_env).expect(&err_str);
                 let mut statement_name_path = name_path.clone();
                 statement_name_path.push(name.name.clone());
 
@@ -2100,6 +2143,11 @@ fn update_environment(
                 }
             }
         }
+        AstNode::FunctionDef { name, return_type, .. } => {
+            if let Some(rt) = return_type {
+                type_env.insert(name.name.clone(), rt.clone());
+            }
+        }
         _ => (), /*println!("Attempted to add type information for unhandled node")*/
     }
 }
@@ -2122,11 +2170,13 @@ enum SLIRNode {
         collection: StateCollection,
         query: Query,
         transition: StateTransitionFunc,
+        // probably need result var name
     },
     StateTransfer {
         collection: StateCollection,
         transition: StateTransitionFunc,
         /*args: Vec<TypedIdentifier>*/
+        // prob need var name so result of query is what's being transferred
     },
     Logic(AstStatement),
 }
@@ -2195,9 +2245,7 @@ fn slir_translate(
                         args,
                         ..
                     } => {
-                        println!("Call expr");
                         if is_state_transition(&call_name.name) {
-                            println!("State transition?");
                             let name_path = vec![
                                 schema_name.to_string(),
                                 method_name.to_string(),
@@ -2311,7 +2359,7 @@ fn main() {
 
                 update_environment(&pair, &parsed, &mut schemas, &mut type_environment);
 
-                // println!("Parsed: {:#?}", parsed);
+                println!("Parsed: {:#?}", parsed);
                 // println!("\n\nTypeEnv: {:#?}", type_environment);
 
                 let slir = match &parsed {
