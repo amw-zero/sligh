@@ -360,21 +360,16 @@ fn js_translate_type(r#type: &Type) -> JSAstNode {
                 JSAstNode::Identifier("number".to_string())
             }
             PrimitiveType::String => JSAstNode::Identifier("string".to_string()),
+            PrimitiveType::Array(t) =>
+                JSAstNode::ArrayType(Box::new(js_translate_type(&*t))),
             other => panic!("Cannot JS translate type {:?}", other),
         },
         Type::Custom(ct) => match ct {
             CustomType::Schema(s) => JSAstNode::Identifier(s.clone()),
             CustomType::Variant => panic!("Unimplemented JS translation for Variant"),
+            CustomType::Function { .. } => panic!("Unimplemented JS translation for Function type")
         },
-        Type::Polymorphic { r#type, type_param } => match &**r#type {
-            Type::Primitive(pt) => match pt {
-                PrimitiveType::Array => {
-                    JSAstNode::ArrayType(Box::new(js_translate_type(type_param)))
-                }
-                _ => panic!("Unimplemented JS translation for non-Array generic type"),
-            },
-            _ => panic!("Unimplemented JS translation for non-primitive generic type"),
-        },
+        _ => panic!("Unimplemented JS translation for Generic type")
     }
 }
 
@@ -1300,18 +1295,21 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
 
 fn relation_name_from_type(r#type: &Type) -> String {
     match r#type {
-        Type::Polymorphic { type_param, .. } => match &**type_param {
-            Type::Custom(custom_type) => match custom_type {
-                CustomType::Schema(schema_name) => {
-                    let mut relation_name = schema_name.to_case(Case::Snake);
-                    relation_name.push('s');
+        Type::Primitive(pt) => match pt {
+            PrimitiveType::Array(t) => match &**t {
+                Type::Custom(custom_type) => match custom_type {
+                    CustomType::Schema(schema_name) => {
+                        let mut relation_name = schema_name.to_case(Case::Snake);
+                        relation_name.push('s');
 
-                    relation_name
-                }
+                        relation_name
+                    }
+                    _ => panic!("Can only get relation name from Array types"),
+                },
                 _ => panic!("Can only get relation name from Array types"),
             },
-            _ => panic!("Can only get relation name from Array types"),
-        },
+            _ => panic!("No")
+        }
         _ => panic!("Can only get relation name from Array types"),
     }
 }
@@ -1394,6 +1392,7 @@ enum AstNode {
         name: AstIdentifier,
         body: AstStatementList,
         args: Vec<TypedIdentifier>,
+        type_params: Option<Vec<Type>>,
         return_type: Option<Type>,
     }
 }
@@ -1409,12 +1408,10 @@ fn parse_type(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Type {
         Rule::ArrayType => {
             let type_iden = pair.into_inner().next().unwrap().as_str();
             let schema = schemas.get(type_iden);
-            Type::Polymorphic {
-                r#type: Box::new(Type::Primitive(PrimitiveType::Array)),
-                type_param: Box::new(Type::Custom(CustomType::Schema(
-                    schema.unwrap().name.clone(),
-                ))),
-            }
+            
+            Type::Primitive(PrimitiveType::Array(Box::new(Type::Custom(CustomType::Schema(
+                schema.unwrap().name.clone(),
+            )))))
         }
         other => panic!("Attempted to parse unexpected type: {:?}", other),
     }
@@ -1612,6 +1609,7 @@ fn parse(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> AstNode {
                 name: name,
                 args: args,
                 body: body,
+                type_params: None,
                 return_type: return_type,
             }
         }
@@ -2001,12 +1999,17 @@ enum PrimitiveType {
     Numeric,
     // Strings
     String,
-    Array,
+    Array(Box<Type>),
 }
 
 #[derive(Debug, Clone)]
 enum CustomType {
     Schema(String), // Schema name
+    Function {
+        args: Vec<Type>,
+        type_params: Option<Vec<Type>>,
+        return_type: Box<Option<Type>>,
+    },
     Variant,
 }
 
@@ -2014,29 +2017,24 @@ enum CustomType {
 enum Type {
     Primitive(PrimitiveType),
     Custom(CustomType),
-    // Instead, Types should have an Optional list of generic params
-    Polymorphic {
-        r#type: Box<Type>,
-        type_param: Box<Type>,
-    },
+    Generic(String),
 }
 
 type TypeEnvironment = HashMap<String, Type>;
 
 // Resolves the type of a variable by searching through parent nodes
 fn resolve_variable_type(name_path: &Vec<String>, type_env: &TypeEnvironment) -> Option<Type> {
-    // Remove each parent until only the variable name is left
-    if name_path.len() == 1 {
-        return None;
-    }
-
     let qualified_name = type_env_name(name_path);
     match type_env.get(&qualified_name) {
         Some(t) => Some(t).cloned(),
         None => {
-            let mut parent_name_path = name_path.clone();
-            parent_name_path.remove(name_path.len() - 2);
-            resolve_variable_type(&parent_name_path, type_env)
+            if name_path.len() == 1 {
+                None
+            } else {
+                let mut parent_name_path = name_path.clone();
+                parent_name_path.remove(name_path.len() - 2);
+                resolve_variable_type(&parent_name_path, type_env)
+            }
         }
     }
 }
@@ -2053,9 +2051,17 @@ fn resolve_type(node: &AstExpr, name_path: &Vec<String>, type_env: &TypeEnvironm
         AstExpr::CallExpr { receiver, call_name, args } => {
             let mut call_name_path = name_path.clone();
             call_name_path.push(call_name.name.clone());
-            let qualified_name = type_env_name(&call_name_path);
 
-            type_env.get(&qualified_name).cloned()
+            match resolve_variable_type(&call_name_path, type_env) {
+                Some(ref t) => match t {
+                    Type::Custom(ct) => match ct {
+                        CustomType::Function { return_type, .. } => *return_type.clone(),
+                        _ => Some(t.clone())
+                    },
+                    _ => Some(t.clone()),
+                },
+                None => None
+            }
         }
         _ => None,
     }
@@ -2074,6 +2080,7 @@ fn update_type_environment_statement(
                 let mut statement_name_path = name_path.clone();
                 statement_name_path.push(name.name.clone());
 
+                println!("Let decl: {}, type: {:#?}", name.name, r#type);
                 type_env.insert(type_env_name(&statement_name_path), r#type);
             }
             _ => (),
@@ -2143,13 +2150,31 @@ fn update_environment(
                 }
             }
         }
-        AstNode::FunctionDef { name, return_type, .. } => {
-            if let Some(rt) = return_type {
-                type_env.insert(name.name.clone(), rt.clone());
-            }
+        AstNode::FunctionDef { name, args, type_params, return_type, .. } => {
+            type_env.insert(name.name.clone(), Type::Custom(CustomType::Function {
+                args: args.into_iter().map(|arg| arg.r#type.clone()).collect(),
+                type_params: type_params.clone(),
+                return_type: Box::new(return_type.clone()),
+            }));
         }
         _ => (), /*println!("Attempted to add type information for unhandled node")*/
     }
+}
+
+fn insert_seed_types(type_env: &mut TypeEnvironment) {
+    // map: 'a list => ('a => 'b) => 'b list
+    type_env.insert("map".to_string(), Type::Custom(CustomType::Function {
+        args: vec![
+            Type::Primitive(PrimitiveType::Array(Box::new(Type::Generic("a".to_string())))),
+            Type::Custom(CustomType::Function {
+                args: vec![Type::Generic("b".to_string())],
+                type_params: None,
+                return_type: Box::new(Some(Type::Generic("b".to_string())))
+            })
+        ],
+        type_params: Some(vec![Type::Generic("a".to_string()), Type::Generic("b".to_string())]),
+        return_type: Box::new(Some(Type::Primitive(PrimitiveType::Array(Box::new(Type::Generic("b".to_string()))))))
+    }));
 }
 
 // SLIR
@@ -2351,6 +2376,9 @@ fn main() {
     // infrastructure-expanded program to source program (model)
     let mut certification_property_strs: Vec<String> = vec![];
     let mut certification_property_names: Vec<String> = vec![];
+
+    // Setup seed types
+    insert_seed_types(&mut type_environment);    
 
     match result {
         Ok(pairs) => {
