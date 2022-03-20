@@ -1335,6 +1335,10 @@ enum AstExpr {
         call_name: AstIdentifier,
         args: Vec<AstExpr>,
     },
+    FuncCall {
+        call_name: AstIdentifier,
+        args: Vec<AstExpr>
+    },
     DotAccess {
         receiver: AstIdentifier,
         property: AstIdentifier,
@@ -1406,11 +1410,9 @@ fn parse_type(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Type {
         }
         Rule::ArrayType => {
             let type_iden = pair.into_inner().next().unwrap().as_str();
-            let schema = schemas.get(type_iden);
+            let r#type = type_from_str(&type_iden, schemas);
 
-            Type::Primitive(PrimitiveType::Array(Box::new(Type::Custom(
-                CustomType::Schema(schema.unwrap().name.clone()),
-            ))))
+            Type::Primitive(PrimitiveType::Array(Box::new(r#type)))
         }
         other => panic!("Attempted to parse unexpected type: {:?}", other),
     }
@@ -1440,7 +1442,7 @@ fn parse_typed_identifier(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) 
 fn parse_expr(pair: pest::iterators::Pair<Rule>) -> AstExpr {
     match pair.as_rule() {
         Rule::NumberLiteral => {
-            AstExpr::NumberLiteral(pair.into_inner().as_str().parse::<i64>().unwrap())
+            AstExpr::NumberLiteral(pair.as_str().parse::<i64>().unwrap())
         }
         Rule::Identifier => AstExpr::Identifier(AstIdentifier {
             name: pair.as_str().to_string(),
@@ -1461,6 +1463,19 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>) -> AstExpr {
                 call_name: AstIdentifier {
                     name: call_name.to_string(),
                 },
+                args: args,
+            }
+        }
+        Rule::FuncCall => {
+            let mut func_call = pair.into_inner();
+            let call_name = func_call.next().unwrap().as_str();
+            let mut args: Vec<AstExpr> = vec![];
+            for call_arg in func_call {
+                args.push(parse_expr(call_arg))
+            }
+
+            AstExpr::FuncCall { 
+                call_name: AstIdentifier { name: call_name.to_string() },
                 args: args,
             }
         }
@@ -2042,10 +2057,6 @@ fn resolve_variable_type(name_path: &Vec<String>, type_env: &TypeEnvironment) ->
     }
 }
 
-// receiver -- rts: [RecurringTransaction]
-// args     -- expand: RecurringTransaction => ScheduledTransaction
-// map      -- map: (['a], ('a -> 'b)) -> ['b]
-// bind generic type to concrete type based on receiver and args here
 fn resolve_generics_fn(call_type: &Type, receiver_type: &Type, arg_types: &Vec<Type>) -> Type {
     match call_type {
         Type::Custom(ct) => match ct {
@@ -2111,10 +2122,8 @@ fn resolve_generics_fn(call_type: &Type, receiver_type: &Type, arg_types: &Vec<T
                             }
                         }
 
-                        println!("Type instantiation: {:#?}", type_instantiation);
                         match &**return_type {
                             Some(Type::Generic(g)) => {
-                                println!("Resolving generic type");
                                 type_instantiation
                                     .get(g)
                                     .expect("Generic type error - could not resolve generic type")
@@ -2123,7 +2132,6 @@ fn resolve_generics_fn(call_type: &Type, receiver_type: &Type, arg_types: &Vec<T
                             Some(Type::Primitive(pt)) => match pt {
                                 PrimitiveType::Array(t) => match &**t {
                                     Type::Generic(g) => {
-                                        println!("Resolving generic array type");
                                         Type::Primitive(PrimitiveType::Array(
                                             Box::new(type_instantiation.get(g).expect("Generic type error - could not resolve generic type").clone())
                                         ))
@@ -2165,6 +2173,7 @@ fn resolve_type(
 
             resolve_variable_type(&qualified_name_path, type_env)
         }
+        AstExpr::NumberLiteral(..) => Some(Type::Primitive(PrimitiveType::Int)),
         AstExpr::CallExpr {
             receiver,
             call_name,
@@ -2188,6 +2197,22 @@ fn resolve_type(
                 .expect("Type error - CallExpr call name");
             Some(resolve_generics_fn(&call_type, &receiver_type, &arg_types))
         }
+        AstExpr::FuncCall { call_name, args } => {
+            // Note: Currently not instantiating generic function types
+            let mut call_name_path = name_path.clone();
+            call_name_path.push(call_name.name.clone());
+
+            let arg_types: Vec<Type> = args
+                .into_iter()
+                .map(|arg| {
+                    resolve_type(&arg, name_path, type_env).expect("Type error - function args")
+                })
+                .collect();
+
+            Some(resolve_variable_type(&call_name_path, type_env)
+                .expect("Type error - CallExpr call name"))
+
+        }
         _ => None,
     }
 }
@@ -2205,7 +2230,6 @@ fn update_type_environment_statement(
                 let mut statement_name_path = name_path.clone();
                 statement_name_path.push(name.name.clone());
 
-                println!("Let decl: {}, type: {:#?}", name.name, r#type);
                 type_env.insert(type_env_name(&statement_name_path), r#type);
             }
             _ => (),
@@ -2349,19 +2373,19 @@ enum SLIRNode {
     },
     Logic(AstStatement),
 }
+
 fn state_variable_collection_name(
     name: &str,
     name_path: &Vec<String>,
     schemas: &Schemas,
     type_env: &TypeEnvironment,
-) -> Option<String> {
+) -> Option<String> {    
     let r#type = resolve_variable_type(&name_path, type_env).expect("Type error - slir_expr_nodes");
 
     Some(relation_name_from_type(&r#type))
 }
 
-/*
-fn slir_expr_nodes(expr: &AstExpr, schemas: &Schemas, type_env: &TypeEnvironment, slir_nodes: &mut Vec<SLIRNode>) {
+fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &AstStatement, schemas: &Schemas, type_env: &TypeEnvironment, slir_nodes: &mut Vec<SLIRNode>) {
     match expr {
         AstExpr::DotAccess { receiver, property } => {
             let name_path = vec![
@@ -2372,22 +2396,65 @@ fn slir_expr_nodes(expr: &AstExpr, schemas: &Schemas, type_env: &TypeEnvironment
                 slir_nodes.push(SLIRNode::StateQuery {
                     collection: StateCollection { name: AstIdentifier { name: collection_name } },
                     query: Query::Where,
+                    transition: StateTransitionFunc::Read,
                 })
             } else {
-                slir_nodes.push(SLIRNode::Logic(AstStatement::Expr(AstExpr::NumberLiteral(5))));
+                slir_nodes.push(SLIRNode::Logic(AstStatement::Expr(expr.clone())));
             }
         }
         AstExpr::CallExpr { receiver, call_name, args } => {
-            for arg in args {
-                slir_expr_nodes(arg, schemas, type_env, slir_nodes)
+            if is_state_transition(&call_name.name) {
+                let name_path = vec![
+                    schema_name.to_string(),
+                    method_name.to_string(),
+                    receiver.name.to_string(),
+                ];
+                let potential_state_var = name_path.clone().into_iter().last();
+                let schema = schemas.get(schema_name).expect("Unable to find schema");
+                let is_state_variable = schema.attributes.iter().any(|attr| attr.name == receiver.name);
+                match state_variable_collection_name(
+                    &receiver.name,
+                    &name_path,
+                    schemas,
+                    type_env,
+                ) {
+                    Some(collection_name) if is_state_variable => {
+                        slir_nodes.push(SLIRNode::StateQuery {
+                            collection: StateCollection {
+                                name: AstIdentifier {
+                                    name: collection_name,
+                                },
+                            },
+                            query: Query::Where,
+                            transition: state_transition_func_from_str(&call_name.name),
+                        });
+                    },
+                    _ => ()
+                };
+                slir_nodes.push(SLIRNode::StateTransfer {
+                    collection: StateCollection {
+                        name: AstIdentifier {
+                            name: relation_name_from_type(
+                                &resolve_variable_type(&name_path, type_env)
+                                    .expect("Type error - slir translate"),
+                            ),
+                        },
+                    },
+                    transition: state_transition_func_from_str(&call_name.name),
+                    /*args: args.clone()*/
+                })
+            } else {
+                slir_nodes.push(SLIRNode::Logic(stmt.clone()))
             }
+        }
+        AstExpr::FuncCall { .. } => {
+            slir_nodes.push(SLIRNode::Logic(stmt.clone()))
         }
         _ => {
             println!("Warning - slir_expr_nodes uknown expr type")
         }
     }
 }
-*/
 
 fn slir_translate(
     schema_name: &str,
@@ -2396,68 +2463,21 @@ fn slir_translate(
     schemas: &Schemas,
     type_env: &TypeEnvironment,
 ) -> Vec<SLIRNode> {
-    println!("SLIR Translate: {}, {}", schema_name, method_name);
     let mut slir_nodes: Vec<SLIRNode> = vec![];
     for stmt in &body.statements {
         // Currently adding too many SLIR nodes - adding one for Let expr, then one again
         // for rts.read!(). read!() doesn't necessarily always mean a StateTransfer _and_ a StateQuery.
         // need to improve that logic
+        // println!("SLIR Translate: {:#?}", stmt);
+
         match stmt {
             AstStatement::LetDecl { name, value } => {
-                // let mut let_nodes: Vec<SLIRNode> = vec![];
-                // slir_expr_nodes(&value, schemas, type_env, &mut let_nodes);
-                // slir_nodes.append(&mut let_nodes);
+                let mut let_nodes: Vec<SLIRNode> = vec![];
+                slir_expr_nodes(&value, schema_name, method_name, stmt, schemas, type_env, &mut let_nodes);
+                slir_nodes.append(&mut let_nodes);
             }
             AstStatement::Expr(e) => {
-                match e {
-                    AstExpr::CallExpr {
-                        receiver,
-                        call_name,
-                        args,
-                        ..
-                    } => {
-                        if is_state_transition(&call_name.name) {
-                            let name_path = vec![
-                                schema_name.to_string(),
-                                method_name.to_string(),
-                                receiver.name.to_string(),
-                            ];
-                            if let Some(collection_name) = state_variable_collection_name(
-                                &receiver.name,
-                                &name_path,
-                                schemas,
-                                type_env,
-                            ) {
-                                slir_nodes.push(SLIRNode::StateQuery {
-                                    collection: StateCollection {
-                                        name: AstIdentifier {
-                                            name: collection_name,
-                                        },
-                                    },
-                                    query: Query::Where,
-                                    transition: state_transition_func_from_str(&call_name.name),
-                                });
-                            } else {
-                                println!("Warning - calling state transition func on a non state variable");
-                            }
-                            slir_nodes.push(SLIRNode::StateTransfer {
-                                collection: StateCollection {
-                                    name: AstIdentifier {
-                                        name: relation_name_from_type(
-                                            &resolve_variable_type(&name_path, type_env)
-                                                .expect("Type error - slir translate"),
-                                        ),
-                                    },
-                                },
-                                transition: state_transition_func_from_str(&call_name.name),
-                                /*args: args.clone()*/
-                            })
-                        } else {
-                            slir_nodes.push(SLIRNode::Logic(stmt.clone()))
-                        }
-                    }
-                    _ => println!("Warning - unhandled expr node in slir_translate"),
-                }
+                slir_expr_nodes(&e, schema_name, method_name, stmt, schemas, type_env, &mut slir_nodes)
             }
         }
     }
