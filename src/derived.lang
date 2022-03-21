@@ -9,11 +9,15 @@ schema CreateRecurringTransaction:
   name: String
 end
 
+def process(rtc: CreateRecurringTransaction) -> CreateRecurringTransaction
+  CreateRecurringTransaction.new(rtc.amount, rct.name)
+end
+
 schema Budget:
   recurring_transactions: [RecurringTransaction]
   
   def create_recurring_transaction(rtc: CreateRecurringTransaction)
-    recurring_transactions.create!(rtc)
+    recurring_transactions.create!(process(rtc))
   end
 
   def delete_recurring_transaction(rt: RecurringTransaction)
