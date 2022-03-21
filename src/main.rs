@@ -599,6 +599,7 @@ fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransitionFunc) 
     }
 }
 
+// TODO: Rename to StateTransferFunc
 #[derive(Debug)]
 enum StateTransitionFunc {
     Create,
@@ -2348,29 +2349,28 @@ fn insert_seed_types(type_env: &mut TypeEnvironment) {
 // SLIR
 
 #[derive(Debug)]
-struct StateCollection {
-    name: AstIdentifier,
-}
-
-#[derive(Debug)]
 enum Query {
     Where,
 }
 
 #[derive(Debug)]
+struct StateTransfer {
+    name: String,
+    collection: TypedIdentifier,
+    transition: StateTransitionFunc,
+    args: Vec<AstExpr>,
+    // prob need var name so result of query is what's being transferred
+}
+
+#[derive(Debug)]
 enum SLIRNode {
     StateQuery {
-        collection: StateCollection,
+        collection: TypedIdentifier,
         query: Query,
         transition: StateTransitionFunc,
         // probably need result var name
     },
-    StateTransfer {
-        collection: StateCollection,
-        transition: StateTransitionFunc,
-        /*args: Vec<TypedIdentifier>*/
-        // prob need var name so result of query is what's being transferred
-    },
+    StateTransfer(StateTransfer),
     Logic(AstStatement),
 }
 
@@ -2393,8 +2393,12 @@ fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &
                 property.name.clone()
             ];
             if let Some(collection_name) = state_variable_collection_name(&receiver.name, &name_path, schemas, type_env) {
+                let r#type = resolve_variable_type(&name_path, type_env).expect("Type error - slir_expr_nodes");
                 slir_nodes.push(SLIRNode::StateQuery {
-                    collection: StateCollection { name: AstIdentifier { name: collection_name } },
+                    collection: TypedIdentifier { 
+                        identifier: AstIdentifier { name: collection_name },
+                        r#type: r#type,
+                    },
                     query: Query::Where,
                     transition: StateTransitionFunc::Read,
                 })
@@ -2412,6 +2416,8 @@ fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &
                 let potential_state_var = name_path.clone().into_iter().last();
                 let schema = schemas.get(schema_name).expect("Unable to find schema");
                 let is_state_variable = schema.attributes.iter().any(|attr| attr.name == receiver.name);
+                let state_var_type = resolve_variable_type(&name_path, type_env)
+                    .expect("Type error - slir translate");
                 match state_variable_collection_name(
                     &receiver.name,
                     &name_path,
@@ -2420,10 +2426,11 @@ fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &
                 ) {
                     Some(collection_name) if is_state_variable => {
                         slir_nodes.push(SLIRNode::StateQuery {
-                            collection: StateCollection {
-                                name: AstIdentifier {
+                            collection: TypedIdentifier {
+                                identifier: AstIdentifier {
                                     name: collection_name,
                                 },
+                                r#type: state_var_type.clone(),
                             },
                             query: Query::Where,
                             transition: state_transition_func_from_str(&call_name.name),
@@ -2431,18 +2438,19 @@ fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &
                     },
                     _ => ()
                 };
-                slir_nodes.push(SLIRNode::StateTransfer {
-                    collection: StateCollection {
-                        name: AstIdentifier {
-                            name: relation_name_from_type(
-                                &resolve_variable_type(&name_path, type_env)
-                                    .expect("Type error - slir translate"),
-                            ),
+
+                
+                slir_nodes.push(SLIRNode::StateTransfer(StateTransfer{
+                    name: call_name.name.clone(),
+                    collection: TypedIdentifier {
+                        identifier: AstIdentifier {
+                            name: relation_name_from_type(&state_var_type)
                         },
+                        r#type: state_var_type,
                     },
                     transition: state_transition_func_from_str(&call_name.name),
-                    /*args: args.clone()*/
-                })
+                    args: args.clone()
+                }))
             } else {
                 slir_nodes.push(SLIRNode::Logic(stmt.clone()))
             }
@@ -2483,6 +2491,204 @@ fn slir_translate(
     }
 
     slir_nodes
+}
+
+// Tier splitting: SLIR -> JS
+
+fn slir_expand_fetch_args_from_state_transition(
+    st: &StateTransitionFunc,
+    args: &Vec<AstExpr>,
+) -> JSAstNode {
+    let method_prop = Prop {
+        key: JSAstNode::Identifier("method".to_string()),
+        value: JSAstNode::StringLiteral(st.as_http_method().to_string()),
+    };
+
+    let headers_prop = Prop {
+        key: JSAstNode::Identifier("headers".to_string()),
+        value: JSAstNode::Object {
+            props: vec![Prop {
+                key: JSAstNode::StringLiteral("Content-Type".to_string()),
+                value: JSAstNode::StringLiteral("application/json".to_string()),
+            }],
+        },
+    };
+
+    let mut props: Vec<Prop> = vec![method_prop, headers_prop];
+
+    match st {
+        StateTransitionFunc::Create => {
+            let js_create_arg = js_translate_expr(&args[0]);
+            let state_var_iden = JSAstNode::Identifier(js_gen_string(js_create_arg));
+            let body_prop = Prop {
+                key: JSAstNode::Identifier("body".to_string()),
+
+                // TODO: Only JSON.stringifying one method call argument here
+                value: JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("JSON".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier("stringify".to_string())),
+                    args: vec![state_var_iden.clone()],
+                },
+            };
+            props.push(body_prop);
+        }
+        _ => (),
+    }
+
+    JSAstNode::Object { props: props }
+}
+
+fn slir_state_var_endpoint_client(
+    state_var: &String,
+    state_transition: &StateTransitionFunc,
+    args: &Vec<AstExpr>,
+) -> JSAstNode {
+    match state_transition {
+        StateTransitionFunc::Create | StateTransitionFunc::Read => {
+            JSAstNode::StringLiteral(format!("{}/{}", API_HOST, state_var))
+        }
+        StateTransitionFunc::Delete | StateTransitionFunc::Update => {
+            // args[0] really sholuld be a type check. delete! only takes one argument.
+            let state_var_arg = js_translate_expr(&args[0]);
+            JSAstNode::PlusExpr {
+                left: Box::new(JSAstNode::StringLiteral(format!(
+                    "{}/{}/",
+                    API_HOST, state_var
+                ))),
+                right: Box::new(JSAstNode::Identifier(format!("{}.id", js_gen_string(state_var_arg)))),
+            }
+        }
+    }
+}
+
+// This turns a semantic state transition into a network request to update the state in
+// the database as well as optimistically update the client state
+fn slir_expand_state_transition_client(
+    state_trans_func: &StateTransitionFunc,
+    state_var: &String,
+    args: &Vec<AstExpr>,
+) -> JSAstNode {
+    let endpoint = slir_state_var_endpoint_client(&state_var, &state_trans_func, &args);
+    let st_fetch_args = slir_expand_fetch_args_from_state_transition(&state_trans_func, &args);
+
+    let fetch_args = vec![endpoint, st_fetch_args];
+
+    let fetch = JSAstNode::FuncCallExpr {
+        call_name: Box::new(JSAstNode::Identifier("fetch".to_string())),
+        args: fetch_args,
+    };
+    let expanded_statements: Vec<JSAstNode> = match state_trans_func {
+        StateTransitionFunc::Create => {
+            let await_fetch = JSAstNode::LetExpr {
+                name: Box::new(JSAstNode::Identifier("resp".to_string())),
+                value: Box::new(JSAstNode::AwaitOperator {
+                    node: Box::new(fetch),
+                }),
+            };
+            let await_json = JSAstNode::AwaitOperator {
+                node: Box::new(JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("resp".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier("json".to_string())),
+                    args: vec![],
+                }),
+            };
+            let update_client_state = JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+                call_name: Box::new(JSAstNode::Identifier("push".to_string())),
+                args: vec![await_json],
+            };
+            vec![await_fetch, update_client_state]
+        }
+        StateTransitionFunc::Delete => {
+            let js_arg = js_translate_expr(&args[0]);
+            let update_client_state = js_delete_var(&state_var, &js_gen_string(js_arg));
+            vec![fetch, update_client_state]
+        }
+        StateTransitionFunc::Read => {
+            let await_fetch = JSAstNode::LetExpr {
+                name: Box::new(JSAstNode::Identifier("data".to_string())),
+                value: Box::new(JSAstNode::AwaitOperator {
+                    node: Box::new(fetch),
+                }),
+            };
+            let update_client_state = js_read_var(&state_var);
+            vec![await_fetch, update_client_state]
+        }
+        _ => vec![],
+    };
+
+    JSAstNode::StatementList {
+        statements: expanded_statements,
+    }
+}
+
+fn slir_make_client(schema_name: &str, state_transfers: &Vec<&StateTransfer>, schemas: &Schemas, type_env: &TypeEnvironment) -> JSAstNode {
+    // args: call_name ("read!"), relation_name (from Type),
+    let mut class_properties: Vec<JSAstNode> = vec![];
+    let mut class_methods: Vec<JSAstNode> = vec![];
+    for transfer in state_transfers {
+        let class_property = JSAstNode::TypedIdentifier {
+            identifier: Box::new(JSAstNode::Identifier(transfer.collection.identifier.name.clone())),
+            r#type: Box::new(js_translate_type(&transfer.collection.r#type))
+        };
+        class_properties.push(class_property);
+
+        let expanded_client_body = slir_expand_state_transition_client(&transfer.transition, &transfer.collection.identifier.name, &transfer.args);
+        let class_method = JSAstNode::ClassMethod {
+            name: Box::new(JSAstNode::Identifier(transfer.name.clone())),
+            args: vec![],
+            body: Box::new(expanded_client_body)
+        };
+        class_methods.push(class_method);
+    }
+
+    let config_func_type = format!("(a: {}) => void", schema_name);
+    let constructor = JSAstNode::ClassMethod {
+        name: Box::new(JSAstNode::Identifier("constructor".to_string())),
+        args: vec![JSAstNode::TypedIdentifier {
+            identifier: Box::new(JSAstNode::Identifier("config".to_string())),
+            r#type: Box::new(JSAstNode::Identifier(config_func_type)),
+        }],
+        body: Box::new(JSAstNode::FuncCallExpr {
+            args: vec![JSAstNode::Identifier("this".to_string())],
+            call_name: Box::new(JSAstNode::Identifier("config".to_string())),
+        }),
+    };
+    let mut expanded_definitions: Vec<JSAstNode> = vec![];
+    for property in class_properties {
+        expanded_definitions.push(property);
+    }
+    for method in class_methods {
+        expanded_definitions.push(JSAstNode::AsyncModifier(Box::new(method)));
+    }
+
+    expanded_definitions.insert(0, constructor);
+
+    JSAstNode::ClassDef {
+        name: Box::new(JSAstNode::Identifier(schema_name.to_string())),
+        body: Box::new(JSAstNode::ClassBody {
+            definitions: expanded_definitions,
+        }),
+    }
+}
+
+fn slir_tier_split(schema_name: &str, slir: &Vec<SLIRNode>, schemas: &Schemas, type_env: &TypeEnvironment) -> (JSAstNode, JSAstNode) {
+    // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
+    // the statements before it can be placed on the server, and anything after can be placed
+    // on the client.
+    let state_transfer_index = slir.iter().position(|stmt| match stmt {
+        SLIRNode::StateTransfer { .. } => true,
+        _ => false
+    }).expect("At least one StateTransfer is necessary for tier splitting");
+    let state_transfers: Vec<&StateTransfer> = slir.iter().skip(state_transfer_index).map(|node| match node {
+        SLIRNode::StateTransfer(st) => st,
+        _ => panic!("All state transfer SLIRNodes must be of variant StateTransfer")
+    }).collect();
+    let server_stmts: Vec<&SLIRNode> = slir.iter().take(state_transfer_index).collect();
+
+    let client = slir_make_client(&schema_name, &state_transfers, schemas, type_env);
+
+    (client.clone(), JSAstNode::InvalidNode)
 }
 
 #[derive(ClapParser, Debug)]
@@ -2553,11 +2759,11 @@ fn main() {
                 // println!("Parsed: {:#?}", parsed);
                 // println!("\n\nTypeEnv: {:#?}", type_environment);
 
-                let slir = match &parsed {
+                let (slir, schema_name) = match &parsed {
                     AstNode::SchemaDef {
                         name: schema_name,
                         body,
-                    } => body
+                    } => (body
                         .into_iter()
                         .filter_map(|def| match def {
                             SchemaDefinition::SchemaMethod {
@@ -2574,11 +2780,16 @@ fn main() {
                             )),
                             _ => None,
                         })
-                        .collect(),
-                    _ => vec![],
+                        .collect(), schema_name.name.to_string()),
+                    _ => (vec![], "".to_string())
                 };
 
                 println!("{:#?}", slir);
+
+                for stmt in slir {
+                    let (client_js, server_js) = slir_tier_split(&schema_name, &stmt, &schemas, &type_environment);
+                    println!("SLIR Tier Split: {:#?}", client_js);
+                }
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
