@@ -305,6 +305,13 @@ fn js_translate_expr(expr: &AstExpr) -> JSAstNode {
             call_name: Box::new(JSAstNode::Identifier(call_name.name.clone())),
             args: args.into_iter().map(js_translate_expr).collect(),
         },
+        AstExpr::FuncCall {
+            call_name,
+            args,
+        } => JSAstNode::FuncCallExpr {
+            call_name: Box::new(JSAstNode::Identifier(call_name.name.clone())),
+            args: args.into_iter().map(js_translate_expr).collect(),
+        },
         /*
         AstExpr::DotAccess { receiver, property } => {
             JSAstNode::DotAccess { receiver: Box::new(JSAstNode::Identifier(receiver.name))}
@@ -1514,6 +1521,7 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>) -> AstStatement {
             }
         }
         Rule::MethodCall => AstStatement::Expr(parse_expr(pair)),
+        Rule::FuncCall => AstStatement::Expr(parse_expr(pair)),
         other => panic!("Unexpected node during statement parsing: {:?}", other),
     }
 }
@@ -1583,7 +1591,7 @@ fn parse_schema_def(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Sch
         }
         Rule::SchemaMethod => {
             let (name, args, body, return_type) = parse_function_like(pair, schemas);
-
+            println!("Parsed function like: {:#?}", args);
             return SchemaDefinition::SchemaMethod {
                 name: name,
                 args: args,
@@ -2622,7 +2630,7 @@ fn slir_expand_state_transition_client(
     }
 }
 
-fn slir_make_client(schema_name: &str, state_transfers: &Vec<&StateTransfer>, schemas: &Schemas, type_env: &TypeEnvironment) -> JSAstNode {
+fn slir_make_state_transfers(schema_name: &str, state_transfers: &Vec<&StateTransfer>, schemas: &Schemas, type_env: &TypeEnvironment) -> (Vec<JSAstNode>, Vec<JSAstNode>) {
     // args: call_name ("read!"), relation_name (from Type),
     let mut class_properties: Vec<JSAstNode> = vec![];
     let mut class_methods: Vec<JSAstNode> = vec![];
@@ -2639,7 +2647,32 @@ fn slir_make_client(schema_name: &str, state_transfers: &Vec<&StateTransfer>, sc
             args: vec![],
             body: Box::new(expanded_client_body)
         };
-        class_methods.push(class_method);
+        class_methods.push(JSAstNode::AsyncModifier(Box::new(class_method)));
+    }
+
+    (class_properties, class_methods)
+}
+
+fn slir_tier_split(schema_name: &str, slir: &Vec<Vec<SLIRNode>>, schemas: &Schemas, type_env: &TypeEnvironment) -> (JSAstNode, JSAstNode) {
+    // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
+    // the statements before it can be placed on the server, and anything after can be placed
+    // on the client.
+    let mut class_properties: Vec<JSAstNode> = vec![];
+    let mut class_methods: Vec<JSAstNode> = vec![];
+    for stmts in slir {
+        let state_transfer_index = stmts.iter().position(|stmt| match stmt {
+            SLIRNode::StateTransfer { .. } => true,
+            _ => false
+        }).expect("At least one StateTransfer is necessary for tier splitting");
+        let state_transfers: Vec<&StateTransfer> = stmts.iter().skip(state_transfer_index).map(|node| match node {
+            SLIRNode::StateTransfer(st) => st,
+            _ => panic!("All state transfer SLIRNodes must be of variant StateTransfer")
+        }).collect();
+        let server_stmts: Vec<&SLIRNode> = stmts.iter().take(state_transfer_index).collect();
+
+        let (mut properties, mut methods) = slir_make_state_transfers(&schema_name, &state_transfers, schemas, type_env);
+        class_properties.append(&mut properties);
+        class_methods.append(&mut methods);
     }
 
     let config_func_type = format!("(a: {}) => void", schema_name);
@@ -2654,41 +2687,26 @@ fn slir_make_client(schema_name: &str, state_transfers: &Vec<&StateTransfer>, sc
             call_name: Box::new(JSAstNode::Identifier("config".to_string())),
         }),
     };
+
     let mut expanded_definitions: Vec<JSAstNode> = vec![];
     for property in class_properties {
         expanded_definitions.push(property);
     }
     for method in class_methods {
-        expanded_definitions.push(JSAstNode::AsyncModifier(Box::new(method)));
+        expanded_definitions.push(method);
     }
 
     expanded_definitions.insert(0, constructor);
 
-    JSAstNode::ClassDef {
+
+    let client = JSAstNode::ClassDef {
         name: Box::new(JSAstNode::Identifier(schema_name.to_string())),
         body: Box::new(JSAstNode::ClassBody {
             definitions: expanded_definitions,
         }),
-    }
-}
+    };
 
-fn slir_tier_split(schema_name: &str, slir: &Vec<SLIRNode>, schemas: &Schemas, type_env: &TypeEnvironment) -> (JSAstNode, JSAstNode) {
-    // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
-    // the statements before it can be placed on the server, and anything after can be placed
-    // on the client.
-    let state_transfer_index = slir.iter().position(|stmt| match stmt {
-        SLIRNode::StateTransfer { .. } => true,
-        _ => false
-    }).expect("At least one StateTransfer is necessary for tier splitting");
-    let state_transfers: Vec<&StateTransfer> = slir.iter().skip(state_transfer_index).map(|node| match node {
-        SLIRNode::StateTransfer(st) => st,
-        _ => panic!("All state transfer SLIRNodes must be of variant StateTransfer")
-    }).collect();
-    let server_stmts: Vec<&SLIRNode> = slir.iter().take(state_transfer_index).collect();
-
-    let client = slir_make_client(&schema_name, &state_transfers, schemas, type_env);
-
-    (client.clone(), JSAstNode::InvalidNode)
+    (client, JSAstNode::InvalidNode)
 }
 
 #[derive(ClapParser, Debug)]
@@ -2737,6 +2755,7 @@ fn main() {
 
     // Expanded client representation of program
     let mut js_expanded_client: Vec<String> = vec![];
+    let mut js_expanded_client_slir: Vec<String> = vec![];
 
     // Expanded server endpoints for infrastructure-expanded program
     let mut js_endpoints: Vec<JSAstNode> = vec![];
@@ -2753,6 +2772,7 @@ fn main() {
         Ok(pairs) => {
             for pair in pairs {
                 let parsed = parse(pair.clone(), &schemas);
+                println!("parsed: {:#?}", parsed);
 
                 update_environment(&pair, &parsed, &mut schemas, &mut type_environment);
 
@@ -2784,15 +2804,14 @@ fn main() {
                     _ => (vec![], "".to_string())
                 };
 
-                println!("{:#?}", slir);
+//                println!("SLIR: {:#?}", slir);
 
-                for stmt in slir {
-                    let (client_js, server_js) = slir_tier_split(&schema_name, &stmt, &schemas, &type_environment);
-                    println!("SLIR Tier Split: {:#?}", client_js);
-                }
+                let (client_js, server_js) = slir_tier_split(&schema_name, &slir, &schemas, &type_environment);
+                js_expanded_client_slir.push(js_gen_string(client_js));
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
+
                 let js_ast = js_translate(parsed.clone());
 
                 // js_executable_translate converts Sligh constructs to executable JS, e.g. by
@@ -2824,6 +2843,9 @@ fn main() {
 
     let client_code = js_expanded_client.join("\n\n");
     fs::write(args.client_output, client_code).expect("Unable to write client code file.");
+
+    let client_code_slir = js_expanded_client.join("\n\n");
+    fs::write("client.slir.ts", client_code_slir).expect("Unable to write client code SLIR file.");
 
     fs::write(args.server_output, gen_server_endpoint_file(&js_endpoints))
         .expect("Unable to write server code file.");
