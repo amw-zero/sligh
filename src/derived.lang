@@ -47,10 +47,10 @@ end
 
 schema Schedule:
   def scheduled_transactions()
-    let hey = filter(5)
+    let f = filter(5)
     let rts = Budget.recurring_transactions
-    let idk = rts.map(expand)
+    let scheduled_transactions = rts.map(expand)
 
-    idk.read!()
+    scheduled_transactions.read!()
   end
 end

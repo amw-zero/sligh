@@ -234,6 +234,7 @@ fn js_gen_string(node: JSAstNode) -> String {
                 _ => panic!("Should only be translating types"),
             }
         }
+        JSAstNode::ArrayType(iden) => js_gen_iden_name(*iden),
         JSAstNode::Identifier(_) => js_gen_iden_name(node),
         JSAstNode::Object { props } => {
             let mut key_values: Vec<String> = vec![];
@@ -283,7 +284,7 @@ fn js_gen_string(node: JSAstNode) -> String {
             format!("{} !== {}", js_gen_string(*left), js_gen_string(*right))
         }
         /*JSAstNode::Expr(e) => e,*/
-        _ => "".to_string(),
+        JSAstNode::InvalidNode => "invalid_node".to_string(),
     }
 }
 
@@ -368,7 +369,6 @@ fn js_translate_type(r#type: &Type) -> JSAstNode {
             }
             PrimitiveType::String => JSAstNode::Identifier("string".to_string()),
             PrimitiveType::Array(t) => JSAstNode::ArrayType(Box::new(js_translate_type(&*t))),
-            other => panic!("Cannot JS translate type {:?}", other),
         },
         Type::Custom(ct) => match ct {
             CustomType::Schema(s) => JSAstNode::Identifier(s.clone()),
@@ -486,7 +486,7 @@ struct TypedArgument {
 struct StateTransition {
     name: String,
     state_variable: String,
-    transition_type: StateTransitionFunc,
+    transition_type: StateTransferFunc,
     args: Vec<TypedArgument>,
 }
 
@@ -579,14 +579,14 @@ fn js_partition_class_definitions(node: &JSAstNode) -> PartitionedClassDefinitio
 
 fn js_state_var_endpoint_client(
     state_var: &String,
-    state_transition: &StateTransitionFunc,
+    state_transition: &StateTransferFunc,
     args: &Vec<String>,
 ) -> JSAstNode {
     match state_transition {
-        StateTransitionFunc::Create | StateTransitionFunc::Read => {
+        StateTransferFunc::Create | StateTransferFunc::Read => {
             JSAstNode::StringLiteral(format!("{}/{}", API_HOST, state_var))
         }
-        StateTransitionFunc::Delete | StateTransitionFunc::Update => {
+        StateTransferFunc::Delete | StateTransferFunc::Update => {
             let state_var_arg = args[0].clone();
             JSAstNode::PlusExpr {
                 left: Box::new(JSAstNode::StringLiteral(format!(
@@ -599,16 +599,16 @@ fn js_state_var_endpoint_client(
     }
 }
 
-fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransitionFunc) -> String {
+fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransferFunc) -> String {
     match st_func {
-        StateTransitionFunc::Create | StateTransitionFunc::Read => format!("/{}", state_var),
-        StateTransitionFunc::Delete | StateTransitionFunc::Update => format!("/{}/:id", state_var),
+        StateTransferFunc::Create | StateTransferFunc::Read => format!("/{}", state_var),
+        StateTransferFunc::Delete | StateTransferFunc::Update => format!("/{}/:id", state_var),
     }
 }
 
 // TODO: Rename to StateTransferFunc
-#[derive(Debug)]
-enum StateTransitionFunc {
+#[derive(Debug, Clone)]
+enum StateTransferFunc {
     Create,
 
     // Note: Read is considered a state transition because it queries the
@@ -619,38 +619,38 @@ enum StateTransitionFunc {
     Delete,
 }
 
-impl StateTransitionFunc {
+impl StateTransferFunc {
     fn as_http_method(&self) -> &'static str {
         match self {
-            StateTransitionFunc::Create => "POST",
-            StateTransitionFunc::Read => "GET",
-            StateTransitionFunc::Update => "PUT",
-            StateTransitionFunc::Delete => "DELETE",
+            StateTransferFunc::Create => "POST",
+            StateTransferFunc::Read => "GET",
+            StateTransferFunc::Update => "PUT",
+            StateTransferFunc::Delete => "DELETE",
         }
     }
 
     fn as_express_http_method(&self) -> &'static str {
         match self {
-            StateTransitionFunc::Create => "post",
-            StateTransitionFunc::Read => "get",
-            StateTransitionFunc::Update => "put",
-            StateTransitionFunc::Delete => "delete",
+            StateTransferFunc::Create => "post",
+            StateTransferFunc::Read => "get",
+            StateTransferFunc::Update => "put",
+            StateTransferFunc::Delete => "delete",
         }
     }
 }
 
-fn state_transition_func_from_str(s: &str) -> StateTransitionFunc {
+fn state_transition_func_from_str(s: &str) -> StateTransferFunc {
     match s {
-        "create!" => StateTransitionFunc::Create,
-        "read!" => StateTransitionFunc::Read,
-        "update!" => StateTransitionFunc::Update,
-        "delete!" => StateTransitionFunc::Delete,
-        _ => panic!("Unexpected StateTransitionFunc string"),
+        "create!" => StateTransferFunc::Create,
+        "read!" => StateTransferFunc::Read,
+        "update!" => StateTransferFunc::Update,
+        "delete!" => StateTransferFunc::Delete,
+        _ => panic!("Unexpected StateTransferFunc string"),
     }
 }
 
 fn js_expand_fetch_args_from_state_transition(
-    st: &StateTransitionFunc,
+    st: &StateTransferFunc,
     args: &Vec<String>,
 ) -> JSAstNode {
     let method_prop = Prop {
@@ -671,7 +671,7 @@ fn js_expand_fetch_args_from_state_transition(
     let mut props: Vec<Prop> = vec![method_prop, headers_prop];
 
     match st {
-        StateTransitionFunc::Create => {
+        StateTransferFunc::Create => {
             let state_var_iden = JSAstNode::Identifier(args[0].clone());
             let body_prop = Prop {
                 key: JSAstNode::Identifier("body".to_string()),
@@ -749,7 +749,7 @@ fn js_expand_state_transition_client(
         args: fetch_args,
     };
     let expanded_statements: Vec<JSAstNode> = match state_trans_func {
-        StateTransitionFunc::Create => {
+        StateTransferFunc::Create => {
             let await_fetch = JSAstNode::LetExpr {
                 name: Box::new(JSAstNode::Identifier("resp".to_string())),
                 value: Box::new(JSAstNode::AwaitOperator {
@@ -770,11 +770,11 @@ fn js_expand_state_transition_client(
             };
             vec![await_fetch, update_client_state]
         }
-        StateTransitionFunc::Delete => {
+        StateTransferFunc::Delete => {
             let update_client_state = js_delete_var(&state_var, &args[0]);
             vec![fetch, update_client_state]
         }
-        StateTransitionFunc::Read => {
+        StateTransferFunc::Read => {
             let await_fetch = JSAstNode::LetExpr {
                 name: Box::new(JSAstNode::Identifier("data".to_string())),
                 value: Box::new(JSAstNode::AwaitOperator {
@@ -980,12 +980,78 @@ fn js_make_server(
     endpoints
 }
 
-fn js_state_query_read(state_var: &str) -> JSAstNode {
+fn js_state_query_read(state_var: &str, server_stmts: &Vec<SLIRServerNode>) -> JSAstNode {
+    let mut pre_query_stmts: Vec<JSAstNode> = vec![];
+    let mut query_stmts: Vec<&StateQuery> = vec![];
+    let mut post_query_stmts: Vec<JSAstNode> = vec![];
+
+    println!("State expansion - state_var: {}", state_var);
+    println!("Server stmts: {:#?}", server_stmts);
+
+    let mut query_occurred = false;
+    for stmt in server_stmts {
+        match stmt {
+            SLIRServerNode::Logic(stmt) => {
+                if !query_occurred {
+                    pre_query_stmts.push(js_translate_statement(stmt));
+                } else {
+                    post_query_stmts.push(js_translate_statement(stmt));
+                }
+            }
+            SLIRServerNode::StateQuery(sq) => {
+                query_occurred = true;
+                query_stmts.push(sq);
+            }
+        }
+    }
+
+    // TODO: Only handling one query per action now. 
+    let query = query_stmts[0];
+
+    /*
+      <state_query>
+      db.all("SELECT * FROM recurring_transactions", (_, rows) => {
+        <logic>
+        let resp = rows.map(expand);
+        res.send(resp);
+      }) 
+    })% 
+    */
+
     let sql = SQLAstNode::Select {
-        from: Some(Box::new(SQLAstNode::Identifier(state_var.to_string()))),
+        from: Some(Box::new(SQLAstNode::Identifier(query.collection.identifier.name.clone()))),
         attributes: vec![SQLAstNode::Identifier("*".to_string())],
         clause: None,
     };
+    let body = if server_stmts.len() == 0 {
+        Box::new(JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+            call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+            args: vec![JSAstNode::Identifier("rows".to_string())],
+        })
+    } else {
+        let last_statement_var_name = match post_query_stmts.last() {
+            Some(stmt) => {
+                match stmt {
+                    JSAstNode::LetExpr { name, .. } => js_gen_iden_name(*name.clone()),
+                    _ => "unknown_var_name".to_string()
+                }
+            },
+            None => "unknown_var_name".to_string()
+        };
+        post_query_stmts.push(JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+            call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+            args: vec![JSAstNode::Identifier(last_statement_var_name.to_string())],
+        });
+
+        Box::new(JSAstNode::StatementList {
+            statements: post_query_stmts,
+        })
+    };
+
+    println!("Generated body: {:#?}", body);
+
     JSAstNode::CallExpr {
         receiver: Box::new(JSAstNode::Identifier("db".to_string())),
         call_name: Box::new(JSAstNode::Identifier("all".to_string())),
@@ -996,11 +1062,7 @@ fn js_state_query_read(state_var: &str) -> JSAstNode {
                     JSAstNode::Identifier("_".to_string()),
                     JSAstNode::Identifier("rows".to_string()),
                 ],
-                body: Box::new(JSAstNode::CallExpr {
-                    receiver: Box::new(JSAstNode::Identifier("res".to_string())),
-                    call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-                    args: vec![JSAstNode::Identifier("rows".to_string())],
-                }),
+                body: body,
             },
         ],
     }
@@ -1012,6 +1074,7 @@ fn js_state_query_create(state_var: &str, state_var_type: &str, schemas: &Schema
     let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
     let mut js_attr_values: Vec<JSAstNode> = vec![];
     let mut response_props: Vec<Prop> = vec![];
+    println!("Looking up schema: {}", state_var_type);
     let schema = &schemas[state_var_type];
     for attr in &schema.attributes {
         attr_names.push(attr.name.clone());
@@ -1135,9 +1198,9 @@ fn js_expand_state_transition_to_endpoint(
             let express_method = state_transition_func.as_express_http_method();
             let endpoint_path = js_state_var_endpoint_server(&state_var, &state_transition_func);
             let state_body = match state_transition_func {
-                StateTransitionFunc::Create => {
+                StateTransferFunc::Create => {
                     // TODO - only handling one method arg here.
-                    // also need to switch on StateTransitionFunc here.
+                    // also need to switch on StateTransferFunc here.
                     let state_var_type = match &args[0] {
                         JSAstNode::TypedIdentifier { r#type, .. } => {
                             js_gen_iden_name(*r#type.clone())
@@ -1155,11 +1218,11 @@ fn js_expand_state_transition_to_endpoint(
                         statements: vec![parse_data, query],
                     })
                 }
-                StateTransitionFunc::Read => {
-                    let query = js_state_query_read(&state_var);
-                    Box::new(query)
+                StateTransferFunc::Read => {
+//                    let query = js_state_query_read(&state_var);
+                    Box::new(JSAstNode::InvalidNode)
                 }
-                StateTransitionFunc::Delete => {
+                StateTransferFunc::Delete => {
                     let query = js_state_query_delete(&state_var);
                     Box::new(JSAstNode::StatementList {
                         statements: vec![
@@ -1283,11 +1346,11 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
             let state_trans_func = state_transition_func_from_str(&call_str);
             let state_var = js_gen_string(*receiver.clone());
             match state_trans_func {
-                StateTransitionFunc::Create => {
+                StateTransferFunc::Create => {
                     let state_var_val = js_gen_string(args[0].clone());
                     js_push_var(&state_var, &state_var_val)
                 }
-                StateTransitionFunc::Delete => {
+                StateTransferFunc::Delete => {
                     let state_var_val = js_gen_string(args[0].clone());
                     js_delete_var(&state_var, &state_var_val)
                 }
@@ -1591,7 +1654,6 @@ fn parse_schema_def(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Sch
         }
         Rule::SchemaMethod => {
             let (name, args, body, return_type) = parse_function_like(pair, schemas);
-            println!("Parsed function like: {:#?}", args);
             return SchemaDefinition::SchemaMethod {
                 name: name,
                 args: args,
@@ -1813,7 +1875,7 @@ fn js_gen_certification_properties(
         js_property_names.push(state_trans_name.clone());
 
         match state_trans_func {
-            StateTransitionFunc::Create => {
+            StateTransferFunc::Create => {
                 // Create data generators for all transition arguments
                 let mut data_generators: Vec<JSAstNode> = vec![];
                 // Argument list for property body
@@ -2167,8 +2229,6 @@ fn resolve_type(
     name_path: &Vec<String>,
     type_env: &TypeEnvironment,
 ) -> Option<Type> {
-    //    println!("resolving type for: {:#?}", node);
-    //    println!("Type env: {:#?}", type_env);
     match node {
         AstExpr::DotAccess { receiver, property } => {
             let name_path = vec![receiver.name.clone(), property.name.clone()];
@@ -2218,6 +2278,7 @@ fn resolve_type(
                 })
                 .collect();
 
+            println!("Resolving type for: {:#?}", call_name_path);
             Some(resolve_variable_type(&call_name_path, type_env)
                 .expect("Type error - CallExpr call name"))
 
@@ -2356,7 +2417,7 @@ fn insert_seed_types(type_env: &mut TypeEnvironment) {
 
 // SLIR
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Query {
     Where,
 }
@@ -2365,20 +2426,29 @@ enum Query {
 struct StateTransfer {
     name: String,
     collection: TypedIdentifier,
-    transition: StateTransitionFunc,
+    transition: StateTransferFunc,
     args: Vec<AstExpr>,
     // prob need var name so result of query is what's being transferred
 }
 
+#[derive(Debug, Clone)]
+struct StateQuery {
+    collection: TypedIdentifier,
+    query: Query,
+    transition: StateTransferFunc,
+    result_var: Option<AstIdentifier>
+}
+
 #[derive(Debug)]
 enum SLIRNode {
-    StateQuery {
-        collection: TypedIdentifier,
-        query: Query,
-        transition: StateTransitionFunc,
-        // probably need result var name
-    },
+    StateQuery(StateQuery),
     StateTransfer(StateTransfer),
+    Logic(AstStatement),
+}
+
+#[derive(Debug)]
+enum SLIRServerNode {
+    StateQuery(StateQuery),
     Logic(AstStatement),
 }
 
@@ -2402,14 +2472,16 @@ fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &
             ];
             if let Some(collection_name) = state_variable_collection_name(&receiver.name, &name_path, schemas, type_env) {
                 let r#type = resolve_variable_type(&name_path, type_env).expect("Type error - slir_expr_nodes");
-                slir_nodes.push(SLIRNode::StateQuery {
+//                let result_var = match stmt {
+                slir_nodes.push(SLIRNode::StateQuery(StateQuery {
                     collection: TypedIdentifier { 
                         identifier: AstIdentifier { name: collection_name },
                         r#type: r#type,
                     },
                     query: Query::Where,
-                    transition: StateTransitionFunc::Read,
-                })
+                    transition: StateTransferFunc::Read,
+                    result_var: None,
+                }))
             } else {
                 slir_nodes.push(SLIRNode::Logic(AstStatement::Expr(expr.clone())));
             }
@@ -2433,7 +2505,7 @@ fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &
                     type_env,
                 ) {
                     Some(collection_name) if is_state_variable => {
-                        slir_nodes.push(SLIRNode::StateQuery {
+                        slir_nodes.push(SLIRNode::StateQuery(StateQuery {
                             collection: TypedIdentifier {
                                 identifier: AstIdentifier {
                                     name: collection_name,
@@ -2442,7 +2514,8 @@ fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &
                             },
                             query: Query::Where,
                             transition: state_transition_func_from_str(&call_name.name),
-                        });
+                            result_var: None,
+                        }));
                     },
                     _ => ()
                 };
@@ -2463,7 +2536,11 @@ fn slir_expr_nodes(expr: &AstExpr, schema_name: &str, method_name: &str, stmt: &
                 slir_nodes.push(SLIRNode::Logic(stmt.clone()))
             }
         }
-        AstExpr::FuncCall { .. } => {
+        // This should recursively call slir_expr_nodes on all of its arguments, ex: process(Budget.recurring_transactions)
+        AstExpr::FuncCall { args, .. } => {
+            for arg in args {
+                slir_expr_nodes(arg, schema_name, method_name, stmt, schemas, type_env, slir_nodes);
+            }
             slir_nodes.push(SLIRNode::Logic(stmt.clone()))
         }
         _ => {
@@ -2481,11 +2558,6 @@ fn slir_translate(
 ) -> Vec<SLIRNode> {
     let mut slir_nodes: Vec<SLIRNode> = vec![];
     for stmt in &body.statements {
-        // Currently adding too many SLIR nodes - adding one for Let expr, then one again
-        // for rts.read!(). read!() doesn't necessarily always mean a StateTransfer _and_ a StateQuery.
-        // need to improve that logic
-        // println!("SLIR Translate: {:#?}", stmt);
-
         match stmt {
             AstStatement::LetDecl { name, value } => {
                 let mut let_nodes: Vec<SLIRNode> = vec![];
@@ -2503,8 +2575,69 @@ fn slir_translate(
 
 // Tier splitting: SLIR -> JS
 
+fn slir_expand_state_transfer_server(state_transfer: &StateTransfer, server_stmts: &Vec<SLIRServerNode>, schemas: &Schemas) -> JSAstNode {
+    let state_transition_func = &state_transfer.transition;
+    let state_var = &state_transfer.collection.identifier.name;
+    let express_method = state_transfer.transition.as_express_http_method();
+
+    let endpoint_path = js_state_var_endpoint_server(&state_var, &state_transition_func);
+    let state_body = match state_transition_func {
+        StateTransferFunc::Create => {
+            let state_var_type = &state_transfer.collection.r#type;
+            let state_var_str = js_gen_string(js_translate_type(&state_var_type));
+            println!("Expanding client side for create state transfer: {:#?}", state_transfer);
+            println!("Trasnlated type: {:#?}", js_translate_type(&state_var_type));
+            println!("state var: {:#?}", state_var_str);
+            let query = js_state_query_create(&state_var, &state_var_str, schemas);
+            let parse_data = JSAstNode::LetExpr {
+                name: Box::new(JSAstNode::Identifier("data".to_string())),
+                value: Box::new(JSAstNode::Identifier("req.body".to_string())),
+            };
+            Box::new(JSAstNode::StatementList {
+                statements: vec![parse_data, query],
+            })
+        }
+        StateTransferFunc::Read => {
+            let query = js_state_query_read(&state_var, &server_stmts);
+            Box::new(query)
+        }
+        StateTransferFunc::Delete => {
+            let query = js_state_query_delete(&state_var);
+            Box::new(JSAstNode::StatementList {
+                statements: vec![
+                    query,
+                    JSAstNode::CallExpr {
+                        receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+                        call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+                        args: vec![JSAstNode::Object { props: vec![] }],
+                    },
+                ],
+            })
+        }
+        _ => Box::new(JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+            call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+            args: vec![JSAstNode::Object { props: vec![] }],
+        }),
+    };
+
+    let endpoint_body = JSAstNode::ArrowClosure {
+        args: vec![
+            JSAstNode::Identifier("req".to_string()),
+            JSAstNode::Identifier("res".to_string()),
+        ],
+        body: state_body,
+    };
+
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("app".to_string())),
+        call_name: Box::new(JSAstNode::Identifier(express_method.to_string())),
+        args: vec![JSAstNode::StringLiteral(endpoint_path), endpoint_body],
+    }
+}
+
 fn slir_expand_fetch_args_from_state_transition(
-    st: &StateTransitionFunc,
+    st: &StateTransferFunc,
     args: &Vec<AstExpr>,
 ) -> JSAstNode {
     let method_prop = Prop {
@@ -2525,7 +2658,7 @@ fn slir_expand_fetch_args_from_state_transition(
     let mut props: Vec<Prop> = vec![method_prop, headers_prop];
 
     match st {
-        StateTransitionFunc::Create => {
+        StateTransferFunc::Create => {
             let js_create_arg = js_translate_expr(&args[0]);
             let state_var_iden = JSAstNode::Identifier(js_gen_string(js_create_arg));
             let body_prop = Prop {
@@ -2548,14 +2681,14 @@ fn slir_expand_fetch_args_from_state_transition(
 
 fn slir_state_var_endpoint_client(
     state_var: &String,
-    state_transition: &StateTransitionFunc,
+    state_transition: &StateTransferFunc,
     args: &Vec<AstExpr>,
 ) -> JSAstNode {
     match state_transition {
-        StateTransitionFunc::Create | StateTransitionFunc::Read => {
+        StateTransferFunc::Create | StateTransferFunc::Read => {
             JSAstNode::StringLiteral(format!("{}/{}", API_HOST, state_var))
         }
-        StateTransitionFunc::Delete | StateTransitionFunc::Update => {
+        StateTransferFunc::Delete | StateTransferFunc::Update => {
             // args[0] really sholuld be a type check. delete! only takes one argument.
             let state_var_arg = js_translate_expr(&args[0]);
             JSAstNode::PlusExpr {
@@ -2571,8 +2704,8 @@ fn slir_state_var_endpoint_client(
 
 // This turns a semantic state transition into a network request to update the state in
 // the database as well as optimistically update the client state
-fn slir_expand_state_transition_client(
-    state_trans_func: &StateTransitionFunc,
+fn slir_expand_state_transfer_client(
+    state_trans_func: &StateTransferFunc,
     state_var: &String,
     args: &Vec<AstExpr>,
 ) -> JSAstNode {
@@ -2586,7 +2719,7 @@ fn slir_expand_state_transition_client(
         args: fetch_args,
     };
     let expanded_statements: Vec<JSAstNode> = match state_trans_func {
-        StateTransitionFunc::Create => {
+        StateTransferFunc::Create => {
             let await_fetch = JSAstNode::LetExpr {
                 name: Box::new(JSAstNode::Identifier("resp".to_string())),
                 value: Box::new(JSAstNode::AwaitOperator {
@@ -2607,12 +2740,12 @@ fn slir_expand_state_transition_client(
             };
             vec![await_fetch, update_client_state]
         }
-        StateTransitionFunc::Delete => {
+        StateTransferFunc::Delete => {
             let js_arg = js_translate_expr(&args[0]);
             let update_client_state = js_delete_var(&state_var, &js_gen_string(js_arg));
             vec![fetch, update_client_state]
         }
-        StateTransitionFunc::Read => {
+        StateTransferFunc::Read => {
             let await_fetch = JSAstNode::LetExpr {
                 name: Box::new(JSAstNode::Identifier("data".to_string())),
                 value: Box::new(JSAstNode::AwaitOperator {
@@ -2630,7 +2763,7 @@ fn slir_expand_state_transition_client(
     }
 }
 
-fn slir_make_state_transfers(schema_name: &str, state_transfers: &Vec<&StateTransfer>, schemas: &Schemas, type_env: &TypeEnvironment) -> (Vec<JSAstNode>, Vec<JSAstNode>) {
+fn slir_make_state_transfers_client(schema_name: &str, state_transfers: &Vec<&StateTransfer>, schemas: &Schemas, type_env: &TypeEnvironment) -> (Vec<JSAstNode>, Vec<JSAstNode>) {
     // args: call_name ("read!"), relation_name (from Type),
     let mut class_properties: Vec<JSAstNode> = vec![];
     let mut class_methods: Vec<JSAstNode> = vec![];
@@ -2641,7 +2774,7 @@ fn slir_make_state_transfers(schema_name: &str, state_transfers: &Vec<&StateTran
         };
         class_properties.push(class_property);
 
-        let expanded_client_body = slir_expand_state_transition_client(&transfer.transition, &transfer.collection.identifier.name, &transfer.args);
+        let expanded_client_body = slir_expand_state_transfer_client(&transfer.transition, &transfer.collection.identifier.name, &transfer.args);
         let class_method = JSAstNode::ClassMethod {
             name: Box::new(JSAstNode::Identifier(transfer.name.clone())),
             args: vec![],
@@ -2653,14 +2786,16 @@ fn slir_make_state_transfers(schema_name: &str, state_transfers: &Vec<&StateTran
     (class_properties, class_methods)
 }
 
-fn slir_tier_split(schema_name: &str, slir: &Vec<Vec<SLIRNode>>, schemas: &Schemas, type_env: &TypeEnvironment) -> (JSAstNode, JSAstNode) {
+fn slir_tier_split(schema_name: &str, slir: &Vec<Vec<SLIRNode>>, schemas: &Schemas, type_env: &TypeEnvironment) -> (JSAstNode, Vec<JSAstNode>) {
     // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
     // the statements before it can be placed on the server, and anything after can be placed
-    // on the client.
+    // on the client. The StateTransfer itself gets compiled into both client and server components.
     let mut class_properties: Vec<JSAstNode> = vec![];
     let mut class_methods: Vec<JSAstNode> = vec![];
+
+    let mut endpoints: Vec<JSAstNode> = vec![];
     for stmts in slir {
-        let state_transfer_index = stmts.iter().position(|stmt| match stmt {
+            let state_transfer_index = stmts.iter().position(|stmt| match stmt {
             SLIRNode::StateTransfer { .. } => true,
             _ => false
         }).expect("At least one StateTransfer is necessary for tier splitting");
@@ -2668,11 +2803,21 @@ fn slir_tier_split(schema_name: &str, slir: &Vec<Vec<SLIRNode>>, schemas: &Schem
             SLIRNode::StateTransfer(st) => st,
             _ => panic!("All state transfer SLIRNodes must be of variant StateTransfer")
         }).collect();
-        let server_stmts: Vec<&SLIRNode> = stmts.iter().take(state_transfer_index).collect();
+        let server_stmts: Vec<SLIRServerNode> = stmts.iter().take(state_transfer_index).map(|node| match node {
+            SLIRNode::StateTransfer(..) => panic!("State transfers are not supported in the server tier"),
+            SLIRNode::Logic(stmt) => SLIRServerNode::Logic(stmt.clone()),
+            SLIRNode::StateQuery(sq) => SLIRServerNode::StateQuery(sq.clone()),
+        }).collect();
+            
 
-        let (mut properties, mut methods) = slir_make_state_transfers(&schema_name, &state_transfers, schemas, type_env);
+        let (mut properties, mut methods) = slir_make_state_transfers_client(&schema_name, &state_transfers, schemas, type_env);
         class_properties.append(&mut properties);
         class_methods.append(&mut methods);
+
+        for transfer in state_transfers {
+            let endpoint = slir_expand_state_transfer_server(&transfer, &server_stmts, schemas);
+            endpoints.push(endpoint);
+        }
     }
 
     let config_func_type = format!("(a: {}) => void", schema_name);
@@ -2706,7 +2851,7 @@ fn slir_tier_split(schema_name: &str, slir: &Vec<Vec<SLIRNode>>, schemas: &Schem
         }),
     };
 
-    (client, JSAstNode::InvalidNode)
+    (client, endpoints)
 }
 
 #[derive(ClapParser, Debug)]
@@ -2759,6 +2904,7 @@ fn main() {
 
     // Expanded server endpoints for infrastructure-expanded program
     let mut js_endpoints: Vec<JSAstNode> = vec![];
+    let mut js_endpoints_slir: Vec<JSAstNode> = vec![];
 
     // Generated properties for certifying the semantic equivalence of
     // infrastructure-expanded program to source program (model)
@@ -2776,7 +2922,6 @@ fn main() {
 
                 update_environment(&pair, &parsed, &mut schemas, &mut type_environment);
 
-                // println!("Parsed: {:#?}", parsed);
                 // println!("\n\nTypeEnv: {:#?}", type_environment);
 
                 let (slir, schema_name) = match &parsed {
@@ -2804,10 +2949,15 @@ fn main() {
                     _ => (vec![], "".to_string())
                 };
 
-//                println!("SLIR: {:#?}", slir);
+                println!("SLIR: {:#?}", slir);
 
                 let (client_js, server_js) = slir_tier_split(&schema_name, &slir, &schemas, &type_environment);
                 js_expanded_client_slir.push(js_gen_string(client_js));
+
+                println!("Server: {:#?}", server_js);
+                for endpoint in server_js {
+                    js_endpoints_slir.push(endpoint);
+                }
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
@@ -2849,6 +2999,8 @@ fn main() {
 
     fs::write(args.server_output, gen_server_endpoint_file(&js_endpoints))
         .expect("Unable to write server code file.");
+
+    fs::write("server.slir.js", gen_server_endpoint_file(&js_endpoints_slir)).expect("Unable to write server code SLIR file.");
 
     let model_code = js_model.join("\n\n");
     fs::write(args.model_output, model_code).expect("Unable to write model code file.");
