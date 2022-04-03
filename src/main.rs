@@ -1,10 +1,10 @@
-use std::collections::HashSet;
 use clap::Parser as ClapParser;
 use convert_case::{Case, Casing};
 use pest::iterators::Pair;
 use pest::{self, Parser as PestParser};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 
 const DEBUG: bool = false;
@@ -36,7 +36,7 @@ enum JSAstNode {
     },
     ClassProperty {
         typed_identifier: Box<JSAstNode>,
-        default_value: Option<Box<JSAstNode>> // expr
+        default_value: Option<Box<JSAstNode>>, // expr
     },
     ClassMethod {
         name: Box<JSAstNode>,
@@ -177,21 +177,21 @@ fn js_gen_string(node: JSAstNode) -> String {
         JSAstNode::AssignmentStatement { left, right } => {
             format!("{} = {}", js_gen_string(*left), js_gen_string(*right))
         }
-        JSAstNode::ClassProperty { typed_identifier, default_value } => {
-            match default_value {
-                Some(v) => {
-                    let property = js_gen_string(*typed_identifier);
-                    let value = js_gen_string(*v);
+        JSAstNode::ClassProperty {
+            typed_identifier,
+            default_value,
+        } => match default_value {
+            Some(v) => {
+                let property = js_gen_string(*typed_identifier);
+                let value = js_gen_string(*v);
 
-                    format!("{} = {};\n", property, value)
-                },
-                None => {
-                    let property = js_gen_string(*typed_identifier);
-                    format!("{};\n", property)
-                }
+                format!("{} = {};\n", property, value)
             }
-            
-        }
+            None => {
+                let property = js_gen_string(*typed_identifier);
+                format!("{};\n", property)
+            }
+        },
         JSAstNode::FuncDef {
             name, args, body, ..
         } => {
@@ -496,7 +496,7 @@ fn is_state_transition(func_name: &str) -> bool {
     let name_chars: Vec<char> = func_name.chars().collect();
 
     *name_chars.last().unwrap() == '!'
-}    
+}
 
 fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransferFunc) -> String {
     match st_func {
@@ -2389,7 +2389,7 @@ fn slir_make_state_transfers_client(
     type_env: &TypeEnvironment,
 ) -> Vec<JSAstNode> {
     let mut class_methods: Vec<JSAstNode> = vec![];
-    for transfer in state_transfers {    
+    for transfer in state_transfers {
         let expanded_client_body = slir_expand_state_transfer_client(
             &transfer.transition,
             &transfer.collection.identifier.name,
@@ -2424,8 +2424,8 @@ fn slir_tier_split(
             if no_methods {
                 return (js_translate(parsed_node.clone()), vec![]);
             }
-        },
-        _ => ()
+        }
+        _ => (),
     }
 
     // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
@@ -2466,7 +2466,7 @@ fn slir_tier_split(
 
         let mut methods =
             slir_make_state_transfers_client(&schema_name, &state_transfers, schemas, type_env);
-        
+
         class_methods.append(&mut methods);
 
         for transfer in state_transfers {
@@ -2479,9 +2479,7 @@ fn slir_tier_split(
     // The client maintains its own state for all state variables that were transferred
     for state_var in transferred_state_variables {
         let class_property_iden = JSAstNode::TypedIdentifier {
-            identifier: Box::new(JSAstNode::Identifier(
-                state_var.identifier.name.clone(),
-            )),
+            identifier: Box::new(JSAstNode::Identifier(state_var.identifier.name.clone())),
             r#type: Box::new(js_translate_type(&state_var.r#type)),
         };
 
@@ -2489,7 +2487,7 @@ fn slir_tier_split(
             typed_identifier: Box::new(class_property_iden),
 
             // The default value should eventually take Type into account
-            default_value: Some(Box::new(JSAstNode::ArrayLiteral(vec![])))
+            default_value: Some(Box::new(JSAstNode::ArrayLiteral(vec![]))),
         });
     }
 
@@ -2638,7 +2636,6 @@ fn main() {
 
                 js_expanded_client_slir.push(js_gen_string(client_js));
 
-
                 for endpoint in server_js {
                     js_endpoints_slir.push(endpoint);
                 }
@@ -2679,7 +2676,8 @@ fn main() {
     }
 
     let client_code_slir = js_expanded_client_slir.join("\n\n");
-    fs::write(args.client_output, client_code_slir).expect("Unable to write client code SLIR file.");
+    fs::write(args.client_output, client_code_slir)
+        .expect("Unable to write client code SLIR file.");
 
     let server_file = gen_server_file(&js_endpoints_slir, &function_defs);
 
