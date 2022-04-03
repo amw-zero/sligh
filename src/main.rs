@@ -1418,49 +1418,10 @@ fn slir_gen_certification_properties(
                 .expect("Currently expecting a single state transfer func in all actions");
         js_property_names.push(state_trans_name.name.clone());
 
-        match state_trans_func {
+        // TODO: Create functions for building up the test body
+        let test_body = match state_trans_func {
             StateTransferFunc::Create => {
-                // Create data generators for all transition arguments
-                let mut data_generators: Vec<JSAstNode> = vec![];
-                // Argument list for property body
-                let mut generated_data_vars: Vec<JSAstNode> = vec![];
-                for arg in &state_transition.args {
-                    let schema_name = schema_name_from_type(&arg.r#type);
-                    let schema = &schemas[&schema_name];
-                    let mut data_generator_props: Vec<Prop> = vec![];
-                    for attr in &schema.attributes {
-                        let key_node = JSAstNode::Identifier(attr.name.clone());
-                        let value_generator = JSAstNode::CallExpr {
-                            receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
-                            call_name: Box::new(JSAstNode::Identifier(
-                                fast_check_arbitrary_from_type(&attr.r#type),
-                            )),
-                            args: vec![],
-                        };
-                        data_generator_props.push(Prop {
-                            key: key_node,
-                            value: value_generator,
-                        })
-                    }
-                    data_generators.push(JSAstNode::Object {
-                        props: data_generator_props,
-                    });
-                    generated_data_vars.push(JSAstNode::Identifier(arg.identifier.name.clone()));
-                }
-
-                let property_func_name = format!("{}Property", state_trans_name.name);
-
-                // TODO: For each state variable, add a data generator for it here
-                let mut property_args: Vec<JSAstNode> = vec![];
-                for data_generator in data_generators {
-                    property_args.push(JSAstNode::CallExpr {
-                        receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
-                        call_name: Box::new(JSAstNode::Identifier("record".to_string())),
-                        args: vec![data_generator],
-                    })
-                }
-
-                let test_body = JSAstNode::StatementList {
+                JSAstNode::StatementList {
                     statements: vec![
                         JSAstNode::LetExpr {
                             name: Box::new(JSAstNode::Identifier("model".to_string())),
@@ -1523,35 +1484,146 @@ fn slir_gen_certification_properties(
                             args: vec![JSAstNode::Identifier(format!("model.{}", state_variable))],
                         },
                     ],
-                };
-
-                property_args.push(JSAstNode::AsyncModifier(Box::new(
-                    JSAstNode::ArrowClosure {
-                        args: generated_data_vars,
-                        body: Box::new(test_body),
-                    },
-                )));
-                let property_func = JSAstNode::FuncDef {
-                    name: Box::new(JSAstNode::Identifier(property_func_name)),
-                    body: Box::new(JSAstNode::StatementList {
-                        statements: vec![JSAstNode::ReturnStatement(Box::new(
-                            JSAstNode::CallExpr {
-                                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
-                                call_name: Box::new(JSAstNode::Identifier(
-                                    "asyncProperty".to_string(),
-                                )),
-                                args: property_args,
-                            },
-                        ))],
-                    }),
-                    args: vec![],
-                    return_type: None,
-                };
-
-                js_property_defs.push(property_func)
+                }
             }
-            _ => (),
+            StateTransferFunc::Read => {
+                /*
+                let model = new Model();
+                let fullstack = new Fullstack(() => {
+                ;
+                });
+                let created = await fullstack.create_recurring_transaction(rtc);
+                model.create_recurring_transaction(rtc, created.id);
+                expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+                */
+                JSAstNode::StatementList {
+                    statements: vec![
+                        JSAstNode::LetExpr {
+                            name: Box::new(JSAstNode::Identifier("model".to_string())),
+                            value: Box::new(JSAstNode::NewClass {
+                                name: Box::new(JSAstNode::Identifier("Model".to_string())),
+                                args: vec![],
+                            }),
+                        },
+                        JSAstNode::LetExpr {
+                            name: Box::new(JSAstNode::Identifier("fullstack".to_string())),
+                            value: Box::new(JSAstNode::NewClass {
+                                name: Box::new(JSAstNode::Identifier("Fullstack".to_string())),
+                                args: vec![JSAstNode::ArrowClosure {
+                                    args: vec![],
+                                    body: Box::new(JSAstNode::StatementList { statements: vec![] }),
+                                }],
+                            }),
+                        },
+                        JSAstNode::LetExpr {
+                            name: Box::new(JSAstNode::Identifier("data".to_string())),
+                            value: Box::new(JSAstNode::AwaitOperator {
+                                node: Box::new(JSAstNode::CallExpr {
+                                    receiver: Box::new(JSAstNode::Identifier(
+                                        "fullstack".to_string(),
+                                    )),
+                                    call_name: Box::new(JSAstNode::Identifier(
+                                        state_trans_name.name.to_string(),
+                                    )),
+                                    args: state_transition
+                                        .args
+                                        .iter()
+                                        .map(|arg| {
+                                            JSAstNode::Identifier(arg.identifier.name.clone())
+                                        })
+                                        .collect(),
+                                }),
+                            }),
+                        },
+                        JSAstNode::CallExpr {
+                            receiver: Box::new(JSAstNode::Identifier("model".to_string())),
+                            call_name: Box::new(JSAstNode::Identifier(
+                                state_trans_name.name.to_string(),
+                            )),
+                            args: state_transition
+                                .args
+                                .iter()
+                                .map(|arg| JSAstNode::Identifier(arg.identifier.name.clone()))
+                                .collect(),
+                        },
+                        // expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+                        JSAstNode::CallExpr {
+                            receiver: Box::new(JSAstNode::FuncCallExpr {
+                                call_name: Box::new(JSAstNode::Identifier("expect".to_string())),
+                                args: vec![JSAstNode::Identifier(format!(
+                                    "fullstack.{}",
+                                    state_variable
+                                ))],
+                            }),
+                            call_name: Box::new(JSAstNode::Identifier("to.deep.eq".to_string())),
+                            args: vec![JSAstNode::Identifier(format!("model.{}", state_variable))],
+                        },
+                    ],
+                }
+            }
+            _ => JSAstNode::StatementList { statements: vec![] },
+        };
+
+        // Create data generators for all transition arguments
+        let mut data_generators: Vec<JSAstNode> = vec![];
+        // Argument list for property body
+        let mut generated_data_vars: Vec<JSAstNode> = vec![];
+        for arg in &state_transition.args {
+            let schema_name = schema_name_from_type(&arg.r#type);
+            let schema = &schemas[&schema_name];
+            let mut data_generator_props: Vec<Prop> = vec![];
+            for attr in &schema.attributes {
+                let key_node = JSAstNode::Identifier(attr.name.clone());
+                let value_generator = JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier(fast_check_arbitrary_from_type(
+                        &attr.r#type,
+                    ))),
+                    args: vec![],
+                };
+                data_generator_props.push(Prop {
+                    key: key_node,
+                    value: value_generator,
+                })
+            }
+            data_generators.push(JSAstNode::Object {
+                props: data_generator_props,
+            });
+            generated_data_vars.push(JSAstNode::Identifier(arg.identifier.name.clone()));
         }
+
+        let property_func_name = format!("{}Property", state_trans_name.name);
+
+        // TODO: For each state variable, add a data generator for it here
+        let mut property_args: Vec<JSAstNode> = vec![];
+        for data_generator in data_generators {
+            property_args.push(JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("record".to_string())),
+                args: vec![data_generator],
+            })
+        }
+
+        property_args.push(JSAstNode::AsyncModifier(Box::new(
+            JSAstNode::ArrowClosure {
+                args: generated_data_vars,
+                body: Box::new(test_body),
+            },
+        )));
+        let property_func = JSAstNode::FuncDef {
+            name: Box::new(JSAstNode::Identifier(property_func_name)),
+            body: Box::new(JSAstNode::StatementList {
+                statements: vec![JSAstNode::ReturnStatement(Box::new(JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier("asyncProperty".to_string())),
+                    args: property_args,
+                }))],
+            }),
+            args: vec![],
+            return_type: None,
+        };
+
+        js_property_defs.push(property_func)
     }
 
     (js_property_defs, js_property_names)
@@ -2611,8 +2683,8 @@ fn main() {
                         name: schema_name,
                         body,
                     } => {
-                        let (slir, schema_name) = 
-                            (body.into_iter()
+                        let (slir, schema_name) = (
+                            body.into_iter()
                                 .filter_map(|def| match def {
                                     SchemaDefinition::SchemaMethod(SchemaMethod {
                                         name: method_name,
@@ -2629,21 +2701,27 @@ fn main() {
                                     _ => None,
                                 })
                                 .collect(),
-                            schema_name.name.to_string());
-        
+                            schema_name.name.to_string(),
+                        );
+
                         println!("Tier splitting based on slir: {:#?}", slir);
-        
-                        let (client_js, server_js) =
-                            slir_tier_split(&schema_name, &parsed, &slir, &schemas, &type_environment);
-        
+
+                        let (client_js, server_js) = slir_tier_split(
+                            &schema_name,
+                            &parsed,
+                            &slir,
+                            &schemas,
+                            &type_environment,
+                        );
+
                         js_expanded_client_slir.push(js_gen_string(client_js));
-        
+
                         for endpoint in server_js {
                             js_endpoints_slir.push(endpoint);
                         }
-                    },
-                    _ => ()
-                };      
+                    }
+                    _ => (),
+                };
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
