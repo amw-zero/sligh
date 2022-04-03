@@ -2413,6 +2413,8 @@ fn slir_tier_split(
     schemas: &Schemas,
     type_env: &TypeEnvironment,
 ) -> (JSAstNode, Vec<JSAstNode>) {
+    println!("Tier splitting {}", schema_name);
+
     // Schemas without state transfers are compiled as raw data / interfaces.
     match parsed_node {
         AstNode::SchemaDef { body, .. } => {
@@ -2492,6 +2494,8 @@ fn slir_tier_split(
     }
 
     let config_func_type = format!("(a: {}) => void", schema_name);
+    println!("Config func type: {}", config_func_type);
+
     let constructor = JSAstNode::ClassMethod {
         name: Box::new(JSAstNode::Identifier("constructor".to_string())),
         args: vec![JSAstNode::TypedIdentifier {
@@ -2602,43 +2606,44 @@ fn main() {
                     &mut type_environment,
                 );
 
-                let (slir, schema_name) = match &parsed {
+                match &parsed {
                     AstNode::SchemaDef {
                         name: schema_name,
                         body,
-                    } => (
-                        body.into_iter()
-                            .filter_map(|def| match def {
-                                SchemaDefinition::SchemaMethod(SchemaMethod {
-                                    name: method_name,
-                                    args,
-                                    body,
-                                    ..
-                                }) => Some(slir_translate(
-                                    &schema_name.name,
-                                    &method_name.name,
-                                    &body,
-                                    &schemas,
-                                    &type_environment,
-                                )),
-                                _ => None,
-                            })
-                            .collect(),
-                        schema_name.name.to_string(),
-                    ),
-                    _ => (vec![], "".to_string()),
-                };
-
-                println!("Tier splitting based on slir: {:#?}", slir);
-
-                let (client_js, server_js) =
-                    slir_tier_split(&schema_name, &parsed, &slir, &schemas, &type_environment);
-
-                js_expanded_client_slir.push(js_gen_string(client_js));
-
-                for endpoint in server_js {
-                    js_endpoints_slir.push(endpoint);
-                }
+                    } => {
+                        let (slir, schema_name) = 
+                            (body.into_iter()
+                                .filter_map(|def| match def {
+                                    SchemaDefinition::SchemaMethod(SchemaMethod {
+                                        name: method_name,
+                                        args,
+                                        body,
+                                        ..
+                                    }) => Some(slir_translate(
+                                        &schema_name.name,
+                                        &method_name.name,
+                                        &body,
+                                        &schemas,
+                                        &type_environment,
+                                    )),
+                                    _ => None,
+                                })
+                                .collect(),
+                            schema_name.name.to_string());
+        
+                        println!("Tier splitting based on slir: {:#?}", slir);
+        
+                        let (client_js, server_js) =
+                            slir_tier_split(&schema_name, &parsed, &slir, &schemas, &type_environment);
+        
+                        js_expanded_client_slir.push(js_gen_string(client_js));
+        
+                        for endpoint in server_js {
+                            js_endpoints_slir.push(endpoint);
+                        }
+                    },
+                    _ => ()
+                };      
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
