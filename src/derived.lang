@@ -41,13 +41,8 @@ def expand(rt: RecurringTransaction) -> ScheduledTransaction
   ScheduledTransaction.new(rt.name)
 end
 
-def filter(ids: [Int]) -> Filter
-  Filter.new(ids)
-end
-
 schema Schedule:
-  def scheduled_transactions()
-    let f = filter(5)
+  def view_scheduled_transactions()
     let rts = Budget.recurring_transactions
     let scheduled_transactions = rts.map(expand)
 
