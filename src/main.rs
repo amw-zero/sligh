@@ -2404,10 +2404,25 @@ fn slir_make_state_transfers_client(
 
 fn slir_tier_split(
     schema_name: &str,
+    parsed_node: &AstNode,
     slir: &Vec<Vec<SLIRNode>>,
     schemas: &Schemas,
     type_env: &TypeEnvironment,
 ) -> (JSAstNode, Vec<JSAstNode>) {
+    match parsed_node {
+        AstNode::SchemaDef { body, .. } => {
+            let no_methods = body.clone().into_iter().all(|def| match def {
+                SchemaDefinition::SchemaAttribute { .. } => true,
+                _ => false,
+            });
+
+            if no_methods {
+                return (js_translate(parsed_node.clone()), vec![]);
+            }
+        },
+        _ => ()
+    }
+
     // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
     // the statements before it can be placed on the server, and anything after can be placed
     // on the client. The StateTransfer itself gets compiled into both client and server components.
@@ -2590,10 +2605,12 @@ fn main() {
                     _ => (vec![], "".to_string()),
                 };
 
-                let (client_js, server_js) =
-                    slir_tier_split(&schema_name, &slir, &schemas, &type_environment);
+                println!("Tier splitting based on slir: {:#?}", slir);
 
-                println!("Client JS: {:#?}", client_js);
+                let (client_js, server_js) =
+                    slir_tier_split(&schema_name, &parsed, &slir, &schemas, &type_environment);
+
+//                println!("Client JS: {:#?}", client_js);
                 js_expanded_client_slir.push(js_gen_string(client_js));
 
 
