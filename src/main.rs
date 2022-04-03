@@ -2592,7 +2592,10 @@ fn main() {
 
                 let (client_js, server_js) =
                     slir_tier_split(&schema_name, &slir, &schemas, &type_environment);
+
+                println!("Client JS: {:#?}", client_js);
                 js_expanded_client_slir.push(js_gen_string(client_js));
+
 
                 for endpoint in server_js {
                     js_endpoints_slir.push(endpoint);
@@ -2602,6 +2605,8 @@ fn main() {
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
 
                 let js_ast = js_translate(parsed.clone());
+
+                // println!("JS AST: {:#?}", js_ast);
 
                 // js_executable_translate converts Sligh constructs to executable JS, e.g. by
                 // replacing state transitions with array operations.
@@ -2631,18 +2636,15 @@ fn main() {
         Err(e) => println!("Error {:?}", e),
     }
 
-    let client_code = js_expanded_client.join("\n\n");
-    fs::write(args.client_output, client_code).expect("Unable to write client code file.");
+//    let client_code = js_expanded_client.join("\n\n");
+//    fs::write(args.client_output, client_code).expect("Unable to write client code file.");
 
-    let client_code_slir = js_expanded_client.join("\n\n");
-    fs::write("client.slir.ts", client_code_slir).expect("Unable to write client code SLIR file.");
-
-    fs::write(args.server_output, gen_server_endpoint_file(&js_endpoints))
-        .expect("Unable to write server code file.");
+    let client_code_slir = js_expanded_client_slir.join("\n\n");
+    fs::write(args.client_output, client_code_slir).expect("Unable to write client code SLIR file.");
 
     let server_file = gen_server_file(&js_endpoints_slir, &function_defs);
 
-    fs::write("server.slir.js", server_file).expect("Unable to write server code SLIR file.");
+    fs::write(args.server_output, server_file).expect("Unable to write server code SLIR file.");
 
     let model_code = js_model.join("\n\n");
     fs::write(args.model_output, model_code).expect("Unable to write model code file.");
