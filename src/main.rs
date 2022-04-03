@@ -36,6 +36,7 @@ enum JSAstNode {
     },
     ClassProperty {
         typed_identifier: Box<JSAstNode>,
+        default_value: Option<Box<JSAstNode>> // expr
     },
     ClassMethod {
         name: Box<JSAstNode>,
@@ -176,9 +177,20 @@ fn js_gen_string(node: JSAstNode) -> String {
         JSAstNode::AssignmentStatement { left, right } => {
             format!("{} = {}", js_gen_string(*left), js_gen_string(*right))
         }
-        JSAstNode::ClassProperty { typed_identifier } => {
-            let property = js_gen_string(*typed_identifier);
-            format!("{};\n", property)
+        JSAstNode::ClassProperty { typed_identifier, default_value } => {
+            match default_value {
+                Some(v) => {
+                    let property = js_gen_string(*typed_identifier);
+                    let value = js_gen_string(*v);
+
+                    format!("{} = {};\n", property, value)
+                },
+                None => {
+                    let property = js_gen_string(*typed_identifier);
+                    format!("{};\n", property)
+                }
+            }
+            
         }
         JSAstNode::FuncDef {
             name, args, body, ..
@@ -403,6 +415,7 @@ fn js_translate_schema_attribute(name: &AstIdentifier, r#type: &Type) -> JSAstNo
             identifier: Box::new(JSAstNode::Identifier(name.name.clone())),
             r#type: Box::new(js_translate_type(r#type)),
         }),
+        default_value: None,
     }
 }
 
@@ -2400,6 +2413,7 @@ fn slir_tier_split(
     schemas: &Schemas,
     type_env: &TypeEnvironment,
 ) -> (JSAstNode, Vec<JSAstNode>) {
+    // Schemas without state transfers are compiled as raw data / interfaces.
     match parsed_node {
         AstNode::SchemaDef { body, .. } => {
             let no_methods = body.clone().into_iter().all(|def| match def {
@@ -2462,6 +2476,7 @@ fn slir_tier_split(
         }
     }
 
+    // The client maintains its own state for all state variables that were transferred
     for state_var in transferred_state_variables {
         let class_property_iden = JSAstNode::TypedIdentifier {
             identifier: Box::new(JSAstNode::Identifier(
@@ -2469,7 +2484,13 @@ fn slir_tier_split(
             )),
             r#type: Box::new(js_translate_type(&state_var.r#type)),
         };
-        class_properties.push(JSAstNode::ClassProperty {typed_identifier: Box::new(class_property_iden) });
+
+        class_properties.push(JSAstNode::ClassProperty {
+            typed_identifier: Box::new(class_property_iden),
+
+            // The default value should eventually take Type into account
+            default_value: Some(Box::new(JSAstNode::ArrayLiteral(vec![])))
+        });
     }
 
     let config_func_type = format!("(a: {}) => void", schema_name);
@@ -2615,7 +2636,6 @@ fn main() {
                 let (client_js, server_js) =
                     slir_tier_split(&schema_name, &parsed, &slir, &schemas, &type_environment);
 
-//                println!("Client JS: {:#?}", client_js);
                 js_expanded_client_slir.push(js_gen_string(client_js));
 
 
@@ -2657,9 +2677,6 @@ fn main() {
         }
         Err(e) => println!("Error {:?}", e),
     }
-
-//    let client_code = js_expanded_client.join("\n\n");
-//    fs::write(args.client_output, client_code).expect("Unable to write client code file.");
 
     let client_code_slir = js_expanded_client_slir.join("\n\n");
     fs::write(args.client_output, client_code_slir).expect("Unable to write client code SLIR file.");
