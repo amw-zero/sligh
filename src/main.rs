@@ -45,7 +45,7 @@ enum JSAstNode {
         name: Box<JSAstNode>,
         args: Vec<JSAstNode>,
         body: Box<JSAstNode>,
-        return_type: Box<JSAstNode>,
+        return_type: Option<Box<JSAstNode>>,
     },
     FuncCallExpr {
         call_name: Box<JSAstNode>,
@@ -284,7 +284,8 @@ fn js_gen_string(node: JSAstNode) -> String {
             format!("{} !== {}", js_gen_string(*left), js_gen_string(*right))
         }
         /*JSAstNode::Expr(e) => e,*/
-        JSAstNode::InvalidNode => "invalid_node".to_string(),
+        /*JSAstNode::InvalidNode => "invalid_node".to_string(),*/
+        _ => "".to_string(),
     }
 }
 
@@ -301,20 +302,27 @@ fn js_translate_expr(expr: &AstExpr) -> JSAstNode {
             receiver,
             call_name,
             args,
-        } => JSAstNode::CallExpr {
-            receiver: Box::new(JSAstNode::Identifier(receiver.name.clone())),
-            call_name: Box::new(JSAstNode::Identifier(call_name.name.clone())),
-            args: args.into_iter().map(js_translate_expr).collect(),
-        },
+        } => {
+            if call_name.name == "new" {
+                JSAstNode::NewClass {
+                    name: Box::new(JSAstNode::Identifier(receiver.name.clone())),
+                    args: args.iter().map(js_translate_expr).collect(),
+                }
+            } else {
+                JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier(receiver.name.clone())),
+                    call_name: Box::new(JSAstNode::Identifier(call_name.name.clone())),
+                    args: args.into_iter().map(js_translate_expr).collect(),
+                }
+            }
+        }
         AstExpr::FuncCall { call_name, args } => JSAstNode::FuncCallExpr {
             call_name: Box::new(JSAstNode::Identifier(call_name.name.clone())),
             args: args.into_iter().map(js_translate_expr).collect(),
         },
-        /*
         AstExpr::DotAccess { receiver, property } => {
-            JSAstNode::DotAccess { receiver: Box::new(JSAstNode::Identifier(receiver.name))}
-        },
-        */
+            JSAstNode::Identifier(format!("{}.{}", receiver.name, property.name))
+        }
         AstExpr::NumberLiteral(i) => JSAstNode::Identifier(i.to_string()),
         AstExpr::Identifier(i) => JSAstNode::Identifier(i.name.clone()),
         _ => JSAstNode::InvalidNode,
@@ -344,17 +352,22 @@ fn js_translate_schema_method(
             r#type: Box::new(js_translate_type(&arg.r#type)),
         });
     }
-    let mut js_statements: Vec<JSAstNode> = vec![];
-    for stmt in &body.statements {
-        js_statements.push(js_translate_statement(&stmt));
-    }
 
     JSAstNode::ClassMethod {
         name: Box::new(js_name),
         args: js_args,
-        body: Box::new(JSAstNode::StatementList {
-            statements: js_statements,
-        }),
+        body: Box::new(js_translate_statement_list(&body)),
+    }
+}
+
+fn js_translate_statement_list(stmt_list: &AstStatementList) -> JSAstNode {
+    let mut js_statements: Vec<JSAstNode> = vec![];
+    for stmt in &stmt_list.statements {
+        js_statements.push(js_translate_statement(stmt));
+    }
+
+    JSAstNode::StatementList {
+        statements: js_statements,
     }
 }
 
@@ -373,6 +386,13 @@ fn js_translate_type(r#type: &Type) -> JSAstNode {
             CustomType::Function { .. } => panic!("Unimplemented JS translation for Function type"),
         },
         _ => panic!("Unimplemented JS translation for Generic type"),
+    }
+}
+
+fn js_translate_typed_identifier(typed_iden: &TypedIdentifier) -> JSAstNode {
+    JSAstNode::TypedIdentifier {
+        identifier: Box::new(JSAstNode::Identifier(typed_iden.identifier.name.clone())),
+        r#type: Box::new(js_translate_type(&typed_iden.r#type)),
     }
 }
 
@@ -419,9 +439,9 @@ fn js_translate(ast: AstNode) -> JSAstNode {
                 let mut js_definitions: Vec<JSAstNode> = vec![];
                 for def in body {
                     match def {
-                        SchemaDefinition::SchemaMethod {
+                        SchemaDefinition::SchemaMethod(SchemaMethod {
                             name, args, body, ..
-                        } => js_definitions.push(js_translate_schema_method(&name, &args, &body)),
+                        }) => js_definitions.push(js_translate_schema_method(&name, &args, &body)),
                         SchemaDefinition::SchemaAttribute { name, r#type } => {
                             js_definitions.push(js_translate_schema_attribute(&name, &r#type))
                         }
@@ -436,23 +456,22 @@ fn js_translate(ast: AstNode) -> JSAstNode {
                 }
             }
         }
-        /*
-        AstNode::Function {
-            name, args, body, ..
-        } => {
+        AstNode::FunctionDef(fd) => {
+            let name = &fd.name;
+            let args = &fd.args;
+            let body = &fd.body;
             let mut js_args: Vec<JSAstNode> = vec![];
             for arg in args {
-                js_args.push(js_translate(arg));
+                js_args.push(js_translate_typed_identifier(&arg));
             }
 
             JSAstNode::FuncDef {
-                name: Box::new(js_translate(*name)),
+                name: Box::new(JSAstNode::Identifier(name.name.clone())),
                 args: js_args,
-                body: Box::new(js_translate(*body)),
-                return_type: Box::new(JSAstNode::InvalidNode),
+                body: Box::new(js_translate_statement_list(&body)),
+                return_type: None,
             }
         }
-        */
         _ => JSAstNode::InvalidNode,
     }
 }
@@ -1370,6 +1389,17 @@ fn js_executable_translate(node: &JSAstNode) -> JSAstNode {
 
 // Parser
 
+fn schema_name_from_type(r#type: &Type) -> String {
+    println!("Getting schema name from type: {:#?}", r#type);
+    match r#type {
+        Type::Custom(ct) => match ct {
+            CustomType::Schema(schema_name) => schema_name.to_string(),
+            _ => panic!("Can only get schema name from Schema type"),
+        },
+        _ => panic!("Can only get schema name from Schema type"),
+    }
+}
+
 fn relation_name_from_type(r#type: &Type) -> String {
     match r#type {
         Type::Primitive(pt) => match pt {
@@ -1442,19 +1472,19 @@ struct AstStatementList {
     statements: Vec<AstStatement>,
 }
 
+#[derive(Debug, Clone)]
+struct SchemaMethod {
+    name: AstIdentifier,
+    args: Vec<TypedIdentifier>,
+    body: AstStatementList,
+    return_type: Option<Type>,
+}
+
 // Rename SchemaAttribute struct to TypedIdentifier
 #[derive(Debug, Clone)]
 enum SchemaDefinition {
-    SchemaAttribute {
-        name: AstIdentifier,
-        r#type: Type,
-    },
-    SchemaMethod {
-        name: AstIdentifier,
-        args: Vec<TypedIdentifier>,
-        body: AstStatementList,
-        return_type: Option<Type>,
-    },
+    SchemaAttribute { name: AstIdentifier, r#type: Type },
+    SchemaMethod(SchemaMethod),
 }
 
 #[derive(Debug, Clone)]
@@ -1469,19 +1499,22 @@ struct ArrayType {
 }
 
 #[derive(Debug, Clone)]
+struct AstFunctionDef {
+    name: AstIdentifier,
+    body: AstStatementList,
+    args: Vec<TypedIdentifier>,
+    type_params: Option<Vec<Type>>,
+    return_type: Option<Type>,
+}
+
+#[derive(Debug, Clone)]
 enum AstNode {
     InvalidNode,
     SchemaDef {
         name: AstIdentifier,
         body: Vec<SchemaDefinition>,
     },
-    FunctionDef {
-        name: AstIdentifier,
-        body: AstStatementList,
-        args: Vec<TypedIdentifier>,
-        type_params: Option<Vec<Type>>,
-        return_type: Option<Type>,
-    },
+    FunctionDef(AstFunctionDef),
 }
 
 fn parse_type(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Type {
@@ -1667,12 +1700,12 @@ fn parse_schema_def(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> Sch
         }
         Rule::SchemaMethod => {
             let (name, args, body, return_type) = parse_function_like(pair, schemas);
-            return SchemaDefinition::SchemaMethod {
+            return SchemaDefinition::SchemaMethod(SchemaMethod {
                 name: name,
                 args: args,
                 body: body,
                 return_type: return_type,
-            };
+            });
         }
         other => panic!(
             "Unexpected node during SchemaDefinition parsing: {:?}",
@@ -1707,13 +1740,13 @@ fn parse(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> AstNode {
         Rule::SchemaMethod => {
             let (name, args, body, return_type) = parse_function_like(pair, schemas);
 
-            AstNode::FunctionDef {
+            AstNode::FunctionDef(AstFunctionDef {
                 name: name,
                 args: args,
                 body: body,
                 type_params: None,
                 return_type: return_type,
-            }
+            })
         }
         _ => {
             if DEBUG {
@@ -1876,16 +1909,50 @@ fn fast_check_arbitrary_from_type(r#type: &Type) -> String {
     }
 }
 
-fn js_gen_certification_properties(
-    partitioned_class_defs: &PartitionedClassDefinitions,
+fn certification_determine_state_transfer(
+    body: &AstStatementList,
+) -> Option<(StateTransferFunc, String)> {
+    for stmt in &body.statements {
+        match stmt {
+            AstStatement::Expr(e) => match e {
+                AstExpr::CallExpr {
+                    call_name,
+                    receiver,
+                    ..
+                } => {
+                    if is_state_transition(&call_name.name) {
+                        return Some((
+                            state_transition_func_from_str(&call_name.name),
+                            receiver.name.clone(),
+                        ));
+                    }
+                }
+                _ => continue,
+            },
+            _ => continue,
+        }
+    }
+
+    return None;
+}
+
+fn slir_gen_certification_properties(
+    state_transfers: &Vec<SchemaMethod>,
     schemas: &Schemas,
 ) -> (Vec<JSAstNode>, Vec<String>) {
     let mut js_property_defs: Vec<JSAstNode> = vec![];
     let mut js_property_names: Vec<String> = vec![];
-    for state_transition in &partitioned_class_defs.state_transitions {
+    let state_transitions = state_transfers;
+    for state_transition in state_transitions {
+        println!(
+            "Certification properties for method: {}",
+            state_transition.name.name
+        );
         let state_trans_name = &state_transition.name;
-        let state_trans_func = &state_transition.transition_type;
-        js_property_names.push(state_trans_name.clone());
+        let (state_trans_func, state_variable) =
+            certification_determine_state_transfer(&state_transition.body)
+                .expect("Currently expecting a single state transfer func in all actions");
+        js_property_names.push(state_trans_name.name.clone());
 
         match state_trans_func {
             StateTransferFunc::Create => {
@@ -1894,7 +1961,8 @@ fn js_gen_certification_properties(
                 // Argument list for property body
                 let mut generated_data_vars: Vec<JSAstNode> = vec![];
                 for arg in &state_transition.args {
-                    let schema = &schemas[&arg.r#type];
+                    let schema_name = schema_name_from_type(&arg.r#type);
+                    let schema = &schemas[&schema_name];
                     let mut data_generator_props: Vec<Prop> = vec![];
                     for attr in &schema.attributes {
                         let key_node = JSAstNode::Identifier(attr.name.clone());
@@ -1913,10 +1981,10 @@ fn js_gen_certification_properties(
                     data_generators.push(JSAstNode::Object {
                         props: data_generator_props,
                     });
-                    generated_data_vars.push(JSAstNode::Identifier(arg.name.clone()));
+                    generated_data_vars.push(JSAstNode::Identifier(arg.identifier.name.clone()));
                 }
 
-                let property_func_name = format!("{}Property", state_trans_name);
+                let property_func_name = format!("{}Property", state_trans_name.name);
 
                 // TODO: For each state variable, add a data generator for it here
                 let mut property_args: Vec<JSAstNode> = vec![];
@@ -1955,11 +2023,11 @@ fn js_gen_certification_properties(
                                         "fullstack".to_string(),
                                     )),
                                     call_name: Box::new(JSAstNode::Identifier(
-                                        state_trans_name.to_string(),
+                                        state_trans_name.name.to_string(),
                                     )),
                                     // args[0] again - represents a state transition argument
                                     args: vec![JSAstNode::Identifier(
-                                        state_transition.args[0].name.clone(),
+                                        state_transition.args[0].identifier.name.clone(),
                                     )],
                                 }),
                             }),
@@ -1967,10 +2035,12 @@ fn js_gen_certification_properties(
                         JSAstNode::CallExpr {
                             receiver: Box::new(JSAstNode::Identifier("model".to_string())),
                             call_name: Box::new(JSAstNode::Identifier(
-                                state_trans_name.to_string(),
+                                state_trans_name.name.to_string(),
                             )),
                             args: vec![
-                                JSAstNode::Identifier(state_transition.args[0].name.clone()),
+                                JSAstNode::Identifier(
+                                    state_transition.args[0].identifier.name.clone(),
+                                ),
                                 // Pass in id of created entity so that the model and implementation are creating
                                 // the same entity.
                                 JSAstNode::Identifier("created.id".to_string()),
@@ -1982,14 +2052,11 @@ fn js_gen_certification_properties(
                                 call_name: Box::new(JSAstNode::Identifier("expect".to_string())),
                                 args: vec![JSAstNode::Identifier(format!(
                                     "fullstack.{}",
-                                    state_transition.state_variable
+                                    state_variable
                                 ))],
                             }),
                             call_name: Box::new(JSAstNode::Identifier("to.deep.eq".to_string())),
-                            args: vec![JSAstNode::Identifier(format!(
-                                "model.{}",
-                                state_transition.state_variable
-                            ))],
+                            args: vec![JSAstNode::Identifier(format!("model.{}", state_variable))],
                         },
                     ],
                 };
@@ -2014,7 +2081,7 @@ fn js_gen_certification_properties(
                         ))],
                     }),
                     args: vec![],
-                    return_type: Box::new(JSAstNode::InvalidNode),
+                    return_type: None,
                 };
 
                 js_property_defs.push(property_func)
@@ -2036,10 +2103,22 @@ fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
         body: Box::new(JSAstNode::StatementList {
             statements: endpoints.clone(),
         }),
-        return_type: Box::new(JSAstNode::InvalidNode),
+        return_type: None,
     };
 
     return js_gen_string(define_endpoints_func);
+}
+
+fn gen_server_file(endpoints: &Vec<JSAstNode>, function_defs: &Vec<AstFunctionDef>) -> String {
+    let function_strs: Vec<String> = function_defs
+        .iter()
+        .map(|def| js_gen_string(js_translate(AstNode::FunctionDef(def.clone()))))
+        .collect();
+    let endpoint_str = gen_server_endpoint_file(endpoints);
+
+    let functions = function_strs.join("\n\n");
+
+    vec![functions, endpoint_str].join("\n\n")
 }
 
 fn gen_certification_property_file(
@@ -2284,14 +2363,13 @@ fn resolve_type(
             let mut call_name_path = name_path.clone();
             call_name_path.push(call_name.name.clone());
 
-            let arg_types: Vec<Type> = args
+            let _: Vec<Type> = args
                 .into_iter()
                 .map(|arg| {
                     resolve_type(&arg, name_path, type_env).expect("Type error - function args")
                 })
                 .collect();
 
-            println!("Resolving type for: {:#?}", call_name_path);
             Some(
                 resolve_variable_type(&call_name_path, type_env)
                     .expect("Type error - CallExpr call name"),
@@ -2321,11 +2399,12 @@ fn update_type_environment_statement(
     }
 }
 
-// Add parsed code to collection of schemas and type environment
+// Add parsed code to various collections of info
 fn update_environment(
     pair: &Pair<Rule>,
     node: &AstNode,
     schemas: &mut Schemas,
+    function_defs: &mut Vec<AstFunctionDef>,
     type_env: &mut TypeEnvironment,
 ) {
     // Add to Schemas:
@@ -2352,7 +2431,7 @@ fn update_environment(
         }
         _ => (),
     };
-    // Add to Type environment:
+
     match node {
         AstNode::SchemaDef { name, body } => {
             let schema_name = name.name.clone();
@@ -2368,9 +2447,9 @@ fn update_environment(
                         type_env.insert(type_env_name(&name_path), r#type.clone());
                     }
                     // Todo: This should add function signature to type env, including return type
-                    SchemaDefinition::SchemaMethod {
+                    SchemaDefinition::SchemaMethod(SchemaMethod {
                         name, args, body, ..
-                    } => {
+                    }) => {
                         let method_name = name.name.clone();
                         let method_name_path = vec![schema_name.clone(), method_name];
                         for arg in args {
@@ -2383,13 +2462,12 @@ fn update_environment(
                 }
             }
         }
-        AstNode::FunctionDef {
-            name,
-            args,
-            type_params,
-            return_type,
-            ..
-        } => {
+        AstNode::FunctionDef(fd) => {
+            let name = &fd.name;
+            let args = &fd.args;
+            let type_params = &fd.type_params;
+            let return_type = &fd.return_type;
+
             type_env.insert(
                 name.name.clone(),
                 Type::Custom(CustomType::Function {
@@ -2398,6 +2476,8 @@ fn update_environment(
                     return_type: Box::new(return_type.clone()),
                 }),
             );
+
+            function_defs.push(fd.clone());
         }
         _ => (), /*println!("Attempted to add type information for unhandled node")*/
     }
@@ -2659,12 +2739,6 @@ fn slir_expand_state_transfer_server(
         StateTransferFunc::Create => {
             let state_var_type = &state_transfer.collection.r#type;
             let state_var_str = js_gen_string(js_translate_type(&state_var_type));
-            println!(
-                "Expanding client side for create state transfer: {:#?}",
-                state_transfer
-            );
-            println!("Trasnlated type: {:#?}", js_translate_type(&state_var_type));
-            println!("state var: {:#?}", state_var_str);
             let query =
                 js_state_query_create(&state_var, &state_var_str, &state_transfer.args, schemas);
             let parse_data = JSAstNode::LetExpr {
@@ -2889,8 +2963,8 @@ fn slir_tier_split(
     // on the client. The StateTransfer itself gets compiled into both client and server components.
     let mut class_properties: Vec<JSAstNode> = vec![];
     let mut class_methods: Vec<JSAstNode> = vec![];
-
     let mut endpoints: Vec<JSAstNode> = vec![];
+
     for stmts in slir {
         let state_transfer_index = stmts
             .iter()
@@ -3004,6 +3078,10 @@ fn main() {
     // Mapping of variables to their types
     let mut type_environment: TypeEnvironment = HashMap::new();
 
+    // Function definitions need to be captured and placed on whichever tier
+    // they are referenced by
+    let mut function_defs: Vec<AstFunctionDef> = vec![];
+
     // Executable JS model representation of program
     let mut js_model: Vec<String> = vec![];
 
@@ -3029,9 +3107,13 @@ fn main() {
                 let parsed = parse(pair.clone(), &schemas);
                 println!("parsed: {:#?}", parsed);
 
-                update_environment(&pair, &parsed, &mut schemas, &mut type_environment);
-
-                // println!("\n\nTypeEnv: {:#?}", type_environment);
+                update_environment(
+                    &pair,
+                    &parsed,
+                    &mut schemas,
+                    &mut function_defs,
+                    &mut type_environment,
+                );
 
                 let (slir, schema_name) = match &parsed {
                     AstNode::SchemaDef {
@@ -3040,12 +3122,12 @@ fn main() {
                     } => (
                         body.into_iter()
                             .filter_map(|def| match def {
-                                SchemaDefinition::SchemaMethod {
+                                SchemaDefinition::SchemaMethod(SchemaMethod {
                                     name: method_name,
                                     args,
                                     body,
                                     ..
-                                } => Some(slir_translate(
+                                }) => Some(slir_translate(
                                     &schema_name.name,
                                     &method_name.name,
                                     &body,
@@ -3060,13 +3142,10 @@ fn main() {
                     _ => (vec![], "".to_string()),
                 };
 
-                println!("SLIR: {:#?}", slir);
-
                 let (client_js, server_js) =
                     slir_tier_split(&schema_name, &slir, &schemas, &type_environment);
                 js_expanded_client_slir.push(js_gen_string(client_js));
 
-                println!("Server: {:#?}", server_js);
                 for endpoint in server_js {
                     js_endpoints_slir.push(endpoint);
                 }
@@ -3091,8 +3170,19 @@ fn main() {
                     js_endpoints.push(endpoint);
                 }
 
+                let actions = match parsed {
+                    AstNode::SchemaDef { body, .. } => body
+                        .into_iter()
+                        .filter_map(|def| match def {
+                            SchemaDefinition::SchemaMethod(m) => Some(m),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => vec![],
+                };
+
                 let (certification_properties, mut names) =
-                    js_gen_certification_properties(&partitioned_class_defs, &schemas);
+                    slir_gen_certification_properties(&actions, &schemas);
 
                 for property in certification_properties {
                     certification_property_strs.push(js_gen_string(property));
@@ -3112,11 +3202,9 @@ fn main() {
     fs::write(args.server_output, gen_server_endpoint_file(&js_endpoints))
         .expect("Unable to write server code file.");
 
-    fs::write(
-        "server.slir.js",
-        gen_server_endpoint_file(&js_endpoints_slir),
-    )
-    .expect("Unable to write server code SLIR file.");
+    let server_file = gen_server_file(&js_endpoints_slir, &function_defs);
+
+    fs::write("server.slir.js", server_file).expect("Unable to write server code SLIR file.");
 
     let model_code = js_model.join("\n\n");
     fs::write(args.model_output, model_code).expect("Unable to write model code file.");
