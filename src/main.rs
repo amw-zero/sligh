@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use clap::Parser as ClapParser;
 use convert_case::{Case, Casing};
 use pest::iterators::Pair;
@@ -875,7 +876,7 @@ fn relation_name_from_type(r#type: &Type) -> String {
 #[grammar = "grammar.pest"]
 struct LangParser;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct AstIdentifier {
     name: String,
 }
@@ -937,7 +938,7 @@ enum SchemaDefinition {
     SchemaMethod(SchemaMethod),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct TypedIdentifier {
     identifier: AstIdentifier,
     r#type: Type,
@@ -1622,7 +1623,7 @@ fn type_env_name(name_path: &Vec<String>) -> String {
     name_path.join(".")
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum PrimitiveType {
     // Integers
     Int,
@@ -1633,7 +1634,7 @@ enum PrimitiveType {
     Array(Box<Type>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum CustomType {
     Schema(String), // Schema name
     Function {
@@ -1644,7 +1645,7 @@ enum CustomType {
     Variant,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Type {
     Primitive(PrimitiveType),
     Custom(CustomType),
@@ -2100,7 +2101,7 @@ fn slir_expr_nodes(
                     })
                     .collect();
                 slir_nodes.push(SLIRNode::StateTransfer(StateTransfer {
-                    name: call_name.name.clone(),
+                    name: method_name.to_string(),
                     collection: TypedIdentifier {
                         identifier: AstIdentifier {
                             name: relation_name_from_type(&state_var_type),
@@ -2373,19 +2374,9 @@ fn slir_make_state_transfers_client(
     state_transfers: &Vec<&StateTransfer>,
     schemas: &Schemas,
     type_env: &TypeEnvironment,
-) -> (Vec<JSAstNode>, Vec<JSAstNode>) {
-    // args: call_name ("read!"), relation_name (from Type),
-    let mut class_properties: Vec<JSAstNode> = vec![];
+) -> Vec<JSAstNode> {
     let mut class_methods: Vec<JSAstNode> = vec![];
-    for transfer in state_transfers {
-        let class_property = JSAstNode::TypedIdentifier {
-            identifier: Box::new(JSAstNode::Identifier(
-                transfer.collection.identifier.name.clone(),
-            )),
-            r#type: Box::new(js_translate_type(&transfer.collection.r#type)),
-        };
-        class_properties.push(class_property);
-
+    for transfer in state_transfers {    
         let expanded_client_body = slir_expand_state_transfer_client(
             &transfer.transition,
             &transfer.collection.identifier.name,
@@ -2399,13 +2390,13 @@ fn slir_make_state_transfers_client(
         class_methods.push(JSAstNode::AsyncModifier(Box::new(class_method)));
     }
 
-    (class_properties, class_methods)
+    class_methods
 }
 
 fn slir_tier_split(
     schema_name: &str,
     parsed_node: &AstNode,
-    slir: &Vec<Vec<SLIRNode>>,
+    slir: &Vec<SLIROperations>,
     schemas: &Schemas,
     type_env: &TypeEnvironment,
 ) -> (JSAstNode, Vec<JSAstNode>) {
@@ -2427,6 +2418,7 @@ fn slir_tier_split(
     // the statements before it can be placed on the server, and anything after can be placed
     // on the client. The StateTransfer itself gets compiled into both client and server components.
     let mut class_properties: Vec<JSAstNode> = vec![];
+    let mut transferred_state_variables: HashSet<TypedIdentifier> = HashSet::new();
     let mut class_methods: Vec<JSAstNode> = vec![];
     let mut endpoints: Vec<JSAstNode> = vec![];
 
@@ -2458,15 +2450,26 @@ fn slir_tier_split(
             })
             .collect();
 
-        let (mut properties, mut methods) =
+        let mut methods =
             slir_make_state_transfers_client(&schema_name, &state_transfers, schemas, type_env);
-        class_properties.append(&mut properties);
+        
         class_methods.append(&mut methods);
 
         for transfer in state_transfers {
             let endpoint = slir_expand_state_transfer_server(&transfer, &server_stmts, schemas);
             endpoints.push(endpoint);
+            transferred_state_variables.insert(transfer.collection.clone());
         }
+    }
+
+    for state_var in transferred_state_variables {
+        let class_property_iden = JSAstNode::TypedIdentifier {
+            identifier: Box::new(JSAstNode::Identifier(
+                state_var.identifier.name.clone(),
+            )),
+            r#type: Box::new(js_translate_type(&state_var.r#type)),
+        };
+        class_properties.push(JSAstNode::ClassProperty {typed_identifier: Box::new(class_property_iden) });
     }
 
     let config_func_type = format!("(a: {}) => void", schema_name);
@@ -2531,6 +2534,8 @@ struct Args {
 //             line, attribute.name, attribute.r#type
 //         )
 //     }
+
+type SLIROperations = Vec<SLIRNode>;
 
 fn main() {
     let args = Args::parse();
