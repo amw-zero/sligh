@@ -1362,6 +1362,10 @@ fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
 
 // Translation Certification
 
+fn slir_translate_model(schema_name: &str, method_name: &str, slir: &SLIROperations, schemas: &Schemas, type_env: &TypeEnvironment) -> JSAstNode {
+    JSAstNode::InvalidNode
+}
+
 fn fast_check_arbitrary_from_type(r#type: &Type) -> String {
     match r#type {
         Type::Primitive(pt) => match pt {
@@ -2052,7 +2056,7 @@ enum Query {
     Where,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct StateTransfer {
     name: String,
     collection: TypedIdentifier,
@@ -2069,7 +2073,7 @@ struct StateQuery {
     result_var: Option<AstIdentifier>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum SLIRNode {
     StateQuery(StateQuery),
     StateTransfer(StateTransfer),
@@ -2649,6 +2653,7 @@ fn main() {
 
     // Executable JS model representation of program
     let mut js_model: Vec<String> = vec![];
+    let mut slir_model: Vec<JSAstNode> = vec![];
 
     // Expanded client representation of program
     let mut js_expanded_client_slir: Vec<String> = vec![];
@@ -2678,57 +2683,66 @@ fn main() {
                     &mut type_environment,
                 );
 
+                let mut state_transfers: Vec<(String, String, SLIROperations)> = vec![];
                 match &parsed {
                     AstNode::SchemaDef {
                         name: schema_name,
                         body,
                     } => {
-                        let (slir, schema_name) = (
-                            body.into_iter()
-                                .filter_map(|def| match def {
-                                    SchemaDefinition::SchemaMethod(SchemaMethod {
-                                        name: method_name,
-                                        args,
-                                        body,
-                                        ..
-                                    }) => Some(slir_translate(
-                                        &schema_name.name,
-                                        &method_name.name,
-                                        &body,
-                                        &schemas,
-                                        &type_environment,
-                                    )),
-                                    _ => None,
-                                })
-                                .collect(),
-                            schema_name.name.to_string(),
-                        );
-
-                        println!("Tier splitting based on slir: {:#?}", slir);
-
-                        let (client_js, server_js) = slir_tier_split(
-                            &schema_name,
-                            &parsed,
-                            &slir,
-                            &schemas,
-                            &type_environment,
-                        );
-
-                        js_expanded_client_slir.push(js_gen_string(client_js));
-
-                        for endpoint in server_js {
-                            js_endpoints_slir.push(endpoint);
-                        }
+                        for def in body.into_iter() {
+                            match def {
+                                SchemaDefinition::SchemaMethod(SchemaMethod {
+                                    name: method_name,
+                                    args,
+                                    body,
+                                    ..
+                                }) => {
+                                    state_transfers.push((
+                                        schema_name.name.to_string(),
+                                        method_name.name.to_string(),
+                                        slir_translate(
+                                            &schema_name.name,
+                                            &method_name.name,
+                                            &body,
+                                            &schemas,
+                                            &type_environment,
+                                        )
+                                    ));
+                                },
+                                _ => ()
+                            }
+                        }                       
                     }
                     _ => (),
                 };
 
+                if state_transfers.len() > 0 {
+                    let schema_name = &state_transfers[0].0;
+                    let all_transfers: Vec<SLIROperations> = state_transfers.iter().map(|transfer| transfer.2.clone()).collect();
+                    let (client_js, server_js) = slir_tier_split(
+                        schema_name,
+                        &parsed,
+                        &all_transfers,
+                        &schemas,
+                        &type_environment,
+                    );
+
+                    js_expanded_client_slir.push(js_gen_string(client_js));
+
+                    for endpoint in server_js {
+                        js_endpoints_slir.push(endpoint);
+                    }
+
+                    for (schema_name, method_name, slir) in state_transfers {
+                        slir_model.push(slir_translate_model(&schema_name, &method_name, &slir, &schemas, &type_environment));
+                    }
+
+                    println!("SLIR Model: {:#?}", slir_model);
+                }
+
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
-
                 let js_ast = js_translate(parsed.clone());
-
-                // println!("JS AST: {:#?}", js_ast);
 
                 // js_executable_translate converts Sligh constructs to executable JS, e.g. by
                 // replacing state transitions with array operations.
