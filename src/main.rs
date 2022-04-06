@@ -2918,6 +2918,13 @@ fn main() {
                     }
                 }
 
+                match &parsed {
+                    AstNode::FunctionDef(..) => {
+                        slir_model.push(js_gen_string(js_translate(parsed.clone())));
+                    },
+                    _ => ()
+                }
+
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
                 let js_ast = js_translate(parsed.clone());
