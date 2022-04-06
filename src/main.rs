@@ -1366,26 +1366,30 @@ fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
 // Translation Certification
 
 /*
- class BudgetClass {
-   recurring_transactions
- }
+class BudgetClass {
+  recurring_transactions
+}
 
- class Schedule {
-   scheduled_transactions: ScheduledTransaction[] = [];
+class Schedule {
+  scheduled_transactions: ScheduledTransaction[] = [];
 
-   view_scheduled_transactions() {
-       let rts = Budget.recurring_transactions
-       let scheduled_transactions = rts.map(expand)
+  view_scheduled_transactions() {
+      let rts = Budget.recurring_transactions
+      let scheduled_transactions = rts.map(expand)
 
-       this.scheduled_transactions = scheduled_transactions;
-       // from scheduled_transactions.read!()
-   }
- }
+      this.scheduled_transactions = scheduled_transactions;
+      // from scheduled_transactions.read!()
+  }
+}
 
- let Budget = new BudgetClass();
- */
+let Budget = new BudgetClass();
+*/
 
-fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas, type_env: &TypeEnvironment) -> Vec<JSAstNode> {
+fn slir_schema_model(
+    schema_slir: &SchemaSLIR,
+    schemas: &Schemas,
+    type_env: &TypeEnvironment,
+) -> Vec<JSAstNode> {
     let model_class_name = format!("{}Class", schema_slir.schema_def.name.name);
 
     let mut class_properties: Vec<JSAstNode> = vec![];
@@ -1401,11 +1405,11 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas, type_env: &Typ
             match stmt {
                 SLIRServerNode::Logic(ast_stmt) => {
                     js_stmts.push(js_translate_statement(&ast_stmt));
-                },
+                }
                 SLIRServerNode::StateQuery(sq) => {
                     let result_var = match sq.result_var {
                         Some(res) => res.name.to_string(),
-                        None => "state".to_string()
+                        None => "state".to_string(),
                     };
                     let query_from = match sq.module {
                         Some(m) => format!("{}.{}", m.name, sq.collection.identifier.name),
@@ -1413,7 +1417,7 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas, type_env: &Typ
                     };
                     js_stmts.push(JSAstNode::LetExpr {
                         name: Box::new(JSAstNode::Identifier(result_var)),
-                        value: Box::new(JSAstNode::Identifier(query_from))
+                        value: Box::new(JSAstNode::Identifier(query_from)),
                     })
                 }
             }
@@ -1422,28 +1426,37 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas, type_env: &Typ
         for transfer in partitioned_slir.state_transfers {
             transferred_state_variables.insert(transfer.collection.clone());
             match transfer.transition {
-                StateTransferFunc::Read => {
-                    match transfer.from_var {
-                        Some(v) => {
-                            js_stmts.push(JSAstNode::AssignmentStatement {
-                                left: Box::new(JSAstNode::Identifier(format!("this.{}", transfer.collection.identifier.name))),
-                                right: Box::new(JSAstNode::Identifier(v.name.to_string()))
-                            });
-                        },
-                        None => {
-                            js_stmts.push(JSAstNode::ReturnStatement(Box::new(JSAstNode::Identifier(format!("this.{}", transfer.collection.identifier.name)))));
-                        }
+                StateTransferFunc::Read => match transfer.from_var {
+                    Some(v) => {
+                        js_stmts.push(JSAstNode::AssignmentStatement {
+                            left: Box::new(JSAstNode::Identifier(format!(
+                                "this.{}",
+                                transfer.collection.identifier.name
+                            ))),
+                            right: Box::new(JSAstNode::Identifier(v.name.to_string())),
+                        });
                     }
-                    
+                    None => {
+                        js_stmts.push(JSAstNode::ReturnStatement(Box::new(JSAstNode::Identifier(
+                            format!("this.{}", transfer.collection.identifier.name),
+                        ))));
+                    }
                 },
-                _ => println!("slir_schema_method: Unimplemented transfer func")
+                _ => println!("slir_schema_method: Unimplemented transfer func"),
             };
         }
 
         class_methods.push(JSAstNode::ClassMethod {
             name: Box::new(JSAstNode::Identifier(method.method.name.name.clone())),
-            args: method.method.args.iter().map(|arg| js_translate_typed_identifier(&arg)).collect(),
-            body: Box::new(JSAstNode::StatementList { statements: js_stmts }),
+            args: method
+                .method
+                .args
+                .iter()
+                .map(|arg| js_translate_typed_identifier(&arg))
+                .collect(),
+            body: Box::new(JSAstNode::StatementList {
+                statements: js_stmts,
+            }),
         });
     }
 
@@ -1475,15 +1488,19 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas, type_env: &Typ
             name: Box::new(JSAstNode::Identifier(model_class_name)),
             body: Box::new(JSAstNode::ClassBody {
                 definitions: class_defs,
-            })
+            }),
         },
         JSAstNode::LetExpr {
-            name: Box::new(JSAstNode::Identifier(schema_slir.schema_def.name.name.clone())),
+            name: Box::new(JSAstNode::Identifier(
+                schema_slir.schema_def.name.name.clone(),
+            )),
             value: Box::new(JSAstNode::NewClass {
-                name: Box::new(JSAstNode::Identifier(schema_slir.schema_def.name.name.clone())),
-                args: vec![]
-            })
-        }
+                name: Box::new(JSAstNode::Identifier(
+                    schema_slir.schema_def.name.name.clone(),
+                )),
+                args: vec![],
+            }),
+        },
     ]
 }
 
@@ -2358,7 +2375,7 @@ fn slir_expr_nodes(
 
 struct PartitionedSLIROperations {
     pre_transfer_statements: Vec<SLIRServerNode>,
-    state_transfers: Vec<StateTransfer>
+    state_transfers: Vec<StateTransfer>,
 }
 
 fn partition_slir(operations: &SLIROperations) -> PartitionedSLIROperations {
@@ -2394,7 +2411,7 @@ fn partition_slir(operations: &SLIROperations) -> PartitionedSLIROperations {
         pre_transfer_statements: server_stmts,
         state_transfers: state_transfers,
     }
-} 
+}
 
 fn slir_translate(
     schema_name: &str,
@@ -2689,8 +2706,12 @@ fn slir_tier_split(
         let partitioned_slir = partition_slir(&stmts);
         let server_stmts = partitioned_slir.pre_transfer_statements;
 
-        let mut methods =
-            slir_make_state_transfers_client(&schema_name, &partitioned_slir.state_transfers, schemas, type_env);
+        let mut methods = slir_make_state_transfers_client(
+            &schema_name,
+            &partitioned_slir.state_transfers,
+            schemas,
+            type_env,
+        );
 
         class_methods.append(&mut methods);
 
@@ -2790,7 +2811,7 @@ struct SchemaMethodSLIR {
 
 struct SchemaSLIR {
     schema_def: SchemaDef,
-    methods: Vec<SchemaMethodSLIR>,   
+    methods: Vec<SchemaMethodSLIR>,
 }
 
 fn main() {
@@ -2840,7 +2861,6 @@ fn main() {
                     &mut type_environment,
                 );
 
-
                 let maybe_schema_slir = match &parsed {
                     AstNode::SchemaDef(schema_def) => {
                         let schema_name = &schema_def.name;
@@ -2861,15 +2881,21 @@ fn main() {
                                             &body,
                                             &schemas,
                                             &type_environment,
-                                        )
+                                        ),
                                     });
-                                    println!("SLIR: {:#?}", schema_method_slirs[schema_method_slirs.len() - 1].slir);
-                                },
-                                _ => ()
+                                    println!(
+                                        "SLIR: {:#?}",
+                                        schema_method_slirs[schema_method_slirs.len() - 1].slir
+                                    );
+                                }
+                                _ => (),
                             }
                         }
-                        
-                        Some(SchemaSLIR { schema_def: schema_def.clone(), methods: schema_method_slirs })
+
+                        Some(SchemaSLIR {
+                            schema_def: schema_def.clone(),
+                            methods: schema_method_slirs,
+                        })
                     }
                     _ => None,
                 };
@@ -2877,7 +2903,11 @@ fn main() {
                 if let Some(schema_slir) = maybe_schema_slir {
                     if schema_slir.methods.len() > 0 {
                         let schema_name = &schema_slir.schema_def.name.name;
-                        let all_transfers: Vec<SLIROperations> = schema_slir.methods.iter().map(|meth| meth.slir.clone()).collect();
+                        let all_transfers: Vec<SLIROperations> = schema_slir
+                            .methods
+                            .iter()
+                            .map(|meth| meth.slir.clone())
+                            .collect();
                         let (client_js, server_js) = slir_tier_split(
                             schema_name,
                             &parsed,
@@ -2890,12 +2920,16 @@ fn main() {
 
                         for endpoint in server_js {
                             js_endpoints_slir.push(endpoint);
-                        }                    
-                        slir_model.append(&mut slir_schema_model(&schema_slir, &schemas, &type_environment).into_iter().map(js_gen_string).collect());
+                        }
+                        slir_model.append(
+                            &mut slir_schema_model(&schema_slir, &schemas, &type_environment)
+                                .into_iter()
+                                .map(js_gen_string)
+                                .collect(),
+                        );
                         println!("SLIR Model: {:#?}", slir_model);
                     }
                 }
-
 
                 // js_translate is a direct translation, i.e. can contain conventions allowed in
                 // Sligh that aren't allowed in JS. It is more of an intermediate representation.
