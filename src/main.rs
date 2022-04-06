@@ -1442,6 +1442,13 @@ fn slir_schema_model(
                         ))));
                     }
                 },
+                StateTransferFunc::Create => match transfer.from_var {
+                    None => {
+                        let create_arg = &method.method.args[0].identifier.name;
+                        js_stmts.push(js_push_var(&transfer.collection.identifier.name, create_arg));
+                    }
+                    _ => println!("slir_schema_method: Create, unimplemented from_var")
+                }
                 _ => println!("slir_schema_method: Unimplemented transfer func"),
             };
         }
