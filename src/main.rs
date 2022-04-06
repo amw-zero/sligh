@@ -1365,26 +1365,6 @@ fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
 
 // Translation Certification
 
-/*
-class BudgetClass {
-  recurring_transactions
-}
-
-class Schedule {
-  scheduled_transactions: ScheduledTransaction[] = [];
-
-  view_scheduled_transactions() {
-      let rts = Budget.recurring_transactions
-      let scheduled_transactions = rts.map(expand)
-
-      this.scheduled_transactions = scheduled_transactions;
-      // from scheduled_transactions.read!()
-  }
-}
-
-let Budget = new BudgetClass();
-*/
-
 fn slir_schema_model(
     schema_slir: &SchemaSLIR,
     schemas: &Schemas,
