@@ -2881,35 +2881,3 @@ fn main() {
     )
     .expect("Unable to write certification properties file.");
 }
-
-// Goal:
-//
-// budget.recurring_transactions
-//       .map { |rt| rt.expand(start_date, end_date) }
-//       .flatten
-//       .read!()
-
-// Client:
-//
-// fetch("/scheduled_transactions")
-//
-// Server:
-//
-// res.send(
-//   (SELECT * from recurring_transactions)
-//     .map { |rt| rt.expand(start_date, end_date) }
-//     .flatten)
-// )
-//
-
-// TODO:
-// Lang -
-// top-level functions
-// let expressions
-// statement / expr list
-// closures
-// trailing closures
-// if statement
-//
-// Infrastructure expansion -
-// Endpoint for derived state (recurring_transactions)
