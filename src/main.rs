@@ -2558,6 +2558,7 @@ fn slir_expand_state_transfer_client(
 }
 
 fn slir_make_state_transfers_client(
+    method: &SchemaMethodSLIR,
     state_transfers: &Vec<StateTransfer>,
 ) -> Vec<JSAstNode> {
     let mut class_methods: Vec<JSAstNode> = vec![];
@@ -2569,7 +2570,7 @@ fn slir_make_state_transfers_client(
         );
         let class_method = JSAstNode::ClassMethod {
             name: Box::new(JSAstNode::Identifier(transfer.name.clone())),
-            args: vec![],
+            args: method.method.args.iter().map(js_translate_typed_identifier).collect(),
             body: Box::new(expanded_client_body),
         };
         class_methods.push(JSAstNode::AsyncModifier(Box::new(class_method)));
@@ -2579,8 +2580,7 @@ fn slir_make_state_transfers_client(
 }
 
 fn slir_tier_split(
-    schema_name: &str,
-    slir: &Vec<SLIROperations>,
+    schema_slir: &SchemaSLIR,
     schemas: &Schemas,
 ) -> (JSAstNode, Vec<JSAstNode>) {
     // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
@@ -2591,11 +2591,18 @@ fn slir_tier_split(
     let mut class_methods: Vec<JSAstNode> = vec![];
     let mut endpoints: Vec<JSAstNode> = vec![];
 
-    for stmts in slir {
+    let all_methods: Vec<&SchemaMethodSLIR> = schema_slir
+                            .methods
+                            .iter()
+                            .collect();
+
+    for method in all_methods {
+        let stmts = &method.slir;
         let partitioned_slir = partition_slir(&stmts);
         let server_stmts = partitioned_slir.pre_transfer_statements;
 
         let mut methods = slir_make_state_transfers_client(
+            &method,
             &partitioned_slir.state_transfers,
         );
 
@@ -2623,6 +2630,7 @@ fn slir_tier_split(
         });
     }
 
+    let schema_name = &schema_slir.schema_def.name.name;
     let config_func_type = format!("(a: {}) => void", schema_name);
     println!("Config func type: {}", config_func_type);
 
@@ -2752,7 +2760,6 @@ fn main() {
         Ok(pairs) => {
             for pair in pairs {
                 let parsed = parse(pair.clone(), &schemas);
-                println!("parsed: {:#?}", parsed);
 
                 update_environment(
                     &pair,
@@ -2803,15 +2810,8 @@ fn main() {
 
                 if let Some(schema_slir) = maybe_schema_slir {
                     if schema_slir.methods.len() > 0 {
-                        let schema_name = &schema_slir.schema_def.name.name;
-                        let all_transfers: Vec<SLIROperations> = schema_slir
-                            .methods
-                            .iter()
-                            .map(|meth| meth.slir.clone())
-                            .collect();
                         let (client_js, server_js) = slir_tier_split(
-                            schema_name,
-                            &all_transfers,
+                            &schema_slir,
                             &schemas,
                         );
 
@@ -2826,7 +2826,6 @@ fn main() {
                                 .map(js_gen_string)
                                 .collect(),
                         );
-                        println!("SLIR Model: {:#?}", slir_model);
                     } else {
                         js_expanded_client_slir.push(js_gen_string(
                             JSAstNode::ExportOperator(Box::new(js_translate(parsed.clone())))
