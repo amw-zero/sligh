@@ -809,7 +809,6 @@ fn js_state_query_delete(state_var: &str) -> JSAstNode {
 // Parser
 
 fn schema_name_from_type(r#type: &Type) -> String {
-    println!("Getting schema name from type: {:#?}", r#type);
     match r#type {
         Type::Custom(ct) => match ct {
             CustomType::Schema(schema_name) => schema_name.to_string(),
@@ -1491,10 +1490,6 @@ fn slir_gen_certification_properties(
     let mut js_property_names: Vec<String> = vec![];
     let state_transitions = state_transfers;
     for state_transition in state_transitions {
-        println!(
-            "Certification properties for method: {}",
-            state_transition.name.name
-        );
         let state_trans_name = &state_transition.name;
         let (state_trans_func, state_variable) =
             certification_determine_state_transfer(&state_transition.body)
@@ -2823,10 +2818,6 @@ fn main() {
                                             &type_environment,
                                         ),
                                     });
-                                    println!(
-                                        "SLIR: {:#?}",
-                                        schema_method_slirs[schema_method_slirs.len() - 1].slir
-                                    );
                                 }
                                 _ => (),
                             }
