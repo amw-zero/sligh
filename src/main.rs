@@ -1,4 +1,3 @@
-use std::path::Path;
 use clap::Parser as ClapParser;
 use convert_case::{Case, Casing};
 use pest::iterators::Pair;
@@ -6,6 +5,7 @@ use pest::{self, Parser as PestParser};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
+use std::path::Path;
 
 const DEBUG: bool = false;
 const API_HOST: &str = "http://localhost:3000";
@@ -321,14 +321,17 @@ fn js_translate_expr(expr: &AstExpr, schemas: &Schemas) -> JSAstNode {
             if call_name.name == "new" {
                 // Receiver is a Schema
                 let schema = &schemas[&receiver.name];
-                let properties = schema.attributes.iter().enumerate().map(|(i, attr)| Prop { 
-                    key: JSAstNode::Identifier(attr.name.clone()), 
-                    value: js_translate_expr(&args[i], schemas)
-                }).collect();
+                let properties = schema
+                    .attributes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, attr)| Prop {
+                        key: JSAstNode::Identifier(attr.name.clone()),
+                        value: js_translate_expr(&args[i], schemas),
+                    })
+                    .collect();
 
-                JSAstNode::Object {
-                    props: properties
-                }
+                JSAstNode::Object { props: properties }
                 // JSAstNode::NewClass {
                 //     name: Box::new(JSAstNode::Identifier(receiver.name.clone())),
                 //     args: args.iter().map(|arg| js_translate_expr(arg, schemas)).collect(),
@@ -337,13 +340,19 @@ fn js_translate_expr(expr: &AstExpr, schemas: &Schemas) -> JSAstNode {
                 JSAstNode::CallExpr {
                     receiver: Box::new(JSAstNode::Identifier(receiver.name.clone())),
                     call_name: Box::new(JSAstNode::Identifier(call_name.name.clone())),
-                    args: args.into_iter().map(|arg| js_translate_expr(arg, schemas)).collect(),
+                    args: args
+                        .into_iter()
+                        .map(|arg| js_translate_expr(arg, schemas))
+                        .collect(),
                 }
             }
         }
         AstExpr::FuncCall { call_name, args } => JSAstNode::FuncCallExpr {
             call_name: Box::new(JSAstNode::Identifier(call_name.name.clone())),
-            args: args.into_iter().map(|arg| js_translate_expr(arg, schemas)).collect(),
+            args: args
+                .into_iter()
+                .map(|arg| js_translate_expr(arg, schemas))
+                .collect(),
         },
         AstExpr::DotAccess { receiver, property } => {
             JSAstNode::Identifier(format!("{}.{}", receiver.name, property.name))
@@ -466,7 +475,8 @@ fn js_translate(ast: AstNode, schemas: &Schemas) -> JSAstNode {
                     match def {
                         SchemaDefinition::SchemaMethod(SchemaMethod {
                             name, args, body, ..
-                        }) => js_definitions.push(js_translate_schema_method(&name, &args, &body, schemas)),
+                        }) => js_definitions
+                            .push(js_translate_schema_method(&name, &args, &body, schemas)),
                         SchemaDefinition::SchemaAttribute { name, r#type } => {
                             js_definitions.push(js_translate_schema_attribute(&name, &r#type))
                         }
@@ -1310,10 +1320,7 @@ fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
 
 // Translation Certification
 
-fn slir_schema_model(
-    schema_slir: &SchemaSLIR,
-    schemas: &Schemas
-) -> Vec<JSAstNode> {
+fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> Vec<JSAstNode> {
     let model_class_name = format!("{}Class", schema_slir.schema_def.name.name);
 
     let mut class_properties: Vec<JSAstNode> = vec![];
@@ -1369,10 +1376,13 @@ fn slir_schema_model(
                 StateTransferFunc::Create => match transfer.from_var {
                     None => {
                         let create_arg = &method.method.args[0].identifier.name;
-                        js_stmts.push(js_push_var(&transfer.collection.identifier.name, create_arg));
+                        js_stmts.push(js_push_var(
+                            &transfer.collection.identifier.name,
+                            create_arg,
+                        ));
                     }
-                    _ => println!("slir_schema_method: Create, unimplemented from_var")
-                }
+                    _ => println!("slir_schema_method: Create, unimplemented from_var"),
+                },
                 _ => println!("slir_schema_method: Unimplemented transfer func"),
             };
         }
@@ -1718,7 +1728,12 @@ fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
     return js_gen_string(JSAstNode::ExportOperator(Box::new(define_endpoints_func)));
 }
 
-fn gen_server_file(endpoints: &Vec<JSAstNode>, function_defs: &Vec<AstFunctionDef>, datatypes: &Vec<String>, schemas: &Schemas) -> String {
+fn gen_server_file(
+    endpoints: &Vec<JSAstNode>,
+    function_defs: &Vec<AstFunctionDef>,
+    datatypes: &Vec<String>,
+    schemas: &Schemas,
+) -> String {
     let function_strs: Vec<String> = function_defs
         .iter()
         .map(|def| js_gen_string(js_translate(AstNode::FunctionDef(def.clone()), schemas)))
@@ -2174,9 +2189,7 @@ fn slir_expr_nodes(
     match expr {
         AstExpr::DotAccess { receiver, property } => {
             let name_path = vec![receiver.name.clone(), property.name.clone()];
-            if let Some(collection_name) =
-                state_variable_collection_name(&name_path, type_env)
-            {
+            if let Some(collection_name) = state_variable_collection_name(&name_path, type_env) {
                 let r#type = resolve_variable_type(&name_path, type_env)
                     .expect("Type error - slir_expr_nodes");
                 let result_var = match stmt {
@@ -2219,8 +2232,7 @@ fn slir_expr_nodes(
                     .any(|attr| attr.name == receiver.name);
                 let state_var_type = resolve_variable_type(&name_path, type_env)
                     .expect("Type error - slir translate");
-                match state_variable_collection_name(&name_path, type_env)
-                {
+                match state_variable_collection_name(&name_path, type_env) {
                     Some(collection_name) if is_state_variable => {
                         slir_nodes.push(SLIRNode::StateQuery(StateQuery {
                             module: None,
@@ -2389,8 +2401,7 @@ fn slir_expand_state_transfer_server(
     let endpoint_path = js_state_var_endpoint_server(&state_var, &state_transition_func);
     let state_body = match state_transition_func {
         StateTransferFunc::Create => {
-            let query =
-                js_state_query_create(&state_var, &state_transfer.args, schemas);
+            let query = js_state_query_create(&state_var, &state_transfer.args, schemas);
             let parse_data = JSAstNode::LetExpr {
                 name: Box::new(JSAstNode::Identifier("data".to_string())),
                 value: Box::new(JSAstNode::Identifier("req.body".to_string())),
@@ -2518,7 +2529,8 @@ fn slir_expand_state_transfer_client(
     schemas: &Schemas,
 ) -> JSAstNode {
     let endpoint = slir_state_var_endpoint_client(&state_var, &state_trans_func, &args, schemas);
-    let st_fetch_args = slir_expand_fetch_args_from_state_transition(&state_trans_func, &args, schemas);
+    let st_fetch_args =
+        slir_expand_fetch_args_from_state_transition(&state_trans_func, &args, schemas);
 
     let fetch_args = vec![endpoint, st_fetch_args];
 
@@ -2586,7 +2598,12 @@ fn slir_make_state_transfers_client(
         );
         let class_method = JSAstNode::ClassMethod {
             name: Box::new(JSAstNode::Identifier(transfer.name.clone())),
-            args: method.method.args.iter().map(js_translate_typed_identifier).collect(),
+            args: method
+                .method
+                .args
+                .iter()
+                .map(js_translate_typed_identifier)
+                .collect(),
             body: Box::new(expanded_client_body),
         };
         class_methods.push(JSAstNode::AsyncModifier(Box::new(class_method)));
@@ -2595,10 +2612,7 @@ fn slir_make_state_transfers_client(
     class_methods
 }
 
-fn slir_tier_split(
-    schema_slir: &SchemaSLIR,
-    schemas: &Schemas,
-) -> (JSAstNode, Vec<JSAstNode>) {
+fn slir_tier_split(schema_slir: &SchemaSLIR, schemas: &Schemas) -> (JSAstNode, Vec<JSAstNode>) {
     // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
     // the statements before it can be placed on the server, and anything after can be placed
     // on the client. The StateTransfer itself gets compiled into both client and server components.
@@ -2607,21 +2621,15 @@ fn slir_tier_split(
     let mut class_methods: Vec<JSAstNode> = vec![];
     let mut endpoints: Vec<JSAstNode> = vec![];
 
-    let all_methods: Vec<&SchemaMethodSLIR> = schema_slir
-                            .methods
-                            .iter()
-                            .collect();
+    let all_methods: Vec<&SchemaMethodSLIR> = schema_slir.methods.iter().collect();
 
     for method in all_methods {
         let stmts = &method.slir;
         let partitioned_slir = partition_slir(&stmts);
         let server_stmts = partitioned_slir.pre_transfer_statements;
 
-        let mut methods = slir_make_state_transfers_client(
-            &method,
-            &partitioned_slir.state_transfers,
-            schemas,
-        );
+        let mut methods =
+            slir_make_state_transfers_client(&method, &partitioned_slir.state_transfers, schemas);
 
         class_methods.append(&mut methods);
 
@@ -2728,15 +2736,19 @@ struct SchemaSLIR {
     methods: Vec<SchemaMethodSLIR>,
 }
 
-fn copy_swallow_err<P: AsRef<Path> + ToString, Q: AsRef<Path> + ToString>(file: &str, from: P, to: Q) {
+fn copy_swallow_err<P: AsRef<Path> + ToString, Q: AsRef<Path> + ToString>(
+    file: &str,
+    from: P,
+    to: Q,
+) {
     let from_file = format!("{}/{}", &from.to_string(), file);
     let to_file = format!("{}/{}", &to.to_string(), file);
     match fs::copy(&from_file, &to_file) {
         Err(e) => {
             println!("{} -> {}: {}", &from_file, &to_file, e);
             panic!("Error copying translation certification file")
-        },
-        _ => ()
+        }
+        _ => (),
     };
 }
 
@@ -2830,10 +2842,7 @@ fn main() {
 
                 if let Some(schema_slir) = maybe_schema_slir {
                     if schema_slir.methods.len() > 0 {
-                        let (client_js, server_js) = slir_tier_split(
-                            &schema_slir,
-                            &schemas,
-                        );
+                        let (client_js, server_js) = slir_tier_split(&schema_slir, &schemas);
 
                         js_expanded_client_slir.push(js_gen_string(client_js));
 
@@ -2848,17 +2857,18 @@ fn main() {
                         );
                     } else {
                         datatypes.push(js_gen_string(js_translate(parsed.clone(), &schemas)));
-                        js_expanded_client_slir.push(js_gen_string(
-                            JSAstNode::ExportOperator(Box::new(js_translate(parsed.clone(), &schemas)))
-                        ));
+                        js_expanded_client_slir.push(js_gen_string(JSAstNode::ExportOperator(
+                            Box::new(js_translate(parsed.clone(), &schemas)),
+                        )));
                         slir_model.push(js_gen_string(js_translate(parsed.clone(), &schemas)));
                     }
-                } 
+                }
 
                 match &parsed {
-                    AstNode::FunctionDef(..) =>
-                        slir_model.push(js_gen_string(js_translate(parsed.clone(), &schemas))),
-                    _ => ()
+                    AstNode::FunctionDef(..) => {
+                        slir_model.push(js_gen_string(js_translate(parsed.clone(), &schemas)))
+                    }
+                    _ => (),
                 }
 
                 let actions = match parsed {
@@ -2900,32 +2910,52 @@ fn main() {
             Err(e) => {
                 println!("{}", e);
                 panic!("Error deleting existing certification dir");
-            },
-            _ => ()
+            }
+            _ => (),
         }
     }
 
     match fs::create_dir_all(format!("{}/test", &args.translation_certification_dir)) {
         Err(..) => panic!("Error creating translation certification dir"),
-        _ => ()
+        _ => (),
     }
 
     // TODO: This path will have to be fixed with a real package
     let mut current_dir = std::env::current_exe().expect("Unable to get current executable path");
     current_dir.pop();
-    let source_certification_dir = format!("{}/../../translation_certification", current_dir.display());
+    let source_certification_dir =
+        format!("{}/../../translation_certification", current_dir.display());
 
-    copy_swallow_err("tsconfig.json", &source_certification_dir, &args.translation_certification_dir);
-    copy_swallow_err("package.json", &source_certification_dir, &args.translation_certification_dir);
-    copy_swallow_err("package-lock.json", &source_certification_dir, &args.translation_certification_dir);
-    copy_swallow_err("test/forward-simulation.test.ts", &source_certification_dir, &args.translation_certification_dir);
+    copy_swallow_err(
+        "tsconfig.json",
+        &source_certification_dir,
+        &args.translation_certification_dir,
+    );
+    copy_swallow_err(
+        "package.json",
+        &source_certification_dir,
+        &args.translation_certification_dir,
+    );
+    copy_swallow_err(
+        "package-lock.json",
+        &source_certification_dir,
+        &args.translation_certification_dir,
+    );
+    copy_swallow_err(
+        "test/forward-simulation.test.ts",
+        &source_certification_dir,
+        &args.translation_certification_dir,
+    );
 
     let certification_code = gen_certification_property_file(
         &certification_property_strs,
         &certification_property_names,
     );
     fs::write(
-        format!("{}/test/certification-properties.ts", &args.translation_certification_dir),
+        format!(
+            "{}/test/certification-properties.ts",
+            &args.translation_certification_dir
+        ),
         certification_code.join("\n\n"),
     )
     .expect("Unable to write certification properties file.");
