@@ -1704,7 +1704,7 @@ fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
         return_type: None,
     };
 
-    return js_gen_string(define_endpoints_func);
+    return js_gen_string(JSAstNode::ExportOperator(Box::new(define_endpoints_func)));
 }
 
 fn gen_server_file(endpoints: &Vec<JSAstNode>, function_defs: &Vec<AstFunctionDef>) -> String {
@@ -2675,7 +2675,7 @@ struct Args {
     client_output: String,
 
     /// Generated server output
-    #[clap(short, long, default_value = "./server.js")]
+    #[clap(short, long, default_value = "./server-endpoints.ts")]
     server_output: String,
 
     /// Generated model output
