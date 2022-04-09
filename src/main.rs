@@ -1,3 +1,4 @@
+use std::path::Path;
 use clap::Parser as ClapParser;
 use convert_case::{Case, Casing};
 use pest::iterators::Pair;
@@ -76,6 +77,7 @@ enum JSAstNode {
     AwaitOperator {
         node: Box<JSAstNode>, // FuncCallExpr or CallExpr of an async-modified ClassMethod def
     },
+    ExportOperator(Box<JSAstNode>),
     LetExpr {
         name: Box<JSAstNode>,  // Identifier,
         value: Box<JSAstNode>, // any node
@@ -158,6 +160,7 @@ fn js_gen_string(node: JSAstNode) -> String {
         JSAstNode::AwaitOperator { node } => {
             format!("await {}", js_gen_string(*node))
         }
+        JSAstNode::ExportOperator(node) => format!("export {}", js_gen_string(*node)),
         JSAstNode::StatementList { statements } => {
             let mut stmt_strs: Vec<String> = vec![];
             for s in statements {
@@ -2577,27 +2580,9 @@ fn slir_make_state_transfers_client(
 
 fn slir_tier_split(
     schema_name: &str,
-    parsed_node: &AstNode,
     slir: &Vec<SLIROperations>,
     schemas: &Schemas,
 ) -> (JSAstNode, Vec<JSAstNode>) {
-    println!("Tier splitting {}", schema_name);
-
-    // Schemas without state transfers are compiled as raw data / interfaces.
-    match parsed_node {
-        AstNode::SchemaDef(SchemaDef { body, .. }) => {
-            let no_methods = body.clone().into_iter().all(|def| match def {
-                SchemaDefinition::SchemaAttribute { .. } => true,
-                _ => false,
-            });
-
-            if no_methods {
-                return (js_translate(parsed_node.clone()), vec![]);
-            }
-        }
-        _ => (),
-    }
-
     // Simple algorithm to start: Assuming StateTransfers occur at the end of a statement list,
     // the statements before it can be placed on the server, and anything after can be placed
     // on the client. The StateTransfer itself gets compiled into both client and server components.
@@ -2663,12 +2648,12 @@ fn slir_tier_split(
 
     expanded_definitions.insert(0, constructor);
 
-    let client = JSAstNode::ClassDef {
+    let client = JSAstNode::ExportOperator(Box::new(JSAstNode::ClassDef {
         name: Box::new(JSAstNode::Identifier(schema_name.to_string())),
         body: Box::new(JSAstNode::ClassBody {
             definitions: expanded_definitions,
         }),
-    };
+    }));
 
     (client, endpoints)
 }
@@ -2692,6 +2677,10 @@ struct Args {
     /// Generated certification output
     #[clap(short = 't', long, default_value = "./state-transition-properties.ts")]
     state_transition_properties_output: String,
+
+    /// Generated certification dir
+    #[clap(long, default_value = "./certification/")]
+    translation_certification_dir: String,
 }
 
 // Display errors with line number:
@@ -2713,6 +2702,18 @@ struct SchemaMethodSLIR {
 struct SchemaSLIR {
     schema_def: SchemaDef,
     methods: Vec<SchemaMethodSLIR>,
+}
+
+fn copy_swallow_err<P: AsRef<Path> + ToString, Q: AsRef<Path> + ToString>(file: &str, from: P, to: Q) {
+    let from_file = format!("{}/{}", &from.to_string(), file);
+    let to_file = format!("{}/{}", &to.to_string(), file);
+    match fs::copy(&from_file, &to_file) {
+        Err(e) => {
+            println!("{} -> {}: {}", &from_file, &to_file, e);
+            panic!("Error copying translation certification file")
+        },
+        _ => ()
+    };
 }
 
 fn main() {
@@ -2810,7 +2811,6 @@ fn main() {
                             .collect();
                         let (client_js, server_js) = slir_tier_split(
                             schema_name,
-                            &parsed,
                             &all_transfers,
                             &schemas,
                         );
@@ -2827,13 +2827,17 @@ fn main() {
                                 .collect(),
                         );
                         println!("SLIR Model: {:#?}", slir_model);
+                    } else {
+                        js_expanded_client_slir.push(js_gen_string(
+                            JSAstNode::ExportOperator(Box::new(js_translate(parsed.clone())))
+                        ));
+                        slir_model.push(js_gen_string(js_translate(parsed.clone())));
                     }
-                }
+                } 
 
                 match &parsed {
-                    AstNode::FunctionDef(..) => {
-                        slir_model.push(js_gen_string(js_translate(parsed.clone())));
-                    },
+                    AstNode::FunctionDef(..) =>
+                        slir_model.push(js_gen_string(js_translate(parsed.clone()))),
                     _ => ()
                 }
 
@@ -2871,12 +2875,37 @@ fn main() {
     let slir_model = slir_model.join("\n\n");
     fs::write(args.model_output, slir_model).expect("Unable to write model code file");
 
+    if Path::new(&args.translation_certification_dir).is_dir() {
+        match fs::remove_dir_all(&args.translation_certification_dir) {
+            Err(e) => {
+                println!("{}", e);
+                panic!("Error deleting existing certification dir");
+            },
+            _ => ()
+        }
+    }
+
+    match fs::create_dir_all(format!("{}/test", &args.translation_certification_dir)) {
+        Err(..) => panic!("Error creating translation certification dir"),
+        _ => ()
+    }
+
+    // TODO: This path will have to be fixed with a real package
+    let mut current_dir = std::env::current_exe().expect("Unable to get current executable path");
+    current_dir.pop();
+    let source_certification_dir = format!("{}/../../translation_certification", current_dir.display());
+
+    copy_swallow_err("tsconfig.json", &source_certification_dir, &args.translation_certification_dir);
+    copy_swallow_err("package.json", &source_certification_dir, &args.translation_certification_dir);
+    copy_swallow_err("package-lock.json", &source_certification_dir, &args.translation_certification_dir);
+    copy_swallow_err("test/forward-simulation.test.ts", &source_certification_dir, &args.translation_certification_dir);
+
     let certification_code = gen_certification_property_file(
         &certification_property_strs,
         &certification_property_names,
     );
     fs::write(
-        "./certification-properties.ts",
+        format!("{}/test/certification-properties.ts", &args.translation_certification_dir),
         certification_code.join("\n\n"),
     )
     .expect("Unable to write certification properties file.");
