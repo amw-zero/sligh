@@ -332,10 +332,6 @@ fn js_translate_expr(expr: &AstExpr, schemas: &Schemas) -> JSAstNode {
                     .collect();
 
                 JSAstNode::Object { props: properties }
-                // JSAstNode::NewClass {
-                //     name: Box::new(JSAstNode::Identifier(receiver.name.clone())),
-                //     args: args.iter().map(|arg| js_translate_expr(arg, schemas)).collect(),
-                // }
             } else {
                 JSAstNode::CallExpr {
                     receiver: Box::new(JSAstNode::Identifier(receiver.name.clone())),
@@ -1425,7 +1421,7 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> Vec<JSAstNo
 
     vec![
         JSAstNode::ClassDef {
-            name: Box::new(JSAstNode::Identifier(model_class_name)),
+            name: Box::new(JSAstNode::Identifier(model_class_name.clone())),
             body: Box::new(JSAstNode::ClassBody {
                 definitions: class_defs,
             }),
@@ -1436,7 +1432,7 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> Vec<JSAstNo
             )),
             value: Box::new(JSAstNode::NewClass {
                 name: Box::new(JSAstNode::Identifier(
-                    schema_slir.schema_def.name.name.clone(),
+                    model_class_name.clone(),
                 )),
                 args: vec![],
             }),
@@ -1782,6 +1778,63 @@ fn gen_certification_property_file(
     certification_file.push(transition_properties.join("\n"));
 
     certification_file
+}
+
+fn write_certification_test(output_dir: &str, certification_property_strs: &Vec<String>, certification_property_names: &Vec<String>) {
+    if Path::new(output_dir).is_dir() {
+        match fs::remove_dir_all(output_dir) {
+            Err(e) => {
+                println!("{}", e);
+                panic!("Error deleting existing certification dir");
+            }
+            _ => (),
+        }
+    }
+
+    match fs::create_dir_all(format!("{}/test", output_dir)) {
+        Err(..) => panic!("Error creating translation certification dir"),
+        _ => (),
+    }
+
+    // TODO: This path will have to be fixed with a real package
+    let mut current_dir = std::env::current_exe().expect("Unable to get current executable path");
+    current_dir.pop();
+    let source_certification_dir =
+        format!("{}/../../translation_certification", current_dir.display());
+
+    copy_swallow_err(
+        "tsconfig.json",
+        &source_certification_dir,
+        output_dir,
+    );
+    copy_swallow_err(
+        "package.json",
+        &source_certification_dir,
+        output_dir,
+    );
+    copy_swallow_err(
+        "package-lock.json",
+        &source_certification_dir,
+        output_dir,
+    );
+    copy_swallow_err(
+        "test/forward-simulation.test.ts",
+        &source_certification_dir,
+        output_dir,
+    );
+
+    let certification_code = gen_certification_property_file(
+        &certification_property_strs,
+        &certification_property_names,
+    );
+    fs::write(
+        format!(
+            "{}/test/certification-properties.ts",
+            output_dir,
+        ),
+        certification_code.join("\n\n"),
+    )
+    .expect("Unable to write certification properties file.");
 }
 
 // Type system
@@ -2896,58 +2949,5 @@ fn main() {
     let slir_model = slir_model.join("\n\n");
     fs::write(args.model_output, slir_model).expect("Unable to write model code file");
 
-    if Path::new(&args.translation_certification_dir).is_dir() {
-        match fs::remove_dir_all(&args.translation_certification_dir) {
-            Err(e) => {
-                println!("{}", e);
-                panic!("Error deleting existing certification dir");
-            }
-            _ => (),
-        }
-    }
-
-    match fs::create_dir_all(format!("{}/test", &args.translation_certification_dir)) {
-        Err(..) => panic!("Error creating translation certification dir"),
-        _ => (),
-    }
-
-    // TODO: This path will have to be fixed with a real package
-    let mut current_dir = std::env::current_exe().expect("Unable to get current executable path");
-    current_dir.pop();
-    let source_certification_dir =
-        format!("{}/../../translation_certification", current_dir.display());
-
-    copy_swallow_err(
-        "tsconfig.json",
-        &source_certification_dir,
-        &args.translation_certification_dir,
-    );
-    copy_swallow_err(
-        "package.json",
-        &source_certification_dir,
-        &args.translation_certification_dir,
-    );
-    copy_swallow_err(
-        "package-lock.json",
-        &source_certification_dir,
-        &args.translation_certification_dir,
-    );
-    copy_swallow_err(
-        "test/forward-simulation.test.ts",
-        &source_certification_dir,
-        &args.translation_certification_dir,
-    );
-
-    let certification_code = gen_certification_property_file(
-        &certification_property_strs,
-        &certification_property_names,
-    );
-    fs::write(
-        format!(
-            "{}/test/certification-properties.ts",
-            &args.translation_certification_dir
-        ),
-        certification_code.join("\n\n"),
-    )
-    .expect("Unable to write certification properties file.");
+    write_certification_test(&args.translation_certification_dir, &certification_property_strs, &certification_property_names);
 }
