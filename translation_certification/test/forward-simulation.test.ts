@@ -1,10 +1,10 @@
 import 'mocha';
 import fc from 'fast-check';
 import { Database } from "sqlite3";
-import { makeApp, startApp } from "../../web_server/dist/index";
-import { transitionProperties } from "./state-transition-properties";
+import { makeApp, startApp } from "../../express_server/dist/index";
+import { transitionProperties } from "./certification-properties";
 
-const db = new Database('../web_server/test.db');
+const db = new Database('../express_server/test.db');
 const { app } = makeApp(db);
 let server;
 
