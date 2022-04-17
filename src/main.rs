@@ -18,6 +18,12 @@ struct Prop {
     value: JSAstNode,
 }
 
+#[derive(Debug, Clone)]
+enum PropOrSpread {
+    Prop(Prop),
+    Spread(Box<JSAstNode>),
+}
+
 // This is more of an intermediate representation. Not necessarily
 // executable JS.
 #[derive(Debug, Clone)]
@@ -59,7 +65,7 @@ enum JSAstNode {
         args: Vec<JSAstNode>,
     },
     Object {
-        props: Vec<Prop>,
+        prop_or_spreads: Vec<PropOrSpread>,
     },
     NewClass {
         name: Box<JSAstNode>,
@@ -81,6 +87,7 @@ enum JSAstNode {
     LetExpr {
         name: Box<JSAstNode>,  // Identifier,
         value: Box<JSAstNode>, // any node
+        r#type: Option<Box<JSAstNode>> // Type 
     },
     AssignmentStatement {
         left: Box<JSAstNode>,  // Identifier
@@ -170,11 +177,22 @@ fn js_gen_string(node: JSAstNode) -> String {
             format!("{};\n", stmt_strs.join(";\n"))
         }
         JSAstNode::ReturnStatement(e) => format!("return {}", js_gen_string(*e)),
-        JSAstNode::LetExpr { name, value } => {
-            let name_str = js_gen_string(*name);
-            let value_str = js_gen_string(*value);
-
-            format!("let {} = {}", name_str, value_str)
+        JSAstNode::LetExpr { name, value, r#type } => {
+            match r#type {
+                Some(t) => {
+                    let name_str = js_gen_string(*name);
+                    let value_str = js_gen_string(*value);
+                    let type_str = js_gen_string(*t);
+    
+                    format!("let {}: {} = {}", name_str, type_str, value_str)
+                },
+                None => {
+                    let name_str = js_gen_string(*name);
+                    let value_str = js_gen_string(*value);
+    
+                    format!("let {} = {}", name_str, value_str)
+                }
+            }            
         }
         JSAstNode::AssignmentStatement { left, right } => {
             format!("{} = {}", js_gen_string(*left), js_gen_string(*right))
@@ -251,16 +269,24 @@ fn js_gen_string(node: JSAstNode) -> String {
         }
         JSAstNode::ArrayType(iden) => js_gen_iden_name(*iden),
         JSAstNode::Identifier(_) => js_gen_iden_name(node),
-        JSAstNode::Object { props } => {
-            let mut key_values: Vec<String> = vec![];
-            for prop in props {
-                key_values.push(format!(
-                    "{}: {}",
-                    js_gen_string(prop.key),
-                    js_gen_string(prop.value)
-                ))
+        JSAstNode::Object { prop_or_spreads } => {
+            let mut object_values: Vec<String> = vec![];
+            for prop_or_spread in prop_or_spreads {
+                match prop_or_spread {
+                    PropOrSpread::Prop(p) =>
+                        object_values.push(format!(
+                            "{}: {}",
+                            js_gen_string(p.key),
+                            js_gen_string(p.value)
+                        )),
+                    PropOrSpread::Spread(e) =>
+                        object_values.push(format!(
+                            "...{}",
+                            js_gen_string(*e)
+                        ))
+                };
             }
-            format!("{{ {} }}", key_values.join(", "))
+            format!("{{ {} }}", object_values.join(", "))
         }
         JSAstNode::NewClass { name, args } => {
             let mut arg_strs: Vec<String> = vec![];
@@ -325,13 +351,13 @@ fn js_translate_expr(expr: &AstExpr, schemas: &Schemas) -> JSAstNode {
                     .attributes
                     .iter()
                     .enumerate()
-                    .map(|(i, attr)| Prop {
+                    .map(|(i, attr)| PropOrSpread::Prop(Prop{
                         key: JSAstNode::Identifier(attr.name.clone()),
                         value: js_translate_expr(&args[i], schemas),
-                    })
+                    }))
                     .collect();
 
-                JSAstNode::Object { props: properties }
+                JSAstNode::Object { prop_or_spreads: properties }
             } else {
                 JSAstNode::CallExpr {
                     receiver: Box::new(JSAstNode::Identifier(receiver.name.clone())),
@@ -363,6 +389,7 @@ fn js_translate_statement(stmt: &AstStatement, schemas: &Schemas) -> JSAstNode {
         AstStatement::LetDecl { name, value } => JSAstNode::LetExpr {
             name: Box::new(JSAstNode::Identifier(name.name.clone())),
             value: Box::new(js_translate_expr(&value, schemas)),
+            r#type: None,
         },
         AstStatement::Expr(e) => js_translate_expr(&e, schemas),
     }
@@ -422,6 +449,10 @@ fn js_translate_type(r#type: &Type) -> JSAstNode {
         },
         _ => panic!("Unimplemented JS translation for Generic type"),
     }
+}
+
+fn js_translate_identifier(identifier: &AstIdentifier) -> JSAstNode {
+    JSAstNode::Identifier(identifier.name.clone())
 }
 
 fn js_translate_typed_identifier(typed_iden: &TypedIdentifier) -> JSAstNode {
@@ -569,7 +600,17 @@ fn js_push_var(state_var: &str, state_var_val: &str) -> JSAstNode {
     JSAstNode::CallExpr {
         receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
         call_name: Box::new(JSAstNode::Identifier("push".to_string())),
-        args: vec![JSAstNode::Identifier(state_var_val.to_string())],
+        args: vec![
+            JSAstNode::Object {
+                prop_or_spreads: vec![
+                    PropOrSpread::Spread(Box::new(JSAstNode::Identifier(state_var_val.to_string()))),
+                    PropOrSpread::Prop(Prop{
+                        key: JSAstNode::Identifier("id".to_string()),
+                        value: JSAstNode::Identifier("id".to_string()),
+                    })
+                ]
+            }
+        ]
     }
 }
 
@@ -698,7 +739,7 @@ fn js_state_query_create(
     let mut sql_attr_names: Vec<SQLAstNode> = vec![];
     let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
     let mut js_attr_values: Vec<JSAstNode> = vec![];
-    let mut response_props: Vec<Prop> = vec![];
+    let mut response_props: Vec<PropOrSpread> = vec![];
 
     let create_arg = &transfer_args[0];
     let arg_type = match &create_arg.r#type {
@@ -715,10 +756,10 @@ fn js_state_query_create(
         // TODO: this is assuming the name of 'data' which is used to
         // parse the HTTP body in write requests.
         js_attr_values.push(JSAstNode::Identifier(format!("data.{}", attr.name)));
-        response_props.push(Prop {
+        response_props.push(PropOrSpread::Prop(Prop{
             key: JSAstNode::Identifier(attr.name.clone()),
             value: JSAstNode::Identifier(format!("data.{}", attr.name)),
-        });
+        }));
         sql_attr_names.push(SQLAstNode::Identifier(attr.name.clone()));
         sql_value_placeholders.push(SQLAstNode::Identifier("?".to_string()))
     }
@@ -741,15 +782,15 @@ fn js_state_query_create(
         clause: None,
     };
 
-    response_props.push(Prop {
+    response_props.push(PropOrSpread::Prop(Prop{
         key: JSAstNode::Identifier("id".to_string()),
         value: JSAstNode::Identifier("row[\"last_insert_rowid()\"]".to_string()),
-    });
+    }));
     let respond = JSAstNode::CallExpr {
         receiver: Box::new(JSAstNode::Identifier("res".to_string())),
         call_name: Box::new(JSAstNode::Identifier("send".to_string())),
         args: vec![JSAstNode::Object {
-            props: response_props,
+            prop_or_spreads: response_props,
         }],
     };
 
@@ -850,7 +891,7 @@ struct MethodArgs {
     arguments: Vec<AstNode>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum AstExpr {
     CallExpr {
         receiver: AstIdentifier,
@@ -875,18 +916,18 @@ struct TypedAstExpr {
     expr: AstExpr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum AstStatement {
     LetDecl { name: AstIdentifier, value: AstExpr },
     Expr(AstExpr),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct AstStatementList {
     statements: Vec<AstStatement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct SchemaMethod {
     name: AstIdentifier,
     args: Vec<TypedIdentifier>,
@@ -895,7 +936,7 @@ struct SchemaMethod {
 }
 
 // Rename SchemaAttribute struct to TypedIdentifier
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum SchemaDefinition {
     SchemaAttribute { name: AstIdentifier, r#type: Type },
     SchemaMethod(SchemaMethod),
@@ -921,7 +962,7 @@ struct AstFunctionDef {
     return_type: Option<Type>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct SchemaDef {
     name: AstIdentifier,
     body: Vec<SchemaDefinition>,
@@ -1315,7 +1356,7 @@ fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
 
 // Translation Certification
 
-fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> Vec<JSAstNode> {
+fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> (JSAstNode, JSAstNode) {
     let model_class_name = format!("{}Class", schema_slir.schema_def.name.name);
 
     let mut class_properties: Vec<JSAstNode> = vec![];
@@ -1327,6 +1368,7 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> Vec<JSAstNo
 
         let mut js_stmts: Vec<JSAstNode> = vec![];
 
+        let method_references_global_state = method.references_global_state();
         for stmt in partitioned_slir.pre_transfer_statements {
             match stmt {
                 SLIRServerNode::Logic(ast_stmt) => {
@@ -1338,17 +1380,26 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> Vec<JSAstNo
                         None => "state".to_string(),
                     };
                     let query_from = match sq.module {
-                        Some(m) => format!("{}.{}", m.name, sq.collection.identifier.name),
+                        Some(m) => {
+                            format!("state.{}.{}", m.name, sq.collection.identifier.name)
+                        },
                         None => format!("this.{}", sq.collection.identifier.name),
                     };
                     js_stmts.push(JSAstNode::LetExpr {
                         name: Box::new(JSAstNode::Identifier(result_var)),
                         value: Box::new(JSAstNode::Identifier(query_from)),
+                        r#type: None,
                     })
                 }
             }
         }
 
+        let mut model_method_args: Vec<JSAstNode> = method
+            .method
+            .args
+            .iter()
+            .map(|arg| js_translate_typed_identifier(&arg))
+            .collect();
         for transfer in partitioned_slir.state_transfers {
             transferred_state_variables.insert(transfer.collection.clone());
             match transfer.transition {
@@ -1371,25 +1422,28 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> Vec<JSAstNo
                 StateTransferFunc::Create => match transfer.from_var {
                     None => {
                         let create_arg = &method.method.args[0].identifier.name;
+                        model_method_args.push(JSAstNode::TypedIdentifier{
+                            identifier: Box::new(JSAstNode::Identifier("id".to_string())),
+                            r#type: Box::new(JSAstNode::Identifier("number".to_string()))
+                        });
                         js_stmts.push(js_push_var(
                             &transfer.collection.identifier.name,
                             create_arg,
-                        ));
+                        ));                        
                     }
                     _ => println!("slir_schema_method: Create, unimplemented from_var"),
                 },
                 _ => println!("slir_schema_method: Unimplemented transfer func"),
             };
+        }       
+
+        if method_references_global_state {
+            model_method_args.push(JSAstNode::Identifier("state".to_string()));
         }
 
         class_methods.push(JSAstNode::ClassMethod {
             name: Box::new(JSAstNode::Identifier(method.method.name.name.clone())),
-            args: method
-                .method
-                .args
-                .iter()
-                .map(|arg| js_translate_typed_identifier(&arg))
-                .collect(),
+            args: model_method_args,
             body: Box::new(JSAstNode::StatementList {
                 statements: js_stmts,
             }),
@@ -1419,36 +1473,20 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> Vec<JSAstNo
         class_defs.push(method);
     }
 
-    vec![
+    (
         JSAstNode::ClassDef {
             name: Box::new(JSAstNode::Identifier(model_class_name.clone())),
             body: Box::new(JSAstNode::ClassBody {
                 definitions: class_defs,
             }),
         },
-        JSAstNode::LetExpr {
+        JSAstNode::NewClass {
             name: Box::new(JSAstNode::Identifier(
-                schema_slir.schema_def.name.name.clone(),
+                model_class_name.clone(),
             )),
-            value: Box::new(JSAstNode::NewClass {
-                name: Box::new(JSAstNode::Identifier(
-                    model_class_name.clone(),
-                )),
-                args: vec![],
-            }),
+            args: vec![],
         },
-    ]
-}
-
-fn fast_check_arbitrary_from_type(r#type: &Type) -> String {
-    match r#type {
-        Type::Primitive(pt) => match pt {
-            PrimitiveType::String => "string".to_string(),
-            PrimitiveType::Numeric => "float".to_string(),
-            _ => panic!("Trying to convert unknown primitive type to a fast-check arbitrary"),
-        },
-        _ => panic!("Trying to convert unknown type name to a fast-check arbitrary"),
-    }
+    )
 }
 
 fn certification_determine_state_transfer(
@@ -1478,191 +1516,342 @@ fn certification_determine_state_transfer(
     return None;
 }
 
+/*
+    fc.record({ 
+        Budget: fc.record({
+            recurring_transactions: fc.array(fc.record({ ...recurring_transaction stuff }))
+        })
+    })
+ */
+fn system_state_data_generator(system_state: &SystemState, schemas: &Schemas) -> JSAstNode {
+    let mut state_generators: Vec<PropOrSpread> = vec![];
+    for state in system_state {
+        let mut state_attr_generators: Vec<PropOrSpread> = vec![];
+        for def in &state.body {
+            match def {
+                SchemaDefinition::SchemaAttribute { name, r#type } => {
+                    state_attr_generators.push(PropOrSpread::Prop(Prop{
+                        key: js_translate_identifier(&name),
+                        value: data_generator_for_type(&r#type, schemas),
+                    }))
+                },
+                _ => ()
+            };
+        }
+
+        state_generators.push(PropOrSpread::Prop(Prop{
+            key: js_translate_identifier(&state.name),
+            value:  JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("record".to_string())),
+                args: vec![
+                    JSAstNode::Object {
+                        prop_or_spreads: state_attr_generators,
+                    }
+                ],
+            }
+        }))
+    }
+
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("record".to_string())),
+        args: vec![
+            JSAstNode::Object {
+                prop_or_spreads: state_generators
+            }
+        ],
+    }
+}
+
+fn data_generator_for_type(r#type: &Type, schemas: &Schemas) -> JSAstNode {
+    match r#type {
+        Type::Custom(ct) => match ct {
+            CustomType::Schema(schema_name) => {
+                let schema = &schemas[schema_name];
+                let mut data_generator_props: Vec<PropOrSpread> = vec![];
+                for attr in &schema.attributes {
+                    let key_node = JSAstNode::Identifier(attr.name.clone());
+                    let value_generator = data_generator_for_type(&attr.r#type, schemas);
+                    data_generator_props.push(PropOrSpread::Prop(Prop{
+                        key: key_node,
+                        value: value_generator,
+                    }))
+                }                
+
+                JSAstNode::CallExpr {
+                    receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                    call_name: Box::new(JSAstNode::Identifier("record".to_string())),
+                    args: vec![
+                        JSAstNode::Object {
+                            prop_or_spreads: data_generator_props,
+                        }
+                    ],
+                }
+            },
+            other => panic!("Unimplemented: data generator for {:#?}", other)
+        },
+        Type::Primitive(pt) => match pt {
+            PrimitiveType::Int => JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("number".to_string())),
+                args: vec![],
+            },
+            PrimitiveType::Numeric => JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("float".to_string())),
+                args: vec![],
+            },
+            PrimitiveType::String => JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("string".to_string())),
+                args: vec![],
+            },
+            PrimitiveType::Array(t) => JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("array".to_string())),
+                args: vec![data_generator_for_type(&*t, schemas)],
+            }
+        }
+        Type::Generic(a) => panic!("Cannot generate data for generic type {:?}", a)
+    }    
+}
+
 fn slir_gen_certification_properties(
-    state_transfers: &Vec<SchemaMethod>,
+    schema_slir: &SchemaSLIR,
+    system_state: &SystemState,
     schemas: &Schemas,
 ) -> (Vec<JSAstNode>, Vec<String>) {
     let mut js_property_defs: Vec<JSAstNode> = vec![];
     let mut js_property_names: Vec<String> = vec![];
-    let state_transitions = state_transfers;
+    let state_transitions = &schema_slir.methods;
     for state_transition in state_transitions {
-        let state_trans_name = &state_transition.name;
+        let state_trans_name = &state_transition.method.name;
         let (state_trans_func, state_variable) =
-            certification_determine_state_transfer(&state_transition.body)
+            certification_determine_state_transfer(&state_transition.method.body)
                 .expect("Currently expecting a single state transfer func in all actions");
         js_property_names.push(state_trans_name.name.clone());
+
+        let method_references_global_state = state_transition.references_global_state();        
 
         // TODO: Create functions for building up the test body
         let test_body = match state_trans_func {
             StateTransferFunc::Create => {
-                JSAstNode::StatementList {
-                    statements: vec![
-                        JSAstNode::LetExpr {
-                            name: Box::new(JSAstNode::Identifier("model".to_string())),
-                            value: Box::new(JSAstNode::NewClass {
-                                name: Box::new(JSAstNode::Identifier("Model".to_string())),
+                let model_class = format!("currentState.{}", schema_slir.schema_def.name.name);
+                let fullstack_class = format!("Fullstack.{}", schema_slir.schema_def.name.name);
+                let mut model_args = vec![
+                    JSAstNode::Identifier(
+                        state_transition.method.args[0].identifier.name.clone(),
+                    ),
+                    // Pass in id of created entity so that the model and implementation are creating
+                    // the same entity.
+                    JSAstNode::Identifier("created.id".to_string()),
+                ];
+                if method_references_global_state {
+                    model_args.push(JSAstNode::Identifier("state".to_string()));
+                }
+                let mut body_stmts = vec![
+                    JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("currentState".to_string())),
+                        value: Box::new(JSAstNode::CallExpr {
+                            receiver: Box::new(JSAstNode::Identifier("Model".to_string())),
+                            call_name: Box::new(JSAstNode::Identifier("NewState".to_string())),
+                            args: vec![]
+                        }),
+                        r#type: None,
+                    },
+                ];
+
+                for state in system_state {
+                    for def in &state.body {
+                        match def {
+                            SchemaDefinition::SchemaAttribute { name: attr_name, .. } => {
+                                body_stmts.push(JSAstNode::AssignmentStatement {
+                                    left: Box::new(JSAstNode::Identifier(format!("currentState.{}.{}", state.name.name, attr_name.name))),
+                                    right: Box::new(JSAstNode::Identifier(format!("state.{}.{}", state.name.name, attr_name.name)))
+                                });
+                            },
+                            _ => continue
+                        }
+                        
+                    }
+                }
+
+                body_stmts.append(&mut vec![
+                    JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("model".to_string())),
+                        value: Box::new(JSAstNode::Identifier(model_class)),
+                        r#type: None,
+                    },
+                    JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("fullstack".to_string())),
+                        value: Box::new(JSAstNode::NewClass {
+                            name: Box::new(JSAstNode::Identifier(fullstack_class)),
+                            args: vec![JSAstNode::ArrowClosure {
                                 args: vec![],
+                                body: Box::new(JSAstNode::StatementList { statements: vec![] }),
+                            }],
+                        }),
+                        r#type: None,
+                    },
+                    JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("created".to_string())),
+                        value: Box::new(JSAstNode::AwaitOperator {
+                            node: Box::new(JSAstNode::CallExpr {
+                                receiver: Box::new(JSAstNode::Identifier(
+                                    "fullstack".to_string(),
+                                )),
+                                call_name: Box::new(JSAstNode::Identifier(
+                                    state_trans_name.name.to_string(),
+                                )),
+                                // args[0] again - represents a state transition argument
+                                args: vec![JSAstNode::Identifier(
+                                    state_transition.method.args[0].identifier.name.clone(),
+                                )],
                             }),
-                        },
-                        JSAstNode::LetExpr {
-                            name: Box::new(JSAstNode::Identifier("fullstack".to_string())),
-                            value: Box::new(JSAstNode::NewClass {
-                                name: Box::new(JSAstNode::Identifier("Fullstack".to_string())),
-                                args: vec![JSAstNode::ArrowClosure {
-                                    args: vec![],
-                                    body: Box::new(JSAstNode::StatementList { statements: vec![] }),
-                                }],
-                            }),
-                        },
-                        JSAstNode::LetExpr {
-                            name: Box::new(JSAstNode::Identifier("created".to_string())),
-                            value: Box::new(JSAstNode::AwaitOperator {
-                                node: Box::new(JSAstNode::CallExpr {
-                                    receiver: Box::new(JSAstNode::Identifier(
-                                        "fullstack".to_string(),
-                                    )),
-                                    call_name: Box::new(JSAstNode::Identifier(
-                                        state_trans_name.name.to_string(),
-                                    )),
-                                    // args[0] again - represents a state transition argument
-                                    args: vec![JSAstNode::Identifier(
-                                        state_transition.args[0].identifier.name.clone(),
-                                    )],
-                                }),
-                            }),
-                        },
-                        JSAstNode::CallExpr {
-                            receiver: Box::new(JSAstNode::Identifier("model".to_string())),
-                            call_name: Box::new(JSAstNode::Identifier(
-                                state_trans_name.name.to_string(),
-                            )),
-                            args: vec![
-                                JSAstNode::Identifier(
-                                    state_transition.args[0].identifier.name.clone(),
-                                ),
-                                // Pass in id of created entity so that the model and implementation are creating
-                                // the same entity.
-                                JSAstNode::Identifier("created.id".to_string()),
-                            ],
-                        },
-                        // expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
-                        JSAstNode::CallExpr {
-                            receiver: Box::new(JSAstNode::FuncCallExpr {
-                                call_name: Box::new(JSAstNode::Identifier("expect".to_string())),
-                                args: vec![JSAstNode::Identifier(format!(
-                                    "fullstack.{}",
-                                    state_variable
-                                ))],
-                            }),
-                            call_name: Box::new(JSAstNode::Identifier("to.deep.eq".to_string())),
-                            args: vec![JSAstNode::Identifier(format!("model.{}", state_variable))],
-                        },
-                    ],
+                        }),
+                        r#type: None,
+                    },
+                    JSAstNode::CallExpr {
+                        receiver: Box::new(JSAstNode::Identifier("model".to_string())),
+                        call_name: Box::new(JSAstNode::Identifier(
+                            state_trans_name.name.to_string(),
+                        )),
+                        args: model_args,
+                    },
+                    JSAstNode::CallExpr {
+                        receiver: Box::new(JSAstNode::FuncCallExpr {
+                            call_name: Box::new(JSAstNode::Identifier("expect".to_string())),
+                            args: vec![JSAstNode::Identifier(format!(
+                                "fullstack.{}",
+                                state_variable
+                            ))],
+                        }),
+                        call_name: Box::new(JSAstNode::Identifier("to.deep.eq".to_string())),
+                        args: vec![JSAstNode::Identifier(format!("model.{}", state_variable))],
+                    },
+                ]);
+
+                JSAstNode::StatementList {
+                    statements: body_stmts,
                 }
             }
             StateTransferFunc::Read => {
-                /*
-                let model = new Model();
-                let fullstack = new Fullstack(() => {
-                ;
-                });
-                let created = await fullstack.create_recurring_transaction(rtc);
-                model.create_recurring_transaction(rtc, created.id);
-                expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
-                */
-                JSAstNode::StatementList {
-                    statements: vec![
-                        JSAstNode::LetExpr {
-                            name: Box::new(JSAstNode::Identifier("model".to_string())),
-                            value: Box::new(JSAstNode::NewClass {
-                                name: Box::new(JSAstNode::Identifier("Model".to_string())),
+                let model_class = format!("currentState.{}", schema_slir.schema_def.name.name);
+                let fullstack_class = format!("Fullstack.{}", schema_slir.schema_def.name.name);
+                let mut model_args: Vec<JSAstNode> = state_transition
+                    .method
+                    .args
+                    .iter()
+                    .map(|arg| JSAstNode::Identifier(arg.identifier.name.clone()))
+                    .collect();
+
+                if method_references_global_state {
+                    model_args.push(JSAstNode::Identifier("state".to_string()));
+                }
+
+                let mut body_stmts = vec![
+                    JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("currentState".to_string())),
+                        value: Box::new(JSAstNode::CallExpr {
+                            receiver: Box::new(JSAstNode::Identifier("Model".to_string())),
+                            call_name: Box::new(JSAstNode::Identifier("NewState".to_string())),
+                            args: vec![]
+                        }),
+                        r#type: None,
+                    },
+                ];
+
+                for state in system_state {
+                    for def in &state.body {
+                        match def {
+                            SchemaDefinition::SchemaAttribute { name: attr_name, .. } => {
+                                body_stmts.push(JSAstNode::AssignmentStatement {
+                                    left: Box::new(JSAstNode::Identifier(format!("currentState.{}.{}", state.name.name, attr_name.name))),
+                                    right: Box::new(JSAstNode::Identifier(format!("state.{}.{}", state.name.name, attr_name.name)))
+                                });
+                            },
+                            _ => continue
+                        }
+                        
+                    }
+                }
+
+                body_stmts.append(&mut vec![
+                    JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("model".to_string())),
+                        value: Box::new(JSAstNode::Identifier(model_class)),
+                        r#type: None,
+                    },
+                    JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("fullstack".to_string())),
+                        value: Box::new(JSAstNode::NewClass {
+                            name: Box::new(JSAstNode::Identifier(fullstack_class)),
+                            args: vec![JSAstNode::ArrowClosure {
                                 args: vec![],
+                                body: Box::new(JSAstNode::StatementList { statements: vec![] }),
+                            }],
+                        }),
+                        r#type: None,
+                    },
+                    JSAstNode::LetExpr {
+                        name: Box::new(JSAstNode::Identifier("data".to_string())),
+                        value: Box::new(JSAstNode::AwaitOperator {
+                            node: Box::new(JSAstNode::CallExpr {
+                                receiver: Box::new(JSAstNode::Identifier(
+                                "fullstack".to_string(),
+                                )),
+                                call_name: Box::new(JSAstNode::Identifier(
+                                    state_trans_name.name.to_string(),
+                                )),
+                                args: state_transition
+                                    .method
+                                    .args
+                                    .iter()
+                                    .map(|arg| {
+                                        JSAstNode::Identifier(arg.identifier.name.clone())
+                                    })
+                                    .collect(),
                             }),
-                        },
-                        JSAstNode::LetExpr {
-                            name: Box::new(JSAstNode::Identifier("fullstack".to_string())),
-                            value: Box::new(JSAstNode::NewClass {
-                                name: Box::new(JSAstNode::Identifier("Fullstack".to_string())),
-                                args: vec![JSAstNode::ArrowClosure {
-                                    args: vec![],
-                                    body: Box::new(JSAstNode::StatementList { statements: vec![] }),
-                                }],
-                            }),
-                        },
-                        JSAstNode::LetExpr {
-                            name: Box::new(JSAstNode::Identifier("data".to_string())),
-                            value: Box::new(JSAstNode::AwaitOperator {
-                                node: Box::new(JSAstNode::CallExpr {
-                                    receiver: Box::new(JSAstNode::Identifier(
-                                        "fullstack".to_string(),
-                                    )),
-                                    call_name: Box::new(JSAstNode::Identifier(
-                                        state_trans_name.name.to_string(),
-                                    )),
-                                    args: state_transition
-                                        .args
-                                        .iter()
-                                        .map(|arg| {
-                                            JSAstNode::Identifier(arg.identifier.name.clone())
-                                        })
-                                        .collect(),
-                                }),
-                            }),
-                        },
-                        JSAstNode::CallExpr {
-                            receiver: Box::new(JSAstNode::Identifier("model".to_string())),
-                            call_name: Box::new(JSAstNode::Identifier(
-                                state_trans_name.name.to_string(),
-                            )),
-                            args: state_transition
-                                .args
-                                .iter()
-                                .map(|arg| JSAstNode::Identifier(arg.identifier.name.clone()))
-                                .collect(),
-                        },
-                        // expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
-                        JSAstNode::CallExpr {
-                            receiver: Box::new(JSAstNode::FuncCallExpr {
-                                call_name: Box::new(JSAstNode::Identifier("expect".to_string())),
-                                args: vec![JSAstNode::Identifier(format!(
-                                    "fullstack.{}",
-                                    state_variable
-                                ))],
-                            }),
-                            call_name: Box::new(JSAstNode::Identifier("to.deep.eq".to_string())),
-                            args: vec![JSAstNode::Identifier(format!("model.{}", state_variable))],
-                        },
-                    ],
+                        }),
+                        r#type: None,
+                    },
+                    JSAstNode::CallExpr {
+                        receiver: Box::new(JSAstNode::Identifier("model".to_string())),
+                        call_name: Box::new(JSAstNode::Identifier(
+                            state_trans_name.name.to_string(),
+                        )),
+                        args: model_args,
+                    },
+                    // expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
+                    JSAstNode::CallExpr {
+                        receiver: Box::new(JSAstNode::FuncCallExpr {
+                            call_name: Box::new(JSAstNode::Identifier("expect".to_string())),
+                            args: vec![JSAstNode::Identifier(format!(
+                                "fullstack.{}",
+                                state_variable
+                            ))],
+                        }),
+                        call_name: Box::new(JSAstNode::Identifier("to.deep.eq".to_string())),
+                        args: vec![JSAstNode::Identifier(format!("model.{}", state_variable))],
+                    },
+                ]);
+
+                JSAstNode::StatementList {
+                    statements: body_stmts,
                 }
             }
             _ => JSAstNode::StatementList { statements: vec![] },
-        };
+        };        
 
-        // Create data generators for all transition arguments
-        let mut data_generators: Vec<JSAstNode> = vec![];
+        // Create data generators for all transition arguments, plus the system state
+        let mut data_generators: Vec<JSAstNode> = vec![system_state_data_generator(system_state, schemas)];
+            
         // Argument list for property body
-        let mut generated_data_vars: Vec<JSAstNode> = vec![];
-        for arg in &state_transition.args {
-            let schema_name = schema_name_from_type(&arg.r#type);
-            let schema = &schemas[&schema_name];
-            let mut data_generator_props: Vec<Prop> = vec![];
-            for attr in &schema.attributes {
-                let key_node = JSAstNode::Identifier(attr.name.clone());
-                let value_generator = JSAstNode::CallExpr {
-                    receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
-                    call_name: Box::new(JSAstNode::Identifier(fast_check_arbitrary_from_type(
-                        &attr.r#type,
-                    ))),
-                    args: vec![],
-                };
-                data_generator_props.push(Prop {
-                    key: key_node,
-                    value: value_generator,
-                })
-            }
-            data_generators.push(JSAstNode::Object {
-                props: data_generator_props,
-            });
+        let mut generated_data_vars: Vec<JSAstNode> = vec![JSAstNode::Identifier("state".to_string())];
+
+        for arg in &state_transition.method.args {
+            data_generators.push(data_generator_for_type(&arg.r#type, schemas));
             generated_data_vars.push(JSAstNode::Identifier(arg.identifier.name.clone()));
         }
 
@@ -1671,12 +1860,19 @@ fn slir_gen_certification_properties(
         // TODO: For each state variable, add a data generator for it here
         let mut property_args: Vec<JSAstNode> = vec![];
         for data_generator in data_generators {
-            property_args.push(JSAstNode::CallExpr {
-                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
-                call_name: Box::new(JSAstNode::Identifier("record".to_string())),
-                args: vec![data_generator],
-            })
+            property_args.push(data_generator);
         }
+
+        // By this point, if there were no args, there are no data generators. So create one dummy one
+        // because fast-check properties require at least one arbitrary
+        // if state_transition.method.args.len() == 0 {
+        //     property_args.push(JSAstNode::CallExpr {
+        //         receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+        //         call_name: Box::new(JSAstNode::Identifier("integer".to_string())),
+        //         args: vec![],
+        //     })
+        // }
+
 
         property_args.push(JSAstNode::AsyncModifier(Box::new(
             JSAstNode::ArrowClosure {
@@ -1703,39 +1899,6 @@ fn slir_gen_certification_properties(
     (js_property_defs, js_property_names)
 }
 
-fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
-    let define_endpoints_func = JSAstNode::FuncDef {
-        name: Box::new(JSAstNode::Identifier("defineEndpoints".to_string())),
-        args: vec![
-            JSAstNode::Identifier("app".to_string()),
-            JSAstNode::Identifier("db".to_string()),
-        ],
-        body: Box::new(JSAstNode::StatementList {
-            statements: endpoints.clone(),
-        }),
-        return_type: None,
-    };
-
-    return js_gen_string(JSAstNode::ExportOperator(Box::new(define_endpoints_func)));
-}
-
-fn gen_server_file(
-    endpoints: &Vec<JSAstNode>,
-    function_defs: &Vec<AstFunctionDef>,
-    datatypes: &Vec<String>,
-    schemas: &Schemas,
-) -> String {
-    let function_strs: Vec<String> = function_defs
-        .iter()
-        .map(|def| js_gen_string(js_translate(AstNode::FunctionDef(def.clone()), schemas)))
-        .collect();
-    let endpoint_str = gen_server_endpoint_file(endpoints);
-    let datatypes_str = datatypes.join("\n\n");
-    let functions = function_strs.join("\n\n");
-
-    vec![datatypes_str, functions, endpoint_str].join("\n\n")
-}
-
 fn gen_certification_property_file(
     certification_properties: &Vec<String>,
     certification_property_names: &Vec<String>,
@@ -1743,33 +1906,33 @@ fn gen_certification_property_file(
     let mut certification_file: Vec<String> = vec!["import 'mocha';\n\
         import { expect } from \"chai\";\n\
         import fc from \"fast-check\"\n\
-        import { Budget as Fullstack,  } from \"./generated-client\";\n\
-        import { Budget as Model } from \"./generated-model\"\n"
+        import * as Fullstack from \"../client\";\n\
+        import * as Model from \"../model\"\n"
         .to_string()];
     certification_file.push(certification_properties.join("\n\n"));
 
     let mut property_objects: Vec<String> = vec![];
     for name in certification_property_names {
         let property_obj = JSAstNode::Object {
-            props: vec![
-                Prop {
+            prop_or_spreads: vec![
+                PropOrSpread::Prop(Prop{
                     key: JSAstNode::Identifier("name".to_string()),
                     value: JSAstNode::StringLiteral(format!("{}", name)),
-                },
-                Prop {
+                }),
+                PropOrSpread::Prop(Prop {
                     key: JSAstNode::Identifier("property".to_string()),
                     value: JSAstNode::FuncCallExpr {
                         call_name: Box::new(JSAstNode::Identifier(format!("{}Property", name))),
                         args: vec![],
                     },
-                },
+                }),
             ],
         };
         property_objects.push(js_gen_string(property_obj))
     }
 
     let mut transition_properties: Vec<String> =
-        vec!["export const transitionProperties = [".to_string()];
+        vec!["export const transitionProperties: any = [".to_string()];
     let property_objects_str = property_objects.join(",\n");
     let end_array = "];".to_string();
     transition_properties.push(property_objects_str);
@@ -1780,7 +1943,7 @@ fn gen_certification_property_file(
     certification_file
 }
 
-fn write_certification_test(output_dir: &str, certification_property_strs: &Vec<String>, certification_property_names: &Vec<String>) {
+fn write_certification_test(output_dir: &str, client: &str, slir_model: &mut Vec<String>, model_domains: &HashMap<String, JSAstNode>, certification_property_strs: &Vec<String>, certification_property_names: &Vec<String>) {
     if Path::new(output_dir).is_dir() {
         match fs::remove_dir_all(output_dir) {
             Err(e) => {
@@ -1795,6 +1958,28 @@ fn write_certification_test(output_dir: &str, certification_property_strs: &Vec<
         Err(..) => panic!("Error creating translation certification dir"),
         _ => (),
     }
+
+    let model_state_props = model_domains.iter().map(|(domain, new_class_js)| PropOrSpread::Prop(Prop{ 
+        key: JSAstNode::Identifier(domain.clone()),
+        value: new_class_js.clone(),
+    })).collect();
+    let new_model_state = JSAstNode::ExportOperator(Box::new(
+        JSAstNode::FuncDef {
+            args: vec![],
+            body: Box::new(JSAstNode::ReturnStatement(Box::new(JSAstNode::Object { prop_or_spreads: model_state_props }))),
+            name: Box::new(JSAstNode::Identifier("NewState".to_string())),
+            return_type: None,
+        }
+    ));
+    slir_model.push(js_gen_string(new_model_state));
+
+    let slir_model_str = slir_model.join("\n\n");
+
+    fs::write(format!("{}/model.ts", output_dir), slir_model_str).expect("Unable to write model file");
+
+    let mut client_with_isomorphic_fetch = "import \"isomorphic-fetch\";\n".to_string();
+    client_with_isomorphic_fetch.push_str(&client);
+    fs::write(format!("{}/client.ts", output_dir), client_with_isomorphic_fetch).expect("Unable to write certification test client file");
 
     // TODO: This path will have to be fixed with a real package
     let mut current_dir = std::env::current_exe().expect("Unable to get current executable path");
@@ -2437,6 +2622,39 @@ fn slir_translate(
 
 // Tier splitting: SLIR -> JS
 
+fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
+    let define_endpoints_func = JSAstNode::FuncDef {
+        name: Box::new(JSAstNode::Identifier("defineEndpoints".to_string())),
+        args: vec![
+            JSAstNode::Identifier("app".to_string()),
+            JSAstNode::Identifier("db".to_string()),
+        ],
+        body: Box::new(JSAstNode::StatementList {
+            statements: endpoints.clone(),
+        }),
+        return_type: None,
+    };
+
+    return js_gen_string(JSAstNode::ExportOperator(Box::new(define_endpoints_func)));
+}
+
+fn gen_server_file(
+    endpoints: &Vec<JSAstNode>,
+    function_defs: &Vec<AstFunctionDef>,
+    datatypes: &Vec<String>,
+    schemas: &Schemas,
+) -> String {
+    let function_strs: Vec<String> = function_defs
+        .iter()
+        .map(|def| js_gen_string(js_translate(AstNode::FunctionDef(def.clone()), schemas)))
+        .collect();
+    let endpoint_str = gen_server_endpoint_file(endpoints);
+    let datatypes_str = datatypes.join("\n\n");
+    let functions = function_strs.join("\n\n");
+
+    vec![datatypes_str, functions, endpoint_str].join("\n\n")
+}
+
 fn slir_expand_state_transfer_server(
     state_transfer: &StateTransfer,
     server_stmts: &Vec<SLIRServerNode>,
@@ -2453,6 +2671,7 @@ fn slir_expand_state_transfer_server(
             let parse_data = JSAstNode::LetExpr {
                 name: Box::new(JSAstNode::Identifier("data".to_string())),
                 value: Box::new(JSAstNode::Identifier("req.body".to_string())),
+                r#type: None,
             };
             Box::new(JSAstNode::StatementList {
                 statements: vec![parse_data, query],
@@ -2470,7 +2689,7 @@ fn slir_expand_state_transfer_server(
                     JSAstNode::CallExpr {
                         receiver: Box::new(JSAstNode::Identifier("res".to_string())),
                         call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-                        args: vec![JSAstNode::Object { props: vec![] }],
+                        args: vec![JSAstNode::Object { prop_or_spreads: vec![] }],
                     },
                 ],
             })
@@ -2478,7 +2697,7 @@ fn slir_expand_state_transfer_server(
         _ => Box::new(JSAstNode::CallExpr {
             receiver: Box::new(JSAstNode::Identifier("res".to_string())),
             call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-            args: vec![JSAstNode::Object { props: vec![] }],
+            args: vec![JSAstNode::Object { prop_or_spreads: vec![] }],
         }),
     };
 
@@ -2502,28 +2721,28 @@ fn slir_expand_fetch_args_from_state_transition(
     args: &Vec<AstExpr>,
     schemas: &Schemas,
 ) -> JSAstNode {
-    let method_prop = Prop {
+    let method_prop = PropOrSpread::Prop(Prop{
         key: JSAstNode::Identifier("method".to_string()),
         value: JSAstNode::StringLiteral(st.as_http_method().to_string()),
-    };
+    });
 
-    let headers_prop = Prop {
+    let headers_prop = PropOrSpread::Prop(Prop{
         key: JSAstNode::Identifier("headers".to_string()),
         value: JSAstNode::Object {
-            props: vec![Prop {
+            prop_or_spreads: vec![PropOrSpread::Prop(Prop{
                 key: JSAstNode::StringLiteral("Content-Type".to_string()),
                 value: JSAstNode::StringLiteral("application/json".to_string()),
-            }],
+            })],
         },
-    };
+    });
 
-    let mut props: Vec<Prop> = vec![method_prop, headers_prop];
+    let mut props: Vec<PropOrSpread> = vec![method_prop, headers_prop];
 
     match st {
         StateTransferFunc::Create => {
             let js_create_arg = js_translate_expr(&args[0], schemas);
             let state_var_iden = JSAstNode::Identifier(js_gen_string(js_create_arg));
-            let body_prop = Prop {
+            let body_prop = PropOrSpread::Prop(Prop{
                 key: JSAstNode::Identifier("body".to_string()),
 
                 // TODO: Only JSON.stringifying one method call argument here
@@ -2532,13 +2751,13 @@ fn slir_expand_fetch_args_from_state_transition(
                     call_name: Box::new(JSAstNode::Identifier("stringify".to_string())),
                     args: vec![state_var_iden.clone()],
                 },
-            };
+            });
             props.push(body_prop);
         }
         _ => (),
     }
 
-    JSAstNode::Object { props: props }
+    JSAstNode::Object { prop_or_spreads: props }
 }
 
 fn slir_state_var_endpoint_client(
@@ -2571,11 +2790,13 @@ fn slir_state_var_endpoint_client(
 // This turns a semantic state transition into a network request to update the state in
 // the database as well as optimistically update the client state
 fn slir_expand_state_transfer_client(
-    state_trans_func: &StateTransferFunc,
-    state_var: &String,
-    args: &Vec<AstExpr>,
+    transfer: &StateTransfer,
     schemas: &Schemas,
 ) -> JSAstNode {
+    let state_trans_func = &transfer.transition;
+    let state_var = &transfer.collection.identifier.name;
+    let args = &transfer.args.clone().into_iter().map(|a| a.expr).collect();
+            
     let endpoint = slir_state_var_endpoint_client(&state_var, &state_trans_func, &args, schemas);
     let st_fetch_args =
         slir_expand_fetch_args_from_state_transition(&state_trans_func, &args, schemas);
@@ -2593,6 +2814,7 @@ fn slir_expand_state_transfer_client(
                 value: Box::new(JSAstNode::AwaitOperator {
                     node: Box::new(fetch),
                 }),
+                r#type: None,
             };
             let await_json = JSAstNode::AwaitOperator {
                 node: Box::new(JSAstNode::CallExpr {
@@ -2601,12 +2823,26 @@ fn slir_expand_state_transfer_client(
                     args: vec![],
                 }),
             };
+            let created_var_type = match &transfer.collection.r#type {
+                Type::Primitive(pt) => match pt {
+                    PrimitiveType::Array(t) => t.clone(),
+                    _ => panic!("Unsupported: creating a value of a non-Schema type in a state transfer")
+                },
+                _ => panic!("Unsupported: creating a value of a non-Schema type in a state transfer")
+            };
+            let created_var = JSAstNode::LetExpr {
+                name: Box::new(JSAstNode::Identifier("created".to_string())),
+                value: Box::new(await_json),
+                r#type: Some(Box::new(js_translate_type(&created_var_type))),
+            };
             let update_client_state = JSAstNode::CallExpr {
                 receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
                 call_name: Box::new(JSAstNode::Identifier("push".to_string())),
-                args: vec![await_json],
+                args: vec![JSAstNode::Identifier("created".to_string())],
             };
-            vec![await_fetch, update_client_state]
+            let return_created_var = JSAstNode::ReturnStatement(Box::new(JSAstNode::Identifier("created".to_string())));
+
+            vec![await_fetch, created_var, update_client_state, return_created_var]
         }
         StateTransferFunc::Delete => {
             let js_arg = js_translate_expr(&args[0], schemas);
@@ -2619,6 +2855,7 @@ fn slir_expand_state_transfer_client(
                 value: Box::new(JSAstNode::AwaitOperator {
                     node: Box::new(fetch),
                 }),
+                r#type: None,
             };
             let update_client_state = js_read_var(&state_var);
             vec![await_fetch, update_client_state]
@@ -2639,9 +2876,7 @@ fn slir_make_state_transfers_client(
     let mut class_methods: Vec<JSAstNode> = vec![];
     for transfer in state_transfers {
         let expanded_client_body = slir_expand_state_transfer_client(
-            &transfer.transition,
-            &transfer.collection.identifier.name,
-            &transfer.args.clone().into_iter().map(|a| a.expr).collect(),
+            &transfer,
             schemas,
         );
         let class_method = JSAstNode::ClassMethod {
@@ -2750,14 +2985,6 @@ struct Args {
     #[clap(short, long, default_value = "./server-endpoints.ts")]
     server_output: String,
 
-    /// Generated model output
-    #[clap(short, long, default_value = "./model.ts")]
-    model_output: String,
-
-    /// Generated certification output
-    #[clap(short = 't', long, default_value = "./state-transition-properties.ts")]
-    state_transition_properties_output: String,
-
     /// Generated certification dir
     #[clap(long, default_value = "./certification/")]
     translation_certification_dir: String,
@@ -2774,11 +3001,33 @@ struct Args {
 
 type SLIROperations = Vec<SLIRNode>;
 
+#[derive(Clone)]
 struct SchemaMethodSLIR {
     method: SchemaMethod,
     slir: SLIROperations,
 }
 
+impl SchemaMethodSLIR {
+    fn references_global_state(&self) -> bool {
+        let mut method_references_global_state = false;
+        for slir in &self.slir {
+            match slir {
+                SLIRNode::StateQuery(sq) => {
+                    method_references_global_state = sq.module.is_some();
+                    if method_references_global_state {
+                        break
+                    }
+                },
+                _ => continue
+            }
+        } 
+
+        method_references_global_state
+    }
+}
+
+// A schema along with its actions
+#[derive(Clone)]
 struct SchemaSLIR {
     schema_def: SchemaDef,
     methods: Vec<SchemaMethodSLIR>,
@@ -2800,16 +3049,26 @@ fn copy_swallow_err<P: AsRef<Path> + ToString, Q: AsRef<Path> + ToString>(
     };
 }
 
+type SystemState = HashSet<SchemaDef>;
+
 fn main() {
     let args = Args::parse();
     let source = std::fs::read_to_string(args.input_file).expect("No input file provided.");
     let result = LangParser::parse(Rule::Program, &source);
 
+    // All schema actions are stored to generate certification test based on
+    // full specification information
+    let mut schema_slirs: Vec<SchemaSLIR> = vec![];
+
+    // The system state is the set of all schemas that have
+    // state variables
+    let mut system_state: SystemState = SystemState::new();
+
     // Mapping of names to Schema definitions
-    let mut schemas: Schemas = HashMap::new();
+    let mut schemas: Schemas = Schemas::new();
 
     // Mapping of variables to their types
-    let mut type_environment: TypeEnvironment = HashMap::new();
+    let mut type_environment: TypeEnvironment = TypeEnvironment::new();
 
     // Function definitions need to be captured and placed on whichever tier
     // they are referenced by
@@ -2821,6 +3080,8 @@ fn main() {
 
     // Executable JS model representation of program
     let mut slir_model: Vec<String> = vec![];
+
+    let mut model_domains: HashMap<String, JSAstNode> = HashMap::new();
 
     // Expanded client representation of program
     let mut js_expanded_client_slir: Vec<String> = vec![];
@@ -2847,7 +3108,7 @@ fn main() {
                     &mut schemas,
                     &mut function_defs,
                     &mut type_environment,
-                );
+                );                
 
                 let maybe_schema_slir = match &parsed {
                     AstNode::SchemaDef(schema_def) => {
@@ -2871,21 +3132,26 @@ fn main() {
                                             &type_environment,
                                         ),
                                     });
-                                }
+                                },                                
                                 _ => (),
                             }
                         }
 
-                        Some(SchemaSLIR {
+                        let schema_slir = SchemaSLIR {
                             schema_def: schema_def.clone(),
                             methods: schema_method_slirs,
-                        })
+                        };
+                        schema_slirs.push(schema_slir.clone());
+
+                        Some(schema_slir)
                     }
                     _ => None,
                 };
 
+                let mut schema_with_state_transfer = false;
                 if let Some(schema_slir) = maybe_schema_slir {
                     if schema_slir.methods.len() > 0 {
+                        schema_with_state_transfer = true;
                         let (client_js, server_js) = slir_tier_split(&schema_slir, &schemas);
 
                         js_expanded_client_slir.push(js_gen_string(client_js));
@@ -2893,13 +3159,14 @@ fn main() {
                         for endpoint in server_js {
                             js_endpoints_slir.push(endpoint);
                         }
-                        slir_model.append(
-                            &mut slir_schema_model(&schema_slir, &schemas)
-                                .into_iter()
-                                .map(js_gen_string)
-                                .collect(),
+                        let (translated_model, new_state_class) = slir_schema_model(&schema_slir, &schemas);
+                        slir_model.push(
+                            js_gen_string(translated_model)
                         );
+                        model_domains.insert(schema_slir.schema_def.name.name, new_state_class);
                     } else {
+                        // This branch is a little ugly. The presence of SLIR should mean that the schema
+                        // was stateful, and not a datatype.
                         datatypes.push(js_gen_string(js_translate(parsed.clone(), &schemas)));
                         js_expanded_client_slir.push(js_gen_string(JSAstNode::ExportOperator(
                             Box::new(js_translate(parsed.clone(), &schemas)),
@@ -2911,43 +3178,46 @@ fn main() {
                 match &parsed {
                     AstNode::FunctionDef(..) => {
                         slir_model.push(js_gen_string(js_translate(parsed.clone(), &schemas)))
+                    },
+                    AstNode::SchemaDef(schema_def) => {
+                        let mut has_state = false;
+                        for def in &schema_def.body {
+                            match def {
+                                SchemaDefinition::SchemaAttribute { .. } => has_state = true,
+                                _ => ()
+                            }
+                        }
+
+                        if has_state && schema_with_state_transfer {
+                            system_state.insert(schema_def.clone());
+                        }
                     }
                     _ => (),
                 }
-
-                let actions = match parsed {
-                    AstNode::SchemaDef(SchemaDef { body, .. }) => body
-                        .into_iter()
-                        .filter_map(|def| match def {
-                            SchemaDefinition::SchemaMethod(m) => Some(m),
-                            _ => None,
-                        })
-                        .collect(),
-                    _ => vec![],
-                };
-
-                let (certification_properties, mut names) =
-                    slir_gen_certification_properties(&actions, &schemas);
-
-                for property in certification_properties {
-                    certification_property_strs.push(js_gen_string(property));
-                }
-                certification_property_names.append(&mut names);
             }
         }
         Err(e) => println!("Error {:?}", e),
     }
 
+    println!("Generating certification properties, system state: {:#?}", system_state);
+
+    for schema_slir in schema_slirs {
+        let (certification_properties, mut names) =
+            slir_gen_certification_properties(&schema_slir, &system_state, &schemas);
+
+        for property in certification_properties {
+            certification_property_strs.push(js_gen_string(property));
+        }
+        certification_property_names.append(&mut names);
+    }
+
     let client_code_slir = js_expanded_client_slir.join("\n\n");
-    fs::write(args.client_output, client_code_slir)
+    fs::write(args.client_output, &client_code_slir)
         .expect("Unable to write client code SLIR file.");
 
     let server_file = gen_server_file(&js_endpoints_slir, &function_defs, &datatypes, &schemas);
 
-    fs::write(args.server_output, server_file).expect("Unable to write server code SLIR file.");
+    fs::write(args.server_output, server_file).expect("Unable to write server code SLIR file.");    
 
-    let slir_model = slir_model.join("\n\n");
-    fs::write(args.model_output, slir_model).expect("Unable to write model code file");
-
-    write_certification_test(&args.translation_certification_dir, &certification_property_strs, &certification_property_names);
+    write_certification_test(&args.translation_certification_dir, &client_code_slir, &mut slir_model, &model_domains, &certification_property_strs, &certification_property_names);
 }
