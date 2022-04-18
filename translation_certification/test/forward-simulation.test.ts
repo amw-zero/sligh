@@ -22,7 +22,7 @@ transitionProperties.forEach(({ name, property }) => {
 
     it('simulates the model', async function() {
       await fc.assert(
-        property.beforeEach(() => {
+        property(db).beforeEach(() => {
           return new Promise((resolve, reject) => {
             db.run("BEGIN TRANSACTION", (result, err) => {
               if (err) {
