@@ -1,6 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.defineEndpoints = void 0;
+function expand(rt) {
+    return { name: rt.name };
+}
 function defineEndpoints(app, db) {
     app.post("/recurring_transactions", (req, res) => {
         let data = req.body;
@@ -15,14 +18,19 @@ function defineEndpoints(app, db) {
         db.run("DELETE FROM recurring_transactions WHERE id = ?", [req.params.id]);
         res.send({});
     });
+    app.put("/recurring_transactions/:id", (req, res) => {
+        res.send({});
+    });
     app.get("/recurring_transactions", (req, res) => {
         db.all("SELECT * FROM recurring_transactions", (_, rows) => {
             res.send(rows);
         });
     });
-    app.delete("/recurring_transactions/:id", (req, res) => {
-        db.run("DELETE FROM recurring_transactions WHERE id = ?", [req.params.id]);
-        res.send({});
+    app.get("/scheduled_transactions", (req, res) => {
+        db.all("SELECT * FROM recurring_transactions", (_, rts) => {
+            let scheduled_transactions = rts.map(expand);
+            res.send(scheduled_transactions);
+        });
     });
 }
 exports.defineEndpoints = defineEndpoints;
