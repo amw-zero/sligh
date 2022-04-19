@@ -1,0 +1,47 @@
+schema RecurringTransaction:
+  id: IntegerIdentifier
+  amount: Numeric
+  name: String
+end
+
+schema CreateRecurringTransaction:
+  amount: Numeric
+  name: String
+end
+
+domain Budget:
+  recurring_transactions: [RecurringTransaction]
+  
+  def create_recurring_transaction(rtc: CreateRecurringTransaction)
+    recurring_transactions.create!(rtc)
+  end
+
+  def delete_recurring_transaction(rt: RecurringTransaction)
+    recurring_transactions.delete!(rt)
+  end
+
+  def update_recurring_transaction(rt: RecurringTransaction)
+    recurring_transactions.update!(rt)
+  end
+
+  def view_recurring_transactions()
+    recurring_transactions.read!()
+  end
+end
+
+schema ScheduledTransaction:
+  name: StringIdentifier
+end
+
+def expand(rt: RecurringTransaction) -> ScheduledTransaction
+  ScheduledTransaction.new(rt.name)
+end
+
+domain Schedule:
+  def view_scheduled_transactions()
+    let rts = Budget.recurring_transactions
+    let scheduled_transactions = rts.map(expand)
+
+    scheduled_transactions.read!()
+  end
+end
