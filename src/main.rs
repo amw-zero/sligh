@@ -1546,7 +1546,7 @@ fn system_state_data_generator(system_state: &SystemState, schemas: &Schemas) ->
         for attr in &state.attributes {
             state_attr_generators.push(PropOrSpread::Prop(Prop{
                 key: JSAstNode::Identifier(attr.name.clone()),
-                value: data_generator_for_type(&attr.r#type, schemas),
+                value: unique_data_generator_for_type(&attr.r#type, schemas),
             }));
         }
 
@@ -1572,6 +1572,28 @@ fn system_state_data_generator(system_state: &SystemState, schemas: &Schemas) ->
                 prop_or_spreads: state_generators
             }
         ],
+    }
+}
+
+fn unique_data_generator_for_type(r#type: &Type, schemas: &Schemas) -> JSAstNode {
+    match r#type {
+        Type::Primitive(pt) => match pt {
+            PrimitiveType::Array(t) => JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("uniqueArray".to_string())),
+                args: vec![data_generator_for_type(&*t, schemas), JSAstNode::Object {
+                    prop_or_spreads: vec![PropOrSpread::Prop(Prop{
+                        key: JSAstNode::Identifier("selector".to_string()),
+                        value: JSAstNode::ArrowClosure {
+                            args: vec![JSAstNode::Identifier("d".to_string())],
+                            body: Box::new(JSAstNode::ReturnStatement(Some(js_boxed_iden("d.id"))))
+                        }
+                    })]
+                }],
+            },
+            _ => panic!("Should only get unique data generators for Array types")
+        },
+        _ => panic!("Should only get unique data generators for Array types")
     }
 }
 
