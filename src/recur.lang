@@ -24,10 +24,6 @@ schema CreateRecurringTransaction:
   name: String
 end
 
-def expand()
-  something.call()
-end
-
 schema Budget:
   recurring_transactions: [RecurringTransaction]
   

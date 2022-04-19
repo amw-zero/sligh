@@ -1,13 +1,22 @@
+* Model should handle reads and updates. Currently only creates are being handled.
+
+Future:
+
 * Enable writing generated code as macros. It's painful to generate code using the AST directly.
   Using a quasi-quoted macro to express code, a la Nim, should make generating code much smoother.
   Note: this will require parsing the target language, TS currently. Svelte does this 
   via code-red: https://www.npmjs.com/package/code-red.
 
+* State slices: needed for scalability of specs. Instead of generating full state for each property test iteration,
+  generate only the referenced state variables for a particular action.
+
+* Generate db migrations from current db schema and a specification
+
 * Format output JS with prettier
 
-* Get rid of args[0] assumption for state transition arguments.
-
 * Pagination - how to show that pagination is a simulation of the model?
+
+* count-based query optimization. Based on size of table, move logic into SQL or in-memory
 
 * Create documentation on language construct equivalences, e.g. state access and SELECT, create! and INSERT, etc.
 

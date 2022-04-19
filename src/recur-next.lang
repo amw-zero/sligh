@@ -90,4 +90,39 @@ schema Schedule:
       .flatten
       .read!()
   end
+
+  def desugared
+    let a = budget.recurring_transactions
+    let b = a.map { |rt| rt.expand(start_date, end_date) }
+    let c = b.flatten
+
+    c.read!()
+  end
+end
+
+# Rules are invariants - these can be injected into the certification test
+# and checked
+rule "Scheduled transactions never exceed something":
+  def something(rt: RecurringTransaction) -> Bool
+    rt.amount > 5
+  end
+
+  Budget.recurring_transactions.all(something)
+end
+
+schema.state_transition { |t|
+  case t:
+    t.name = 'scheduled_transactions' => t.paginated.precomputed,
+    _ => t.paginated
+}
+
+# Optimizations should be able to modify queries
+# The goal here is to keep the spec in tact and focused on readability / communication,
+# But the optimization will still be automatically shown to be semantically equivalent
+# Maybe these are named 'refinement'?
+
+optimization Budget.view_recurring_transactions:
+  statements[0].replace!(
+    `SELECT * FROM whatever INNER JOIN optimized on whatever.id = something`
+  )  
 end
