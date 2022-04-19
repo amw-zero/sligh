@@ -30,8 +30,6 @@ enum JSExprOrSpread {
     Spread(Box<JSAstNode>),
 }
 
-// This is more of an intermediate representation. Not necessarily
-// executable JS.
 #[derive(Debug, Clone)]
 enum JSAstNode {
     InvalidNode,
@@ -591,334 +589,6 @@ fn js_translate(ast: AstNode, schemas: &Schemas) -> JSAstNode {
             }
         }
         _ => JSAstNode::InvalidNode,
-    }
-}
-
-// Infrastructure expansion
-
-fn is_state_transition(func_name: &str) -> bool {
-    let name_chars: Vec<char> = func_name.chars().collect();
-
-    *name_chars.last().unwrap() == '!'
-}
-
-fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransferFunc) -> String {
-    match st_func {
-        StateTransferFunc::Create | StateTransferFunc::Read => format!("/{}", state_var),
-        StateTransferFunc::Delete | StateTransferFunc::Update => format!("/{}/:id", state_var),
-    }
-}
-
-// TODO: Rename to StateTransferFunc
-#[derive(Debug, Clone)]
-enum StateTransferFunc {
-    Create,
-
-    // Note: Read is considered a state transition because it queries the
-    // server state and applies it to the client state. It isn't a _read_ of the state,
-    // aka state function, but a transition where the client state is updated
-    Read,
-    Update,
-    Delete,
-}
-
-impl StateTransferFunc {
-    fn as_http_method(&self) -> &'static str {
-        match self {
-            StateTransferFunc::Create => "POST",
-            StateTransferFunc::Read => "GET",
-            StateTransferFunc::Update => "PUT",
-            StateTransferFunc::Delete => "DELETE",
-        }
-    }
-
-    fn as_express_http_method(&self) -> &'static str {
-        match self {
-            StateTransferFunc::Create => "post",
-            StateTransferFunc::Read => "get",
-            StateTransferFunc::Update => "put",
-            StateTransferFunc::Delete => "delete",
-        }
-    }
-}
-
-fn state_transition_func_from_str(s: &str) -> StateTransferFunc {
-    match s {
-        "create!" => StateTransferFunc::Create,
-        "read!" => StateTransferFunc::Read,
-        "update!" => StateTransferFunc::Update,
-        "delete!" => StateTransferFunc::Delete,
-        _ => panic!("Unexpected StateTransferFunc string"),
-    }
-}
-
-fn js_push_var(state_var: &str, state_var_val: &str) -> JSAstNode {
-    JSAstNode::CallExpr {
-        receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-        call_name: Box::new(JSAstNode::Identifier("push".to_string())),
-        args: vec![JSAstNode::Object {
-            prop_or_spreads: vec![
-                PropOrSpread::Spread(Box::new(JSAstNode::Identifier(state_var_val.to_string()))),
-                PropOrSpread::Prop(Prop {
-                    key: JSAstNode::Identifier("id".to_string()),
-                    value: JSAstNode::Identifier("id".to_string()),
-                }),
-            ],
-        }],
-    }
-}
-
-fn js_delete_var(state_var: &str, state_var_val: &str) -> JSAstNode {
-    JSAstNode::AssignmentStatement {
-        left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-        right: Box::new(JSAstNode::CallExpr {
-            receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-            call_name: Box::new(JSAstNode::Identifier("filter".to_string())),
-            args: vec![JSAstNode::ArrowClosure {
-                args: vec![JSAstNode::Identifier("data".to_string())],
-                body: Box::new(JSAstNode::ReturnStatement(Some(Box::new(
-                    JSAstNode::NotEqualExpr {
-                        left: Box::new(JSAstNode::Identifier("data.id".to_string())),
-                        right: Box::new(JSAstNode::Identifier(format!("{}.id", state_var_val))),
-                    },
-                )))),
-            }],
-        }),
-    }
-}
-
-fn js_read_var(state_var: &str) -> JSAstNode {
-    JSAstNode::AssignmentStatement {
-        left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
-        right: Box::new(JSAstNode::AwaitOperator {
-            node: Box::new(JSAstNode::CallExpr {
-                call_name: Box::new(JSAstNode::Identifier("json".to_string())),
-                receiver: Box::new(JSAstNode::Identifier("data".to_string())),
-                args: vec![],
-            }),
-        }),
-    }
-}
-
-fn js_state_query_read(server_stmts: &Vec<SLIRServerNode>, schemas: &Schemas) -> JSAstNode {
-    let mut pre_query_stmts: Vec<JSAstNode> = vec![];
-    let mut query_stmts: Vec<&StateQuery> = vec![];
-    let mut post_query_js: Vec<JSAstNode> = vec![];
-
-    let mut query_occurred = false;
-    for stmt in server_stmts {
-        match stmt {
-            SLIRServerNode::Logic(stmt) => {
-                if !query_occurred {
-                    pre_query_stmts.push(js_translate_statement(stmt, schemas));
-                } else {
-                    post_query_js.push(js_translate_statement(stmt, schemas));
-                }
-            }
-            SLIRServerNode::StateQuery(sq) => {
-                query_occurred = true;
-                query_stmts.push(sq);
-            }
-        }
-    }
-
-    // TODO: Only handling one query per action now.
-    let query = query_stmts[0];
-    let query_result_var = match &query.result_var {
-        Some(r) => r.name.to_string(),
-        None => "rows".to_string(),
-    };
-
-    let sql = SQLAstNode::Select {
-        from: Some(Box::new(SQLAstNode::Identifier(
-            query.collection.identifier.name.clone(),
-        ))),
-        attributes: vec![SQLAstNode::Identifier("*".to_string())],
-        clause: None,
-    };
-    let body = if server_stmts.len() == 0 {
-        Box::new(JSAstNode::StatementList {
-            statements: vec![JSAstNode::CallExpr {
-                receiver: Box::new(JSAstNode::Identifier("res".to_string())),
-                call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-                args: vec![JSAstNode::Identifier("rows".to_string())],
-            }],
-        })
-    } else {
-        let last_statement_var_name = match post_query_js.last() {
-            Some(stmt) => match stmt {
-                JSAstNode::LetExpr { name, .. } => js_gen_iden_name(*name.clone()),
-                _ => "rows".to_string(),
-            },
-            None => "rows".to_string(),
-        };
-
-        post_query_js.push(JSAstNode::CallExpr {
-            receiver: Box::new(JSAstNode::Identifier("res".to_string())),
-            call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-            args: vec![JSAstNode::Identifier(last_statement_var_name.to_string())],
-        });
-
-        Box::new(JSAstNode::StatementList {
-            statements: post_query_js,
-        })
-    };
-
-    JSAstNode::CallExpr {
-        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
-        call_name: Box::new(JSAstNode::Identifier("all".to_string())),
-        args: vec![
-            JSAstNode::StringLiteral(sql_gen_string(&sql)),
-            JSAstNode::ArrowClosure {
-                args: vec![
-                    JSAstNode::Identifier("_".to_string()),
-                    JSAstNode::Identifier(query_result_var),
-                ],
-                body: body,
-            },
-        ],
-    }
-}
-
-fn js_state_query_create(
-    state_var: &str,
-    transfer_args: &Vec<TypedAstExpr>,
-    schemas: &Schemas,
-) -> JSAstNode {
-    if transfer_args.len() == 0 {
-        return JSAstNode::InvalidNode;
-    }
-
-    let mut attr_names: Vec<String> = vec![];
-    let mut sql_attr_names: Vec<SQLAstNode> = vec![];
-    let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
-    let mut js_attr_values: Vec<JSExprOrSpread> = vec![];
-    let mut response_props: Vec<PropOrSpread> = vec![];
-
-    let create_arg = &transfer_args[0];
-    let arg_type = match &create_arg.r#type {
-        Type::Custom(ct) => match ct {
-            CustomType::Schema(s) => s.clone(),
-            _ => panic!("Only custom types supported"),
-        },
-        _ => panic!("Only custom types supported"),
-    };
-    let schema = &schemas[&arg_type];
-    for attr in &schema.attributes {
-        attr_names.push(attr.name.clone());
-
-        // TODO: this is assuming the name of 'data' which is used to
-        // parse the HTTP body in write requests.
-        js_attr_values.push(JSExprOrSpread::JSExpr(Box::new(JSAstNode::Identifier(
-            format!("data.{}", attr.name),
-        ))));
-        response_props.push(PropOrSpread::Prop(Prop {
-            key: JSAstNode::Identifier(attr.name.clone()),
-            value: JSAstNode::Identifier(format!("data.{}", attr.name)),
-        }));
-        sql_attr_names.push(SQLAstNode::Identifier(attr.name.clone()));
-        sql_value_placeholders.push(SQLAstNode::Identifier("?".to_string()))
-    }
-    let insert_sql = SQLAstNode::Insert {
-        into: Box::new(SQLAstNode::Identifier(state_var.to_string())),
-        attributes: sql_attr_names,
-        values: sql_value_placeholders,
-    };
-    let insert_js = JSAstNode::CallExpr {
-        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
-        call_name: Box::new(JSAstNode::Identifier("run".to_string())),
-        args: vec![
-            JSAstNode::StringLiteral(sql_gen_string(&insert_sql)),
-            JSAstNode::ArrayLiteral(js_attr_values),
-        ],
-    };
-    let get_id_sql = SQLAstNode::Select {
-        attributes: vec![SQLAstNode::Identifier("last_insert_rowid()".to_string())],
-        from: None,
-        clause: None,
-    };
-
-    response_props.push(PropOrSpread::Prop(Prop {
-        key: JSAstNode::Identifier("id".to_string()),
-        value: JSAstNode::Identifier("row[\"last_insert_rowid()\"]".to_string()),
-    }));
-    let respond = JSAstNode::CallExpr {
-        receiver: Box::new(JSAstNode::Identifier("res".to_string())),
-        call_name: Box::new(JSAstNode::Identifier("send".to_string())),
-        args: vec![JSAstNode::Object {
-            prop_or_spreads: response_props,
-        }],
-    };
-
-    let respond_with_id = JSAstNode::CallExpr {
-        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
-        call_name: Box::new(JSAstNode::Identifier("get".to_string())),
-        args: vec![
-            JSAstNode::StringLiteral(sql_gen_string(&get_id_sql)),
-            JSAstNode::ArrowClosure {
-                args: vec![
-                    JSAstNode::Identifier("err".to_string()),
-                    JSAstNode::Identifier("row".to_string()),
-                ],
-                body: Box::new(respond),
-            },
-        ],
-    };
-
-    JSAstNode::CallExpr {
-        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
-        call_name: Box::new(JSAstNode::Identifier("serialize".to_string())),
-        args: vec![JSAstNode::ArrowClosure {
-            args: vec![],
-            body: Box::new(JSAstNode::StatementList {
-                statements: vec![insert_js, respond_with_id],
-            }),
-        }],
-    }
-}
-
-fn js_state_query_delete(state_var: &str) -> JSAstNode {
-    // DELETE FROM state_var
-    let sql = SQLAstNode::Delete {
-        from: Box::new(SQLAstNode::Identifier(state_var.to_string())),
-        clause: Some(Box::new(SQLAstNode::WhereClause {
-            predicate: Box::new(SQLAstNode::EqualityExpr {
-                left: Box::new(SQLAstNode::Identifier("id".to_string())),
-                right: Box::new(SQLAstNode::Identifier("?".to_string())),
-            }),
-        })),
-    };
-    let js_attr_values: Vec<JSExprOrSpread> = vec![JSExprOrSpread::JSExpr(Box::new(
-        JSAstNode::Identifier("req.params.id".to_string()),
-    ))];
-    JSAstNode::CallExpr {
-        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
-        call_name: Box::new(JSAstNode::Identifier("run".to_string())),
-        args: vec![
-            JSAstNode::StringLiteral(sql_gen_string(&sql)),
-            JSAstNode::ArrayLiteral(js_attr_values),
-        ],
-    }
-}
-
-fn relation_name_from_type(r#type: &Type) -> String {
-    match r#type {
-        Type::Primitive(pt) => match pt {
-            PrimitiveType::Array(t) => match &**t {
-                Type::Custom(custom_type) => match custom_type {
-                    CustomType::Schema(schema_name) => {
-                        let mut relation_name = schema_name.to_case(Case::Snake);
-                        relation_name.push('s');
-
-                        relation_name
-                    }
-                    _ => panic!("Can only get relation name from Array types"),
-                },
-                _ => panic!("Can only get relation name from Array types"),
-            },
-            _ => panic!("No"),
-        },
-        _ => panic!("Can only get relation name from Array types"),
     }
 }
 
@@ -3051,6 +2721,331 @@ fn slir_translate(
 
 // Section: Tier splitting: SLIR -> JS
 
+fn is_state_transition(func_name: &str) -> bool {
+    let name_chars: Vec<char> = func_name.chars().collect();
+
+    *name_chars.last().unwrap() == '!'
+}
+
+fn js_state_var_endpoint_server(state_var: &str, st_func: &StateTransferFunc) -> String {
+    match st_func {
+        StateTransferFunc::Create | StateTransferFunc::Read => format!("/{}", state_var),
+        StateTransferFunc::Delete | StateTransferFunc::Update => format!("/{}/:id", state_var),
+    }
+}
+
+#[derive(Debug, Clone)]
+enum StateTransferFunc {
+    Create,
+
+    // Note: Read is considered a state transition because it queries the
+    // server state and applies it to the client state. It isn't a _read_ of the state,
+    // aka state function, but a transition where the client state is updated
+    Read,
+    Update,
+    Delete,
+}
+
+impl StateTransferFunc {
+    fn as_http_method(&self) -> &'static str {
+        match self {
+            StateTransferFunc::Create => "POST",
+            StateTransferFunc::Read => "GET",
+            StateTransferFunc::Update => "PUT",
+            StateTransferFunc::Delete => "DELETE",
+        }
+    }
+
+    fn as_express_http_method(&self) -> &'static str {
+        match self {
+            StateTransferFunc::Create => "post",
+            StateTransferFunc::Read => "get",
+            StateTransferFunc::Update => "put",
+            StateTransferFunc::Delete => "delete",
+        }
+    }
+}
+
+fn state_transition_func_from_str(s: &str) -> StateTransferFunc {
+    match s {
+        "create!" => StateTransferFunc::Create,
+        "read!" => StateTransferFunc::Read,
+        "update!" => StateTransferFunc::Update,
+        "delete!" => StateTransferFunc::Delete,
+        _ => panic!("Unexpected StateTransferFunc string"),
+    }
+}
+
+fn js_push_var(state_var: &str, state_var_val: &str) -> JSAstNode {
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+        call_name: Box::new(JSAstNode::Identifier("push".to_string())),
+        args: vec![JSAstNode::Object {
+            prop_or_spreads: vec![
+                PropOrSpread::Spread(Box::new(JSAstNode::Identifier(state_var_val.to_string()))),
+                PropOrSpread::Prop(Prop {
+                    key: JSAstNode::Identifier("id".to_string()),
+                    value: JSAstNode::Identifier("id".to_string()),
+                }),
+            ],
+        }],
+    }
+}
+
+fn js_delete_var(state_var: &str, state_var_val: &str) -> JSAstNode {
+    JSAstNode::AssignmentStatement {
+        left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+        right: Box::new(JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+            call_name: Box::new(JSAstNode::Identifier("filter".to_string())),
+            args: vec![JSAstNode::ArrowClosure {
+                args: vec![JSAstNode::Identifier("data".to_string())],
+                body: Box::new(JSAstNode::ReturnStatement(Some(Box::new(
+                    JSAstNode::NotEqualExpr {
+                        left: Box::new(JSAstNode::Identifier("data.id".to_string())),
+                        right: Box::new(JSAstNode::Identifier(format!("{}.id", state_var_val))),
+                    },
+                )))),
+            }],
+        }),
+    }
+}
+
+fn js_read_var(state_var: &str) -> JSAstNode {
+    JSAstNode::AssignmentStatement {
+        left: Box::new(JSAstNode::Identifier(format!("this.{}", state_var))),
+        right: Box::new(JSAstNode::AwaitOperator {
+            node: Box::new(JSAstNode::CallExpr {
+                call_name: Box::new(JSAstNode::Identifier("json".to_string())),
+                receiver: Box::new(JSAstNode::Identifier("data".to_string())),
+                args: vec![],
+            }),
+        }),
+    }
+}
+
+fn js_state_query_read(server_stmts: &Vec<SLIRServerNode>, schemas: &Schemas) -> JSAstNode {
+    let mut pre_query_stmts: Vec<JSAstNode> = vec![];
+    let mut query_stmts: Vec<&StateQuery> = vec![];
+    let mut post_query_js: Vec<JSAstNode> = vec![];
+
+    let mut query_occurred = false;
+    for stmt in server_stmts {
+        match stmt {
+            SLIRServerNode::Logic(stmt) => {
+                if !query_occurred {
+                    pre_query_stmts.push(js_translate_statement(stmt, schemas));
+                } else {
+                    post_query_js.push(js_translate_statement(stmt, schemas));
+                }
+            }
+            SLIRServerNode::StateQuery(sq) => {
+                query_occurred = true;
+                query_stmts.push(sq);
+            }
+        }
+    }
+
+    // TODO: Only handling one query per action now.
+    let query = query_stmts[0];
+    let query_result_var = match &query.result_var {
+        Some(r) => r.name.to_string(),
+        None => "rows".to_string(),
+    };
+
+    let sql = SQLAstNode::Select {
+        from: Some(Box::new(SQLAstNode::Identifier(
+            query.collection.identifier.name.clone(),
+        ))),
+        attributes: vec![SQLAstNode::Identifier("*".to_string())],
+        clause: None,
+    };
+    let body = if server_stmts.len() == 0 {
+        Box::new(JSAstNode::StatementList {
+            statements: vec![JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+                args: vec![JSAstNode::Identifier("rows".to_string())],
+            }],
+        })
+    } else {
+        let last_statement_var_name = match post_query_js.last() {
+            Some(stmt) => match stmt {
+                JSAstNode::LetExpr { name, .. } => js_gen_iden_name(*name.clone()),
+                _ => "rows".to_string(),
+            },
+            None => "rows".to_string(),
+        };
+
+        post_query_js.push(JSAstNode::CallExpr {
+            receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+            call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+            args: vec![JSAstNode::Identifier(last_statement_var_name.to_string())],
+        });
+
+        Box::new(JSAstNode::StatementList {
+            statements: post_query_js,
+        })
+    };
+
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("all".to_string())),
+        args: vec![
+            JSAstNode::StringLiteral(sql_gen_string(&sql)),
+            JSAstNode::ArrowClosure {
+                args: vec![
+                    JSAstNode::Identifier("_".to_string()),
+                    JSAstNode::Identifier(query_result_var),
+                ],
+                body: body,
+            },
+        ],
+    }
+}
+
+fn js_state_query_create(
+    state_var: &str,
+    transfer_args: &Vec<TypedAstExpr>,
+    schemas: &Schemas,
+) -> JSAstNode {
+    if transfer_args.len() == 0 {
+        return JSAstNode::InvalidNode;
+    }
+
+    let mut attr_names: Vec<String> = vec![];
+    let mut sql_attr_names: Vec<SQLAstNode> = vec![];
+    let mut sql_value_placeholders: Vec<SQLAstNode> = vec![];
+    let mut js_attr_values: Vec<JSExprOrSpread> = vec![];
+    let mut response_props: Vec<PropOrSpread> = vec![];
+
+    let create_arg = &transfer_args[0];
+    let arg_type = match &create_arg.r#type {
+        Type::Custom(ct) => match ct {
+            CustomType::Schema(s) => s.clone(),
+            _ => panic!("Only custom types supported"),
+        },
+        _ => panic!("Only custom types supported"),
+    };
+    let schema = &schemas[&arg_type];
+    for attr in &schema.attributes {
+        attr_names.push(attr.name.clone());
+
+        // TODO: this is assuming the name of 'data' which is used to
+        // parse the HTTP body in write requests.
+        js_attr_values.push(JSExprOrSpread::JSExpr(Box::new(JSAstNode::Identifier(
+            format!("data.{}", attr.name),
+        ))));
+        response_props.push(PropOrSpread::Prop(Prop {
+            key: JSAstNode::Identifier(attr.name.clone()),
+            value: JSAstNode::Identifier(format!("data.{}", attr.name)),
+        }));
+        sql_attr_names.push(SQLAstNode::Identifier(attr.name.clone()));
+        sql_value_placeholders.push(SQLAstNode::Identifier("?".to_string()))
+    }
+    let insert_sql = SQLAstNode::Insert {
+        into: Box::new(SQLAstNode::Identifier(state_var.to_string())),
+        attributes: sql_attr_names,
+        values: sql_value_placeholders,
+    };
+    let insert_js = JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("run".to_string())),
+        args: vec![
+            JSAstNode::StringLiteral(sql_gen_string(&insert_sql)),
+            JSAstNode::ArrayLiteral(js_attr_values),
+        ],
+    };
+    let get_id_sql = SQLAstNode::Select {
+        attributes: vec![SQLAstNode::Identifier("last_insert_rowid()".to_string())],
+        from: None,
+        clause: None,
+    };
+
+    response_props.push(PropOrSpread::Prop(Prop {
+        key: JSAstNode::Identifier("id".to_string()),
+        value: JSAstNode::Identifier("row[\"last_insert_rowid()\"]".to_string()),
+    }));
+    let respond = JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("res".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("send".to_string())),
+        args: vec![JSAstNode::Object {
+            prop_or_spreads: response_props,
+        }],
+    };
+
+    let respond_with_id = JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("get".to_string())),
+        args: vec![
+            JSAstNode::StringLiteral(sql_gen_string(&get_id_sql)),
+            JSAstNode::ArrowClosure {
+                args: vec![
+                    JSAstNode::Identifier("err".to_string()),
+                    JSAstNode::Identifier("row".to_string()),
+                ],
+                body: Box::new(respond),
+            },
+        ],
+    };
+
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("serialize".to_string())),
+        args: vec![JSAstNode::ArrowClosure {
+            args: vec![],
+            body: Box::new(JSAstNode::StatementList {
+                statements: vec![insert_js, respond_with_id],
+            }),
+        }],
+    }
+}
+
+fn js_state_query_delete(state_var: &str) -> JSAstNode {
+    // DELETE FROM state_var
+    let sql = SQLAstNode::Delete {
+        from: Box::new(SQLAstNode::Identifier(state_var.to_string())),
+        clause: Some(Box::new(SQLAstNode::WhereClause {
+            predicate: Box::new(SQLAstNode::EqualityExpr {
+                left: Box::new(SQLAstNode::Identifier("id".to_string())),
+                right: Box::new(SQLAstNode::Identifier("?".to_string())),
+            }),
+        })),
+    };
+    let js_attr_values: Vec<JSExprOrSpread> = vec![JSExprOrSpread::JSExpr(Box::new(
+        JSAstNode::Identifier("req.params.id".to_string()),
+    ))];
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier("db".to_string())),
+        call_name: Box::new(JSAstNode::Identifier("run".to_string())),
+        args: vec![
+            JSAstNode::StringLiteral(sql_gen_string(&sql)),
+            JSAstNode::ArrayLiteral(js_attr_values),
+        ],
+    }
+}
+
+fn relation_name_from_type(r#type: &Type) -> String {
+    match r#type {
+        Type::Primitive(pt) => match pt {
+            PrimitiveType::Array(t) => match &**t {
+                Type::Custom(custom_type) => match custom_type {
+                    CustomType::Schema(schema_name) => {
+                        let mut relation_name = schema_name.to_case(Case::Snake);
+                        relation_name.push('s');
+
+                        relation_name
+                    }
+                    _ => panic!("Can only get relation name from Array types"),
+                },
+                _ => panic!("Can only get relation name from Array types"),
+            },
+            _ => panic!("No"),
+        },
+        _ => panic!("Can only get relation name from Array types"),
+    }
+}
+
 fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
     let define_endpoints_func = JSAstNode::FuncDef {
         name: Box::new(JSAstNode::Identifier("defineEndpoints".to_string())),
@@ -3674,3 +3669,11 @@ fn main() {
         &schemas,
     );
 }
+
+/*
+  TODO: Scenarios
+
+  * Associations
+  * SQL Filtering
+
+ */
