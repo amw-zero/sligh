@@ -1,5 +1,5 @@
 schema RecurringTransaction:
-  id: Numeric
+  id: IntegerIdentifier
   amount: Numeric
   name: String
 end
@@ -9,7 +9,7 @@ schema CreateRecurringTransaction:
   name: String
 end
 
-schema Budget:
+domain Budget:
   recurring_transactions: [RecurringTransaction]
   
   def create_recurring_transaction(rtc: CreateRecurringTransaction)
@@ -30,18 +30,14 @@ schema Budget:
 end
 
 schema ScheduledTransaction:
-  name: String
-end
-
-schema Filter:
-  ids: [Int]
+  name: StringIdentifier
 end
 
 def expand(rt: RecurringTransaction) -> ScheduledTransaction
   ScheduledTransaction.new(rt.name)
 end
 
-schema Schedule:
+domain Schedule:
   def view_scheduled_transactions()
     let rts = Budget.recurring_transactions
     let scheduled_transactions = rts.map(expand)

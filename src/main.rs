@@ -10,7 +10,7 @@ use std::path::Path;
 const DEBUG: bool = false;
 const API_HOST: &str = "http://localhost:3000";
 
-// JS Translation
+// Section: JS Translation
 
 #[derive(Debug, Clone)]
 struct Prop {
@@ -467,10 +467,10 @@ fn js_translate_statement_list(stmt_list: &AstStatementList, schemas: &Schemas) 
 fn js_translate_type(r#type: &Type) -> JSAstNode {
     match r#type {
         Type::Primitive(pt) => match pt {
-            PrimitiveType::Int | PrimitiveType::Numeric | PrimitiveType::Identifier => {
+            PrimitiveType::Int | PrimitiveType::Numeric | PrimitiveType::IntegerIdentifier => {
                 JSAstNode::Identifier("number".to_string())
             }
-            PrimitiveType::String => JSAstNode::Identifier("string".to_string()),
+            PrimitiveType::String | PrimitiveType::StringIdentifier => JSAstNode::Identifier("string".to_string()),
             PrimitiveType::Array(t) => JSAstNode::ArrayType(Box::new(js_translate_type(&*t))),
         },
         Type::Custom(ct) => match ct {
@@ -874,8 +874,6 @@ fn js_state_query_delete(state_var: &str) -> JSAstNode {
     }
 }
 
-// Parser
-
 fn relation_name_from_type(r#type: &Type) -> String {
     match r#type {
         Type::Primitive(pt) => match pt {
@@ -896,6 +894,8 @@ fn relation_name_from_type(r#type: &Type) -> String {
         _ => panic!("Can only get relation name from Array types"),
     }
 }
+
+// Section: Sligh syntax
 
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
@@ -1237,7 +1237,7 @@ fn parse(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> AstNode {
     }
 }
 
-// SQL
+// Section: SQL
 
 enum SQLAstNode {
     Insert {
@@ -1343,40 +1343,7 @@ fn sql_gen_string(node: &SQLAstNode) -> String {
     }
 }
 
-type Schemas = HashMap<String, Schema>;
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct SchemaAttribute {
-    name: String,
-    r#type: Type,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct Schema {
-    name: String,
-    attributes: Vec<SchemaAttribute>,
-}
-
-fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
-    if let Some(primitive_type) = match type_str {
-        "Identifier" => Some(Type::Primitive(PrimitiveType::Identifier)),
-        "Int" => Some(Type::Primitive(PrimitiveType::Int)),
-        "Numeric" => Some(Type::Primitive(PrimitiveType::Numeric)),
-        "String" => Some(Type::Primitive(PrimitiveType::String)),
-        _ => None,
-    } {
-        primitive_type
-    } else {
-        let schema = schemas.get(type_str);
-        if !schema.is_some() {
-            panic!("Unable to find schema during attribute type resolution {}", type_str)
-        }
-
-        Type::Custom(CustomType::Schema(schema.unwrap().name.clone()))
-    }
-}
-
-// Translation Certification
+// Section: Translation Certification
 
 fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> (JSAstNode, JSAstNode) {
     let model_class_name = format!("{}Class", schema_slir.schema_def.name.name);
@@ -1625,7 +1592,7 @@ fn data_generator_for_type(r#type: &Type, schemas: &Schemas) -> JSAstNode {
             other => panic!("Unimplemented: data generator for {:#?}", other)
         },
         Type::Primitive(pt) => match pt {
-            PrimitiveType::Identifier => JSAstNode::CallExpr {
+            PrimitiveType::IntegerIdentifier => JSAstNode::CallExpr {
                 receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
                 call_name: Box::new(JSAstNode::Identifier("integer".to_string())),
                 args: vec![JSAstNode::Object {
@@ -1640,6 +1607,11 @@ fn data_generator_for_type(r#type: &Type, schemas: &Schemas) -> JSAstNode {
                         })
                     ]
                 }]
+            },
+            PrimitiveType::StringIdentifier => JSAstNode::CallExpr {
+                receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
+                call_name: Box::new(JSAstNode::Identifier("string".to_string())),
+                args: vec![]
             },
             PrimitiveType::Int => JSAstNode::CallExpr {
                 receiver: Box::new(JSAstNode::Identifier("fc".to_string())),
@@ -1666,9 +1638,27 @@ fn data_generator_for_type(r#type: &Type, schemas: &Schemas) -> JSAstNode {
     }    
 }
 
+fn js_sort(receiver: &str, identifier_name: &str) -> JSAstNode {
+    JSAstNode::CallExpr {
+        receiver: Box::new(JSAstNode::Identifier(receiver.to_string())),
+        call_name: js_boxed_iden("sort"),
+        args: vec![JSAstNode::ArrowClosure {
+            args: vec![JSAstNode::Identifier("a".to_string()), JSAstNode::Identifier("b".to_string())],
+            body: Box::new(JSAstNode::ReturnStatement(Some(Box::new(JSAstNode::CallExpr{
+                receiver: js_boxed_iden(&format!("a.{}.toString()", identifier_name)),
+                call_name: js_boxed_iden("localeCompare"),
+                args: vec![
+                    JSAstNode::Identifier(format!("b.{}.toString()", identifier_name))
+                ]
+            }))))
+        }]
+    }
+}
+
 fn slir_gen_certification_properties(
     schema_slir: &SchemaSLIR,
     system_state: &SystemState,
+    type_env: &TypeEnvironment,
     schemas: &Schemas,
 ) -> (Vec<JSAstNode>, Vec<String>) {
     let mut js_property_defs: Vec<JSAstNode> = vec![];
@@ -1817,6 +1807,10 @@ fn slir_gen_certification_properties(
                     model_args.push(JSAstNode::Identifier("state".to_string()));
                 }
 
+                let state_var_type = resolve_variable_type(&vec![schema_slir.schema_def.name.name.clone(), state_transition.method.name.name.clone(), state_variable.clone()], &type_env).expect(&format!("Type error: unable to resolve type for: {}", state_variable));
+                let state_var_schema = schema_for_type(&state_var_type, schemas);
+                let identifier = &state_var_schema.identifier().name;
+
                 let mut body_stmts = vec![
                     JSAstNode::LetExpr {
                         name: Box::new(JSAstNode::Identifier("currentState".to_string())),
@@ -1895,17 +1889,18 @@ fn slir_gen_certification_properties(
                         )),
                         args: model_args,
                     },
-                    // expect(fullstack.recurring_transactions).to.deep.eq(model.recurring_transactions);
                     JSAstNode::CallExpr {
                         receiver: Box::new(JSAstNode::FuncCallExpr {
                             call_name: Box::new(JSAstNode::Identifier("expect".to_string())),
-                            args: vec![JSAstNode::Identifier(format!(
-                                "fullstack.{}",
-                                state_variable
-                            ))],
+                            args: vec![
+                                js_sort(&format!(
+                                    "fullstack.{}",
+                                    state_variable,
+                                ), &identifier)
+                            ],
                         }),
                         call_name: Box::new(JSAstNode::Identifier("to.deep.eq".to_string())),
-                        args: vec![JSAstNode::Identifier(format!("model.{}", state_variable))],
+                        args: vec![js_sort(&format!("model.{}", state_variable), &identifier)],
                     },
                 ]);
 
@@ -2280,7 +2275,69 @@ fn write_certification_test(output_dir: &str, system_state: &SystemState, client
     .expect("Unable to write certification properties file.");
 }
 
-// Type system
+// Section: Type system
+
+type Schemas = HashMap<String, Schema>;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct SchemaAttribute {
+    name: String,
+    r#type: Type,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct Schema {
+    name: String,
+    attributes: Vec<SchemaAttribute>,
+}
+
+impl Schema {
+    fn identifier(&self) -> &SchemaAttribute {
+        self.attributes.iter().find(|attr| match &attr.r#type {
+            Type::Primitive(pt) => match pt {
+                PrimitiveType::IntegerIdentifier | PrimitiveType::StringIdentifier => true,
+                _ => false,
+            },
+            _ => false
+        }).expect(&format!("Schemas must have identifiers, and one wasn't able to be found: {}", self.name))
+    }
+}
+
+fn type_from_str(type_str: &str, schemas: &Schemas) -> Type {
+    if let Some(primitive_type) = match type_str {
+        "IntegerIdentifier" => Some(Type::Primitive(PrimitiveType::IntegerIdentifier)),
+        "StringIdentifier" => Some(Type::Primitive(PrimitiveType::StringIdentifier)),
+        "Int" => Some(Type::Primitive(PrimitiveType::Int)),
+        "Numeric" => Some(Type::Primitive(PrimitiveType::Numeric)),
+        "String" => Some(Type::Primitive(PrimitiveType::String)),
+        _ => None,
+    } {
+        primitive_type
+    } else {
+        let schema = schemas.get(type_str);
+        if !schema.is_some() {
+            panic!("Unable to find schema during attribute type resolution {}", type_str)
+        }
+
+        Type::Custom(CustomType::Schema(schema.unwrap().name.clone()))
+    }
+}
+
+fn schema_for_type(r#type: &Type, schemas: &Schemas) -> Schema {
+    match r#type {
+        Type::Primitive(pt) => match pt {
+            PrimitiveType::Array(t) => match &**t {
+                Type::Custom(ct) => match ct {
+                    CustomType::Schema(s) => schemas[&*s].clone(),
+                    _ => panic!("Can't get schema for type {:?}", r#type)
+                },
+                _ => panic!("Can't get schema for type {:?}", r#type)
+            }
+            _ => panic!("Can't get schema for type {:?}", r#type),
+        },
+        _ => panic!("Can't get schema for type {:?}", r#type)
+    }
+}
 
 // To enforce uniqueness of names in the type environment
 fn type_env_name(name_path: &Vec<String>) -> String {
@@ -2296,7 +2353,8 @@ enum PrimitiveType {
     // Strings
     String,
     // Identifiers / Primary keys
-    Identifier,
+    IntegerIdentifier,
+    StringIdentifier,
     Array(Box<Type>),
 }
 
@@ -2622,7 +2680,7 @@ fn insert_seed_types(type_env: &mut TypeEnvironment) {
     );
 }
 
-// SLIR
+// Section: SLIR, IR for system operations
 
 #[derive(Debug, Clone)]
 enum Query {
@@ -2880,7 +2938,7 @@ fn slir_translate(
     slir_nodes
 }
 
-// Tier splitting: SLIR -> JS
+// Section: Tier splitting: SLIR -> JS
 
 fn gen_server_endpoint_file(endpoints: &Vec<JSAstNode>) -> String {
     let define_endpoints_func = JSAstNode::FuncDef {
@@ -3233,6 +3291,8 @@ fn slir_tier_split(schema_slir: &SchemaSLIR, schemas: &Schemas) -> (JSAstNode, V
     (client, endpoints)
 }
 
+// Section: Compiler
+
 #[derive(ClapParser, Debug)]
 struct Args {
     input_file: String,
@@ -3309,7 +3369,6 @@ fn copy_swallow_err<P: AsRef<Path> + ToString, Q: AsRef<Path> + ToString>(
     };
 }
 
-// TODO: This should be a HashSet<Schema> - to get attributes post-parsing
 type SystemState = HashSet<Schema>;
 
 fn main() {
@@ -3463,7 +3522,7 @@ fn main() {
 
     for schema_slir in schema_slirs {
         let (certification_properties, mut names) =
-            slir_gen_certification_properties(&schema_slir, &system_state, &schemas);
+            slir_gen_certification_properties(&schema_slir, &system_state, &type_environment, &schemas);
 
         for property in certification_properties {
             certification_property_strs.push(js_gen_string(property));
