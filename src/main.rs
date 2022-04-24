@@ -1049,7 +1049,7 @@ fn slir_schema_model(schema_slir: &SchemaSLIR, schemas: &Schemas) -> (JSAstNode,
     let mut class_methods: Vec<JSAstNode> = vec![];
     let mut transferred_state_variables: HashSet<TypedIdentifier> = HashSet::new();
 
-    for method in &schema_slir.methods {
+    for method in &schema_slir.actions {
         let partitioned_slir = partition_slir(&method.slir);
 
         let mut js_stmts: Vec<JSAstNode> = vec![];
@@ -1367,15 +1367,14 @@ fn slir_gen_certification_properties(
 ) -> (Vec<JSAstNode>, Vec<String>) {
     let mut js_property_defs: Vec<JSAstNode> = vec![];
     let mut js_property_names: Vec<String> = vec![];
-    let state_transitions = &schema_slir.methods;
-    for state_transition in state_transitions {
-        let state_trans_name = &state_transition.method.name;
+    for action in &schema_slir.actions {
+        let state_trans_name = &action.method.name;
         let (state_trans_func, state_variable) =
-            certification_determine_state_transfer(&state_transition.method.body)
+            certification_determine_state_transfer(&action.method.body)
                 .expect("Currently expecting a single state transfer func in all actions");
         js_property_names.push(state_trans_name.name.clone());
 
-        let method_references_global_state = state_transition.references_global_state();
+        let method_references_global_state = action.references_global_state();
 
         // TODO: Create functions for building up the test body
         let test_body = match state_trans_func {
@@ -1383,7 +1382,7 @@ fn slir_gen_certification_properties(
                 let model_class = format!("currentState.{}", schema_slir.schema_def.name.name);
                 let fullstack_class = format!("Fullstack.{}", schema_slir.schema_def.name.name);
                 let mut model_args = vec![
-                    JSAstNode::Identifier(state_transition.method.args[0].identifier.name.clone()),
+                    JSAstNode::Identifier(action.method.args[0].identifier.name.clone()),
                     // Pass in id of created entity so that the model and implementation are creating
                     // the same entity.
                     JSAstNode::Identifier("created.id".to_string()),
@@ -1474,7 +1473,7 @@ fn slir_gen_certification_properties(
                                 )),
                                 // args[0] again - represents a state transition argument
                                 args: vec![JSAstNode::Identifier(
-                                    state_transition.method.args[0].identifier.name.clone(),
+                                    action.method.args[0].identifier.name.clone(),
                                 )],
                             }),
                         }),
@@ -1507,7 +1506,7 @@ fn slir_gen_certification_properties(
             StateTransferFunc::Read => {
                 let model_class = format!("currentState.{}", schema_slir.schema_def.name.name);
                 let fullstack_class = format!("Fullstack.{}", schema_slir.schema_def.name.name);
-                let mut model_args: Vec<JSAstNode> = state_transition
+                let mut model_args: Vec<JSAstNode> = action
                     .method
                     .args
                     .iter()
@@ -1521,7 +1520,7 @@ fn slir_gen_certification_properties(
                 let state_var_type = resolve_variable_type(
                     &vec![
                         schema_slir.schema_def.name.name.clone(),
-                        state_transition.method.name.name.clone(),
+                        action.method.name.name.clone(),
                         state_variable.clone(),
                     ],
                     &type_env,
@@ -1595,7 +1594,7 @@ fn slir_gen_certification_properties(
                                 call_name: Box::new(JSAstNode::Identifier(
                                     state_trans_name.name.to_string(),
                                 )),
-                                args: state_transition
+                                args: action
                                     .method
                                     .args
                                     .iter()
@@ -1640,7 +1639,7 @@ fn slir_gen_certification_properties(
         let mut generated_data_vars: Vec<JSAstNode> =
             vec![JSAstNode::Identifier("state".to_string())];
 
-        for arg in &state_transition.method.args {
+        for arg in &action.method.args {
             data_generators.push(data_generator_for_type(&arg.r#type, schemas));
             generated_data_vars.push(JSAstNode::Identifier(arg.identifier.name.clone()));
         }
@@ -3366,16 +3365,16 @@ fn slir_expand_state_transfer_client(transfer: &StateTransfer, method: &SchemaMe
 }
 
 fn slir_make_state_transfers_client(
-    method: &SchemaMethodSLIR,
+    action: &SchemaMethodSLIR,
     state_transfers: &Vec<StateTransfer>,
     schemas: &Schemas,
 ) -> Vec<JSAstNode> {
     let mut class_methods: Vec<JSAstNode> = vec![];
     for transfer in state_transfers {
-        let expanded_client_body = slir_expand_state_transfer_client(&transfer, &method.method, schemas);
+        let expanded_client_body = slir_expand_state_transfer_client(&transfer, &action.method, schemas);
         let class_method = JSAstNode::ClassMethod {
             name: Box::new(JSAstNode::Identifier(transfer.name.clone())),
-            args: method
+            args: action
                 .method
                 .args
                 .iter()
@@ -3398,17 +3397,17 @@ fn slir_tier_split(schema_slir: &SchemaSLIR, schemas: &Schemas) -> (JSAstNode, V
     let mut class_methods: Vec<JSAstNode> = vec![];
     let mut endpoints: Vec<JSAstNode> = vec![];
 
-    let all_methods: Vec<&SchemaMethodSLIR> = schema_slir.methods.iter().collect();
+    let all_actions: Vec<&SchemaMethodSLIR> = schema_slir.actions.iter().collect();
 
-    for method in all_methods {
-        let stmts = &method.slir;
+    for action in all_actions {
+        let stmts = &action.slir;
         let partitioned_slir = partition_slir(&stmts);
         let server_stmts = partitioned_slir.pre_transfer_statements;
 
-        let mut methods =
-            slir_make_state_transfers_client(&method, &partitioned_slir.state_transfers, schemas);
+        let mut actions =
+            slir_make_state_transfers_client(&action, &partitioned_slir.state_transfers, schemas);
 
-        class_methods.append(&mut methods);
+        class_methods.append(&mut actions);
 
         for transfer in partitioned_slir.state_transfers {
             let endpoint = slir_expand_state_transfer_server(&transfer, &server_stmts, schemas);
@@ -3527,13 +3526,13 @@ impl SchemaMethodSLIR {
 #[derive(Debug, Clone)]
 struct SchemaSLIR {
     schema_def: SchemaDef,
-    methods: Vec<SchemaMethodSLIR>,
+    actions: Vec<SchemaMethodSLIR>,
 }
 
 impl SchemaSLIR {
     fn transferred_state_variables(&self) -> HashSet<TypedIdentifier> {
         let mut transferred_state_variables: HashSet<TypedIdentifier> = HashSet::new();
-        let all_methods: Vec<&SchemaMethodSLIR> = self.methods.iter().collect();
+        let all_methods: Vec<&SchemaMethodSLIR> = self.actions.iter().collect();
     
         for method in all_methods {
             let stmts = &method.slir;
@@ -3589,7 +3588,7 @@ fn main() {
     // they are referenced by
     let mut function_defs: Vec<AstFunctionDef> = vec![];
 
-    // Datatypes are schema definitions with no methods, i.e. raw data.
+    // Datatypes are schema definitions with no actions, i.e. raw data.
     // They need to be declared on the server
     let mut datatypes: Vec<String> = vec![];
 
@@ -3654,7 +3653,7 @@ fn main() {
 
                         let schema_slir = SchemaSLIR {
                             schema_def: schema_def.clone(),
-                            methods: schema_method_slirs,
+                            actions: schema_method_slirs,
                         };
                         schema_slirs.push(schema_slir.clone());
 
@@ -3663,10 +3662,9 @@ fn main() {
                     _ => None,
                 };
 
-                 let mut schema_with_state_transfer = false;
+                let mut schema_with_state_transfer = false;
                 if let Some(schema_slir) = maybe_schema_slir {
-                    if schema_slir.methods.len() > 0 {
-                        println!("{:#?} SLIR: {:#?}", schema_slir.schema_def.name.name, schema_slir.methods);
+                    if schema_slir.actions.len() > 0 {
                         schema_with_state_transfer = true;
                         let (client_js, server_js) = slir_tier_split(&schema_slir, &schemas);
 
