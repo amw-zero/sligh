@@ -1,6 +1,6 @@
 Program = _{ SOI ~ (Statement ~ NEWLINE*)* ~ EOI }
 
-Statement = { SchemaDef | SchemaMethod | TypeDef }
+Statement = { SchemaDef | EntityDef | SchemaMethod | TypeDef }
 
 WHITESPACE = _{ " " | "\t" }
 
@@ -46,7 +46,9 @@ SchemaMethod = { "def" ~ (MethodDefArgs | MethodDefNoArgs) ~ ("->" ~ Identifier)
 
 SchemaBody = { ((SchemaAttribute | SchemaMethod) ~ NEWLINE*)* }
 
-SchemaDef = { ("schema" | "domain") ~ Identifier ~ ":" ~ NEWLINE ~ SchemaBody ~ "end" }
+SchemaDef = { ("schema" | "domain" ) ~ Identifier ~ ":" ~ NEWLINE ~ SchemaBody ~ "end" }
+
+EntityDef = { "entity" ~ Identifier ~ ":" ~ NEWLINE ~ SchemaBody ~ "end" }
 
 Variant = { Identifier ~ ("(" ~ Type ~ ("," ~ Type)* ~ ")")* }
 

@@ -45,19 +45,3 @@ domain Schedule:
     scheduled_transactions.read!()
   end
 end
-
-schema Scenario:
-  id: IntegerIdentifier
-  budget: Budget
-end
-
-schema CreateScenario:
-end
-
-domain Scenarios:
-  scenarios: [Scenario]
-
-  def create_scenario(cs: CreateScenario)
-    scenarios.create!(cs)
-  end
-end

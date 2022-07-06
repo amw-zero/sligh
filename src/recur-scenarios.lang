@@ -1,0 +1,90 @@
+schema RecurringTransaction:
+  id: IntegerIdentifier
+  amount: Numeric
+  name: String
+end
+
+schema CreateRecurringTransaction:
+  amount: Numeric
+  name: String
+end
+
+domain Budget:
+  recurringTransactions: [RecurringTransaction]
+  
+  def createRecurringTransaction(rtc: CreateRecurringTransaction)
+    recurringTransactions.create!(rtc)
+  end
+
+  def deleteRecurringTransaction(rt: RecurringTransaction)
+    recurringTransactions.delete!(rt)
+  end
+
+  def updateRecurringTransaction(rt: RecurringTransaction)
+    recurringTransactions.update!(rt)
+  end
+
+  def viewRecurringTransactions()
+    recurringTransactions.read!()
+  end
+end
+
+schema ScheduledTransaction:
+  name: StringIdentifier
+end
+
+def expand(rt: RecurringTransaction) -> ScheduledTransaction
+  ScheduledTransaction.new(rt.name)
+end
+
+domain Schedule:
+  def viewScheduledTransactions()
+    let rts = Budget.recurringTransactions
+    let scheduledTransactions = rts.map(expand)
+
+    scheduledTransactions.read!()
+  end
+end
+
+schema ScenarioRecurringTransaction:
+  id: IntegerIdentifier
+  amount: Numeric
+  name: String
+end
+
+schema Scenario:
+  id: IntegerIdentifier
+  name: String
+  scenarioRecurringTransactions: [ScenarioRecurringTransaction]
+end
+
+schema CreateScenarioRequest:
+  name: String
+end 
+
+schema CreateScenarioRecurringTransaction:
+  amount: Numeric
+  name: String
+end
+
+schema CreateScenario:
+  name: String
+  scenarioRecurringTransactions: [CreateScenarioRecurringTransaction]
+end
+
+def toScenarioTransaction(recurringTransaction: RecurringTransaction) -> CreateScenarioRecurringTransaction
+  CreateScenarioRecurringTransaction.new(recurringTransaction.amount, recurringTransaction.name)
+end
+
+domain Scenarios:
+  scenarios: [Scenario]
+
+  def createScenario(csr: CreateScenarioRequest)
+    let recurringTransactions = Budget.recurringTransactions
+    let scenarioRecurringTransactions = recurringTransactions.map(toScenarioTransaction)
+
+    let cs = CreateScenario.new(csr.name, scenarioRecurringTransactions)
+
+    scenarios.create!(cs)
+  end
+end

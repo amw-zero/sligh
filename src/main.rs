@@ -689,6 +689,7 @@ struct SchemaDef {
 #[derive(Debug, Clone)]
 enum AstNode {
     InvalidNode,
+    EntityDef(SchemaDef),
     SchemaDef(SchemaDef),
     FunctionDef(AstFunctionDef),
 }
@@ -897,6 +898,22 @@ fn parse(pair: pest::iterators::Pair<Rule>, schemas: &Schemas) -> AstNode {
     }
     match pair.as_rule() {
         Rule::Statement => parse(pair.into_inner().next().unwrap(), schemas),
+        Rule::EntityDef => {
+            let mut inner = pair.into_inner();
+            let name = inner.next().unwrap().as_str();
+            let schema_body = inner.next().unwrap();
+            let mut schema_defs: Vec<SchemaDefinition> = vec![];
+            for def in schema_body.into_inner() {
+                schema_defs.push(parse_schema_def(def, schemas));
+            }
+
+            AstNode::EntityDef(SchemaDef {
+                name: AstIdentifier {
+                    name: name.to_string(),
+                },
+                body: schema_defs,
+            })
+        }
         Rule::SchemaDef => {
             let mut inner = pair.into_inner();
             let name = inner.next().unwrap().as_str();
@@ -2279,7 +2296,8 @@ fn resolve_type(
     node: &AstExpr,
     name_path: &Vec<String>,
     type_env: &TypeEnvironment,
-) -> Option<Type> {    
+) -> Option<Type> {
+    println!("Resolving type of node {:?}", node);
     match node {
         AstExpr::DotAccess { receiver, property } => {
             let mut name_path_plus_receiver = name_path.clone();
@@ -2370,7 +2388,47 @@ fn update_type_environment_statement(
     }
 }
 
-// Add parsed code to various collections of info
+fn add_schema_to_type_env(name: &AstIdentifier, body: &Vec<SchemaDefinition>, type_env: &mut TypeEnvironment, schemas: &Schemas) {
+    let schema_name = name.name.clone();
+    let schema_name_path = vec![schema_name.clone()];
+    type_env.insert(
+        type_env_name(&schema_name_path),
+        Type::Custom(CustomType::Schema(schema_name.clone())),
+    );
+    let schema = &schemas[&schema_name];
+    type_env.insert(
+        type_env_name(&vec![schema_name.clone(), "new".to_string()]),
+        Type::Custom(CustomType::Function {
+            args: schema.attributes.iter().map(|attr| attr.r#type.clone()).collect(),
+            type_params: None,
+            return_type: Box::new(Some(Type::Custom(CustomType::Schema(schema_name.clone())))),
+        })
+    );
+    for def in body {
+        match def {
+            SchemaDefinition::SchemaAttribute { name, r#type } => {
+                let name_path = vec![schema_name.clone(), name.name.clone()];
+                type_env.insert(type_env_name(&name_path), r#type.clone());
+            }
+            // Todo: This should add function signature to type env, including return type
+            SchemaDefinition::SchemaMethod(SchemaMethod {
+                name, args, body, ..
+            }) => {
+                let method_name = name.name.clone();
+                let method_name_path = vec![schema_name.clone(), method_name];
+                for arg in args {
+                    let mut arg_name_path = method_name_path.clone();
+                    arg_name_path.push(arg.identifier.name.clone());
+                    type_env.insert(type_env_name(&arg_name_path), arg.r#type.clone());
+                }
+                update_type_environment_statement(body, method_name_path.clone(), type_env);
+            }
+        }
+    }
+}
+
+// Add parsed code to various collections of info,
+// like the type environment, schema set, and function definitions
 fn update_environment(
     pair: &Pair<Rule>,
     node: &AstNode,
@@ -2380,6 +2438,51 @@ fn update_environment(
 ) {
     // Add to Schemas:
     match node {
+        AstNode::EntityDef(SchemaDef { name, body }) => {
+            let schema_name = name.name.clone();
+            let mut all_attributes: Vec<SchemaAttribute> = vec![];
+            let mut without_id_attributes: Vec<SchemaAttribute> = vec![];
+            for schema_def in body {
+                match schema_def {
+                    SchemaDefinition::SchemaAttribute { name, r#type } => {
+                        all_attributes.push(SchemaAttribute {
+                            name: name.name.clone(),
+                            r#type: r#type.clone(),
+                        });
+
+                        match r#type {
+                            Type::Primitive(pt) => match pt {
+                                PrimitiveType::IntegerIdentifier | PrimitiveType::StringIdentifier => (),
+                                _ => without_id_attributes.push(SchemaAttribute{
+                                    name: name.name.clone(),
+                                    r#type: r#type.clone(),
+                                })
+                            },
+                            _ => without_id_attributes.push(SchemaAttribute{
+                                name: name.name.clone(),
+                                r#type: r#type.clone(),
+                            })
+                        }
+                    }
+                    _ => continue,
+                }
+            }
+            let schema = Schema {
+                name: schema_name.clone(),
+                attributes: all_attributes.clone(),
+            };
+            schemas.insert(schema_name.clone(), schema);
+
+            // Each entity gets a corresponding "Create*" schema which has all of the attributes
+            // minus the id attribute, to handle the typing of the create use case before an id
+            // exists.
+            let create_schema_name = format!("Create{}", schema_name);
+            let create_schema = Schema {
+                name: create_schema_name.clone(),
+                attributes: without_id_attributes.clone(),
+            };
+            schemas.insert(create_schema_name.clone(), create_schema);
+        }
         AstNode::SchemaDef(SchemaDef { name, body }) => {
             let schema_name = name.name.clone();
             let mut attributes: Vec<SchemaAttribute> = vec![];
@@ -2404,43 +2507,15 @@ fn update_environment(
     };
 
     match node {
+        AstNode::EntityDef(SchemaDef { name, body }) => {
+            add_schema_to_type_env(&name, body, type_env, schemas);
+            let create_name = format!("Create{}", name.name);
+
+            // The id may need to be stripped out here
+            add_schema_to_type_env(&AstIdentifier { name: create_name }, body, type_env, schemas);
+        }
         AstNode::SchemaDef(SchemaDef { name, body }) => {
-            let schema_name = name.name.clone();
-            let schema_name_path = vec![schema_name.clone()];
-            type_env.insert(
-                type_env_name(&schema_name_path),
-                Type::Custom(CustomType::Schema(schema_name.clone())),
-            );
-            let schema = &schemas[&schema_name];
-            type_env.insert(
-                type_env_name(&vec![schema_name.clone(), "new".to_string()]),
-                Type::Custom(CustomType::Function {
-                    args: schema.attributes.iter().map(|attr| attr.r#type.clone()).collect(),
-                    type_params: None,
-                    return_type: Box::new(Some(Type::Custom(CustomType::Schema(schema_name.clone())))),
-                })
-            );
-            for def in body {
-                match def {
-                    SchemaDefinition::SchemaAttribute { name, r#type } => {
-                        let name_path = vec![schema_name.clone(), name.name.clone()];
-                        type_env.insert(type_env_name(&name_path), r#type.clone());
-                    }
-                    // Todo: This should add function signature to type env, including return type
-                    SchemaDefinition::SchemaMethod(SchemaMethod {
-                        name, args, body, ..
-                    }) => {
-                        let method_name = name.name.clone();
-                        let method_name_path = vec![schema_name.clone(), method_name];
-                        for arg in args {
-                            let mut arg_name_path = method_name_path.clone();
-                            arg_name_path.push(arg.identifier.name.clone());
-                            type_env.insert(type_env_name(&arg_name_path), arg.r#type.clone());
-                        }
-                        update_type_environment_statement(body, method_name_path.clone(), type_env);
-                    }
-                }
-            }
+            add_schema_to_type_env(&name, body, type_env, schemas);
         }
         AstNode::FunctionDef(fd) => {
             let name = &fd.name;
@@ -2487,6 +2562,21 @@ fn insert_seed_types(type_env: &mut TypeEnvironment) {
             ))))),
         }),
     );
+
+    // TODO: should support integer identifier and string identifier possibly
+    // Called on a list of 'as (SystemState), returns a single 'a value
+    // find: 'a list => IntegerIdentifier => 'a
+    type_env.insert(
+        "find".to_string(),
+        Type::Custom(CustomType::Function {
+            args: vec![
+                Type::Primitive(PrimitiveType::Array(Box::new(Type::Generic("a".to_string())))),
+                Type::Primitive(PrimitiveType::IntegerIdentifier)
+            ],
+            type_params: Some(vec![Type::Generic("a".to_string())]),
+            return_type: Box::new(Some(Type::Generic("a".to_string())))
+        })
+    );
 }
 
 // Section: SLIR, IR for system operations
@@ -2511,7 +2601,7 @@ struct StateQuery {
     module: Option<AstIdentifier>,
     collection: TypedIdentifier,
     query: Query,
-    transition: StateTransferFunc,
+//    transition: StateTransferFunc,
     result_var: Option<AstIdentifier>,
 }
 
@@ -2522,6 +2612,8 @@ enum SLIRNode {
     Logic(AstStatement),
 }
 
+// The subset of SLIR operations that are likely to have translated behavior
+// on the server
 #[derive(Debug)]
 enum SLIRServerNode {
     StateQuery(StateQuery),
@@ -2537,6 +2629,10 @@ fn state_variable_collection_name(
     Some(state_var_name_from_type(&r#type))
 }
 
+fn is_state_query(name: &str) -> bool {
+    name == "find"
+}
+ 
 fn slir_expr_nodes(
     expr: &AstExpr,
     schema_name: &str,
@@ -2546,10 +2642,18 @@ fn slir_expr_nodes(
     type_env: &TypeEnvironment,
     slir_nodes: &mut Vec<SLIRNode>,
 ) {
+    println!("Slir expr nodesing {:#?}", expr);
     match expr {
         AstExpr::DotAccess { receiver, property } => {
+            // This is not a state query, just logic
+            if !schemas.contains_key(&receiver.name) {
+                slir_nodes.push(SLIRNode::Logic(AstStatement::Expr(expr.clone())));
+                return;
+            }
+
             let name_path = vec![receiver.name.clone(), property.name.clone()];
             if let Some(collection_name) = state_variable_collection_name(&name_path, type_env) {
+                println!("Smart enough to know you're a state var?");
                 let r#type = resolve_variable_type(&name_path, type_env)
                     .expect("Type error - slir_expr_nodes");
                 let result_var = match stmt {
@@ -2567,11 +2671,9 @@ fn slir_expr_nodes(
                         r#type: r#type,
                     },
                     query: Query::Where,
-                    transition: StateTransferFunc::Read,
+//                    transition: StateTransferFunc::Read,
                     result_var: result_var,
                 }))
-            } else {
-                slir_nodes.push(SLIRNode::Logic(AstStatement::Expr(expr.clone())));
             }
         }
         AstExpr::CallExpr {
@@ -2590,6 +2692,7 @@ fn slir_expr_nodes(
                     .attributes
                     .iter()
                     .any(|attr| attr.name == receiver.name);
+                println!("Resolving variable type {:?}", name_path);
                 let state_var_type = resolve_variable_type(&name_path, type_env)
                     .expect("Type error - slir translate");
                 match state_variable_collection_name(&name_path, type_env) {
@@ -2603,7 +2706,7 @@ fn slir_expr_nodes(
                                 r#type: state_var_type.clone(),
                             },
                             query: Query::Where,
-                            transition: state_transition_func_from_str(&call_name.name),
+//                            transition: state_transition_func_from_str(&call_name.name),
                             result_var: None,
                         }));
                     }
@@ -2642,7 +2745,38 @@ fn slir_expr_nodes(
                     transition: state_transition_func_from_str(&call_name.name),
                     args: typed_args,
                 }))
+            } else if is_state_query(&call_name.name) {
+                let name_path = vec![
+                    schema_name.to_string(),
+                    method_name.to_string(),
+                    receiver.name.to_string(),
+                ];
+                let schema = schemas.get(schema_name).expect("Unable to find schema");
+                let is_state_variable = schema
+                    .attributes
+                    .iter()
+                    .any(|attr| attr.name == receiver.name);
+                let state_var_type = resolve_variable_type(&name_path, type_env)
+                    .expect("Type error - slir translate");
+                match state_variable_collection_name(&name_path, type_env) {
+                    Some(collection_name) if is_state_variable => {
+                        slir_nodes.push(SLIRNode::StateQuery(StateQuery {
+                            module: None,
+                            collection: TypedIdentifier {
+                                identifier: AstIdentifier {
+                                    name: collection_name,
+                                },
+                                r#type: state_var_type.clone(),
+                            },
+                            query: Query::Where,
+//                            transition: state_transition_func_from_str(&call_name.name),
+                            result_var: None,
+                        }));
+                    }
+                    _ => (),
+                };
             } else {
+                println!("Else case");
                 slir_nodes.push(SLIRNode::Logic(stmt.clone()))
             }
         }
@@ -2714,6 +2848,7 @@ fn slir_translate(
     schemas: &Schemas,
     type_env: &TypeEnvironment,
 ) -> Vec<SLIRNode> {
+    println!("SLIR translating {} {}", schema_name, method_name);
     let mut slir_nodes: Vec<SLIRNode> = vec![];
     for stmt in &body.statements {
         match stmt {
@@ -2932,6 +3067,9 @@ fn js_state_query_read(server_stmts: &Vec<SLIRServerNode>, schemas: &Schemas) ->
     }
 }
 
+// Associated types:
+//   ScenarioRecurringTransaction -> [CreateScenarioRecurringTransaction, ...]
+//     the Create<> is all attributes minus the id.
 fn js_state_query_create(
     state_var: &str,
     server_slir: &Vec<SLIRServerNode>,
@@ -2953,6 +3091,8 @@ fn js_state_query_create(
     let mut js_attr_values: Vec<JSExprOrSpread> = vec![];
     let mut response_props: Vec<PropOrSpread> = vec![];
 
+    // How to identify associations here? cs.scenarioRecurringTransactions is an association.
+    // Prob look it up in state_var schema.
     let create_arg = &transfer_args[0];
     let arg_type = match &create_arg.r#type {
         Type::Custom(ct) => match ct {
@@ -2968,19 +3108,38 @@ fn js_state_query_create(
         // if collection, insert into its own table
         // this should all be wrapped in a transaction
 
-        attr_names.push(attr.name.clone());
+        // start transaction
+        match &attr.r#type {
+            Type::Primitive(pt) => match pt {
+                PrimitiveType::Int | PrimitiveType::IntegerIdentifier | PrimitiveType::Numeric | PrimitiveType::String | PrimitiveType::StringIdentifier => {
+                    attr_names.push(attr.name.clone());
 
-        // TODO: this is assuming the name of 'data' which is used to
-        // parse the HTTP body in write requests.
-        js_attr_values.push(JSExprOrSpread::JSExpr(Box::new(JSAstNode::Identifier(
-            format!("data.{}", attr.name),
-        ))));
-        response_props.push(PropOrSpread::Prop(Prop {
-            key: JSAstNode::Identifier(attr.name.clone()),
-            value: JSAstNode::Identifier(format!("data.{}", attr.name)),
-        }));
-        sql_attr_names.push(SQLAstNode::Identifier(attr.name.clone()));
-        sql_value_placeholders.push(SQLAstNode::Identifier("?".to_string()))
+                    // TODO: this is assuming the name of 'data' which is used to
+                    // parse the HTTP body in write requests.
+                    js_attr_values.push(JSExprOrSpread::JSExpr(Box::new(JSAstNode::Identifier(
+                        format!("data.{}", attr.name),
+                    ))));
+                    response_props.push(PropOrSpread::Prop(Prop {
+                        key: JSAstNode::Identifier(attr.name.clone()),
+                        value: JSAstNode::Identifier(format!("data.{}", attr.name)),
+                    }));
+                    sql_attr_names.push(SQLAstNode::Identifier(attr.name.clone()));
+                    sql_value_placeholders.push(SQLAstNode::Identifier("?".to_string()))
+                },
+               PrimitiveType::Array(t) => {
+                  // array type - insert into its own table
+               }
+            },
+            Type::Custom(ct) => {
+                match ct {
+                    CustomType::Schema(name) => {
+                        // insert into its own table
+                    },
+                    _ => panic!("Unexpected attr type")
+                }
+            },
+            _ => panic!("Unexpected attr tpe")
+        }
     }
     let insert_sql = SQLAstNode::Insert {
         into: Box::new(SQLAstNode::Identifier(state_var.to_string())),
@@ -3749,8 +3908,12 @@ fn main() {
 
 /*
   TODO: Scenarios
+  * Introduce 'entity' - signifies data must be persisted, have an ID, and have a 
+    Create* schema also created 
 
   * Associations
-  * SQL Filtering
-
+      scenarios.create!(cs)
+        Should insert into scenarios table, and also insert into ScenarioRecurringTransaction table
+        when querying, should first query assocation, then build up Scenario - this can be optimized, i.e. only query necessary columns.
+  * SQL Filtering, i.e. LINQ system
  */

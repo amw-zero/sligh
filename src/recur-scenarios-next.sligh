@@ -1,0 +1,90 @@
+entity RecurringTransaction:
+  id: IntegerIdentifier
+  amount: Numeric
+  name: String
+end
+
+domain Budget:
+  recurringTransactions: [RecurringTransaction]
+
+  def createRecurringTransaction(rtc: CreateRecurringTransaction)
+    recurringTransactions.create!(rtc)
+  end
+
+  def deleteRecurringTransaction(rt: RecurringTransaction)
+    recurringTransactions.delete!(rt)
+  end
+
+  def updateRecurringTransaction(rt: RecurringTransaction)
+    recurringTransactions.update!(rt)
+  end
+
+  def viewRecurringTransactions()
+    recurringTransactions.read!()
+  end
+end
+
+schema ScheduledTransaction:
+  name: StringIdentifier
+end
+
+def expand(rt: RecurringTransaction) -> ScheduledTransaction
+  ScheduledTransaction.new(rt.name)
+end
+
+domain Schedule:
+  def viewScheduledTransactions()
+    let rts = Budget.recurringTransactions
+    let scheduledTransactions = rts.map(expand)
+
+    scheduledTransactions.read!()
+  end
+end
+
+entity ScenarioRecurringTransaction:
+  id: IntegerIdentifier
+  amount: Numeric
+  name: String
+end
+
+entity Scenario:
+  id: IntegerIdentifier
+  name: String
+  recurringTransactions: [ScenarioRecurringTransaction]
+end
+
+schema CreateScenarioRequest:
+  name: String
+end
+
+def toScenarioTransaction(recurringTransaction: RecurringTransaction) -> CreateScenarioRecurringTransaction
+  CreateScenarioRecurringTransaction.new(recurringTransaction.amount, recurringTransaction.name)
+end
+
+domain Scenarios:
+  scenarios: [Scenario]
+
+  def createScenario(csr: CreateScenarioRequest)
+    let recurringTransactions = Budget.recurringTransactions
+    let recurringTransactions = recurringTransactions.map(toScenarioTransaction)
+
+    let cs = CreateScenario.new(csr.name, recurringTransactions)
+
+    scenarios.create!(cs)
+  end
+
+  def viewScenario(scenarioId: IntegerIdentifier)
+    let scenario = scenarios.find(scenarioId)
+    scenario.read!()
+  end
+
+  def viewScenarioSchedule(scenarioId: IntegerIdentifier)
+    let scenario = scenarios.find(scenarioId)
+    let scenarioRts = scenario.recurringTransactions
+    let transactions = scenarioRts.map(expand)
+
+    transactions.read!()
+  end
+end
+
+
