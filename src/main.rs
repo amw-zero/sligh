@@ -528,7 +528,7 @@ fn js_translate_schema_attribute(name: &AstIdentifier, r#type: &Type) -> JSAstNo
 
 fn js_translate(ast: AstNode, schemas: &Schemas) -> JSAstNode {
     match ast {
-        AstNode::SchemaDef(SchemaDef { name, body }) => {
+        AstNode::SchemaDef(SchemaDef { name, body }) | AstNode::EntityDef(SchemaDef { name, body })=> {
             let no_methods = body.clone().into_iter().all(|def| match def {
                 SchemaDefinition::SchemaAttribute { .. } => true,
                 _ => false,
@@ -2297,7 +2297,6 @@ fn resolve_type(
     name_path: &Vec<String>,
     type_env: &TypeEnvironment,
 ) -> Option<Type> {
-    println!("Resolving type of node {:?}", node);
     match node {
         AstExpr::DotAccess { receiver, property } => {
             let mut name_path_plus_receiver = name_path.clone();
@@ -2642,7 +2641,6 @@ fn slir_expr_nodes(
     type_env: &TypeEnvironment,
     slir_nodes: &mut Vec<SLIRNode>,
 ) {
-    println!("Slir expr nodesing {:#?}", expr);
     match expr {
         AstExpr::DotAccess { receiver, property } => {
             // This is not a state query, just logic
@@ -2653,7 +2651,6 @@ fn slir_expr_nodes(
 
             let name_path = vec![receiver.name.clone(), property.name.clone()];
             if let Some(collection_name) = state_variable_collection_name(&name_path, type_env) {
-                println!("Smart enough to know you're a state var?");
                 let r#type = resolve_variable_type(&name_path, type_env)
                     .expect("Type error - slir_expr_nodes");
                 let result_var = match stmt {
@@ -2692,7 +2689,6 @@ fn slir_expr_nodes(
                     .attributes
                     .iter()
                     .any(|attr| attr.name == receiver.name);
-                println!("Resolving variable type {:?}", name_path);
                 let state_var_type = resolve_variable_type(&name_path, type_env)
                     .expect("Type error - slir translate");
                 match state_variable_collection_name(&name_path, type_env) {
@@ -2776,7 +2772,6 @@ fn slir_expr_nodes(
                     _ => (),
                 };
             } else {
-                println!("Else case");
                 slir_nodes.push(SLIRNode::Logic(stmt.clone()))
             }
         }
@@ -2848,7 +2843,6 @@ fn slir_translate(
     schemas: &Schemas,
     type_env: &TypeEnvironment,
 ) -> Vec<SLIRNode> {
-    println!("SLIR translating {} {}", schema_name, method_name);
     let mut slir_nodes: Vec<SLIRNode> = vec![];
     for stmt in &body.statements {
         match stmt {
@@ -3784,7 +3778,7 @@ fn main() {
                 );
 
                 let maybe_schema_slir = match &parsed {
-                    AstNode::SchemaDef(schema_def) => {
+                    AstNode::SchemaDef(schema_def) | AstNode::EntityDef(schema_def) => {
                         let schema_name = &schema_def.name;
                         let body = &schema_def.body;
 
@@ -3844,6 +3838,22 @@ fn main() {
                             Box::new(js_translate(parsed.clone(), &schemas)),
                         )));
                         slir_model.push(js_gen_string(js_translate(parsed.clone(), &schemas)));
+
+                        match &parsed {
+                            AstNode::EntityDef(SchemaDef{ name, body }) => {
+                                let create_schema = SchemaDef {
+                                    name: AstIdentifier { name: format!("Create{}", name.name) },
+                                    body: body.clone(),
+                                };
+                                let create_entity = AstNode::SchemaDef(create_schema);
+                                datatypes.push(js_gen_string(js_translate(create_entity.clone(), &schemas)));
+                                js_expanded_client_slir.push(js_gen_string(JSAstNode::ExportOperator(
+                                    Box::new(js_translate(create_entity.clone(), &schemas)),
+                                )));
+                                slir_model.push(js_gen_string(js_translate(create_entity.clone(), &schemas)));
+                            }
+                            _ => ()
+                        }
                     }
                 }
 
