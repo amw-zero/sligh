@@ -222,3 +222,24 @@ end
   StateQuery(recurring_transactions),
   Logic(Call(ScheduledTransaction)),
 ]
+
+
+Schemas:
+
+Sligh should be able to generate database migrations for schema changes.
+The whole database can be seen as a 2d array, the outer array holds each relation,
+and each relation is an array of column definitions. For relations, there are 2 Interesting
+operations, assuming current and next schemas:
+
+Create: this can be detected by taking the set difference of next - current. The remaining relations must be added
+Delete: this can be detected by taking the set difference of current - next. The remaining relations should be dropped.
+
+Column migrations are slightly more involved, because columns can be updated. Updates consist of type changes or name changes.
+Name changes cannot be determined automatically unfortunately, so some manual mechanism is still needed.
+
+Action Dependencies and Changes:
+
+One thing that is always difficult in a large app is knowing what could possibly break after a given change. Many times
+something breaks because it's not even known that it depends on some bit of state. Having system actions be the only
+way to change state, you can search for all actions which depend on some state and know what actions are affected
+by the upcoming change.

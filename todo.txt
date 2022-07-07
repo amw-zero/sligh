@@ -1,6 +1,14 @@
-* Model should handle reads and updates. Currently only creates are being handled.
+* Support associations, i.e. has_many queries
+
+* Develop the language-integrated query interface / mechanism. I.e. figure out how to generate SQL
+  from spec code
+
+* Get left-recursion working. Specifically, enable method chaining
 
 Future:
+
+* Generate typed AST after type checking. Currently type checking is always performed on the fly, even though 
+  types are known after parsing
 
 * Enable writing generated code as macros. It's painful to generate code using the AST directly.
   Using a quasi-quoted macro to express code, a la Nim, should make generating code much smoother.
@@ -17,6 +25,8 @@ Future:
 * Pagination - how to show that pagination is a simulation of the model?
 
 * count-based query optimization. Based on size of table, move logic into SQL or in-memory
+
+* Action comment translates to logs
 
 * Create documentation on language construct equivalences, e.g. state access and SELECT, create! and INSERT, etc.
 
