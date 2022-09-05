@@ -1,3 +1,0 @@
-schema Test do
-    rts: RecurringTransaction
-end
