@@ -1,0 +1,12 @@
+(menhir
+ (modules parser))
+
+(ocamllex lexer)
+
+(library
+ (name edsl)
+ (modules parser lexer util core))
+
+(env
+ (dev
+  (flags (:standard -w -66))))

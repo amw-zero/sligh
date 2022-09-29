@@ -1,0 +1,4 @@
+(executable
+ (public_name edsl)
+ (name main)
+ (libraries edsl))
