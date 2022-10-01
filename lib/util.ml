@@ -30,7 +30,7 @@ let parse_with_error lexbuf =
   | SyntaxError msg ->
     print_endline "SyntaxErr";
     Printf.printf "%s: %s\n" (print_position lexbuf) msg;
-    None
+    ([], None)
   | Parser.Error ->
     print_endline "ParserErr";
     Printf.printf "%s: syntax error\n" (print_position lexbuf);
@@ -38,20 +38,21 @@ let parse_with_error lexbuf =
 
 let rec parse_and_print lexbuf =
   match parse_with_error lexbuf with
-  | Some value ->
-    string_of_expr value |> print_endline;
+  | (l, Some expr) ->
+    List.iter (fun e ->  string_of_expr e |> print_endline) l;
+    string_of_expr expr |> print_endline;
     parse_and_print lexbuf
-  | None -> ()
+  | (_, None) -> ()
 
 let evaluate_e expr =
   let lexbuf = Lexing.from_string expr in
   parse_and_print lexbuf
 
-let evaluate expr =
+(* let evaluate expr =
   let lexbuf = Lexing.from_string expr in
   let ctx = new Lexer.lexer_context in
   match Parser.prog (Lexer.read ctx) lexbuf with
   | Some value ->
     let parsed = string_of_expr value in
     Printf.printf "Parsed term: %s\n" parsed;
-  | None -> ()
+  | None -> () *)

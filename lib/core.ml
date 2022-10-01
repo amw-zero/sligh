@@ -18,8 +18,3 @@ let rec tsexpr_of_expr e = match e with
   | Num(n) -> TSNum(n)
   | TS(t) -> t
   | _ -> TSNum(-1)
-
-type decl = Idk
-
-type syntax = 
-  Expr of expr | Decl of decl

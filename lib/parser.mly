@@ -26,15 +26,20 @@ open Core
 %token UNQUOTEEND
 
 %start prog
-%type <expr option> prog 
+%type <expr list * expr option> prog 
 %type <boolexp> boolexp
 %type <tsexpr> tsexp
 
 %%
 
 prog: 
-  | e = expression EOF { Some e }
-  | EOF                { None }
+  | es = expressions e = expression EOF { (es, Some(e)) }
+  | e = expression EOF                      { ([], Some(e)) }
+  | EOF                                 { ([], None) }
+
+expressions: 
+  | es = expressions e = expression { es @ [e] }
+  | e = expression                  { [e] }
 
 boolexp:
   | TRUE                            { BTrue }
@@ -50,6 +55,7 @@ tsexp:
 expression: 
   | boolexp                               { BoolExp($1) }
   | n = NUMBER                            { Num(n) }
+  | i = IDEN                              { Iden(i) }
   | LET i = IDEN EQUALS e = expression    { Let(i, e) }
   | TYPESCRIPT COLON tse = tsexp END      { TS(tse) }
   | LPAREN e = expression RPAREN          { e }
