@@ -22,6 +22,8 @@ open Core
 %token COLON
 %token END
 %token EQUALS
+%token UNQUOTE
+%token UNQUOTEEND
 
 %start prog
 %type <expr option> prog 
@@ -43,11 +45,12 @@ boolexp:
 tsexp:
   | n = NUMBER                          { TSNum(n) }
   | LET i = IDEN EQUALS tse = tsexp     { TSLet(i, tse) }
+  | UNQUOTE e = expression UNQUOTEEND   { tsexpr_of_expr e }
 
 expression: 
   | boolexp                               { BoolExp($1) }
   | n = NUMBER                            { Num(n) }
   | LET i = IDEN EQUALS e = expression    { Let(i, e) }
-  | TYPESCRIPT COLON tse = tsexp END    { TS(tse) }
+  | TYPESCRIPT COLON tse = tsexp END      { TS(tse) }
   | LPAREN e = expression RPAREN          { e }
 

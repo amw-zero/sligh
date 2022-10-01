@@ -8,7 +8,7 @@ let rec string_of_boolexp t = match t with
   | BIf (t1, t2, t3) -> Printf.sprintf "if %s then %s else %s" (string_of_boolexp t1) (string_of_boolexp t2) (string_of_boolexp t3)
 
 let rec string_of_ts_expr e = match e with
-  | TSIDen(i) -> "ts-" ^ i
+  | TSIden(i) -> "ts-" ^ i
   | TSNum(n) -> "ts-" ^ string_of_int n
   | TSLet(v, ie) -> "ts-let ts-" ^ v ^ " = " ^ string_of_ts_expr ie
 

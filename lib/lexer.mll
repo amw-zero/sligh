@@ -28,6 +28,7 @@ let num = ['0'-'9']
 rule read ctx = parse
   | eof               { EOF }
   | whitespace+       { read ctx lexbuf }
+  | "}}"              { ctx#pop_lexer; UNQUOTEEND }
   | "true"            { TRUE }
   | "false"           { FALSE }
   | "if"              { IF }
@@ -46,6 +47,7 @@ rule read ctx = parse
 and read_ts ctx = parse
   | eof               { EOF }
   | whitespace+       { read_ts ctx lexbuf }
+  | "{{"              { ctx#push_lexer (read ctx); UNQUOTE }
   | ':'               { COLON }
   | "="               { EQUALS }
   | "let"             { LET }
@@ -54,7 +56,6 @@ and read_ts ctx = parse
   | iden              { IDEN (Lexing.lexeme lexbuf) }
   | _                 { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
 
-(* I am not sure if this is needed - appears in Links lexer *)
 {
  let lexer : lexer_context
          -> (Lexing.lexbuf -> Parser.token) =
