@@ -1,7 +1,12 @@
 type boolexp = BTrue | BFalse | BIf of boolexp * boolexp * boolexp
 
+type tsexpr =
+  | TSIDen of string
+  | TSNum of int
+  | TSLet of string * tsexpr
+
 type expr = 
-  TS of string
+  TS of tsexpr
   | Let of string * expr
   | Iden of string
   | Num of int

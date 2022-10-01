@@ -1,12 +1,20 @@
 open Edsl
 
-let evaluate expr =
-  let lexbuf = Lexing.from_string expr in
-  match Parser.prog Lexer.read lexbuf with
-  | Some value ->
-    (*let parsed = Util.string_of_boolexp value in*)
-    (*Printf.printf "Parsed term: %s\n" parsed;*)
-    print_endline "hey now"
-  | None -> ()
+(* let simp = "let x = 5" *)
 
-let () = evaluate "if (if true then false else true) then true else (if true then false else true)"; ()
+(* let prog = {|
+  let prog = typescript:
+    let x = `{5 + 5};
+    let y = 17;
+  tsend|} *)
+
+(* let ts = {|
+  let ts = typescript:
+    let x = 5
+  tsend
+|} *)
+
+(* let prog = "let x = typescript: 5 tsend" *)
+let ts = "typescript: 5 end"
+
+let () = Util.evaluate_e ts
