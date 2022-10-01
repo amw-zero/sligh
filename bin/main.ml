@@ -1,10 +1,27 @@
 open Edsl
 
-let ts = {|
-  let y = 5
-  let x = typescript: 
-    let tsvar = {{y}}
-  end
+(* let nested = {|
+let y = 5
+let x = typescript: 
+  let tsvar = {{
+    let again = typescript: {{y}} end
+  }}
+  5
+end
+y
+|} *)
+
+let plain = {|
+let x = typescript:
+  let t = 1
+  let t2 = 2
+  let t3 = {{
+    typescript:
+      5
+    end
+  }}
+end
+y
 |}
 
-let () = Util.evaluate_e ts
+let () = Util.evaluate_e plain

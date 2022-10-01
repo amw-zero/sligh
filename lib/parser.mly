@@ -33,30 +33,39 @@ open Core
 %%
 
 prog: 
-  | es = expressions e = expression EOF { (es, Some(e)) }
+  | ss = statements e = expression EOF { (ss, Some(e)) }
   | e = expression EOF                  { ([], Some(e)) }
   | EOF                                 { ([], None) }
 
-expressions: 
-  | es = expressions e = expression { es @ [e] }
-  | e = expression                  { [e] }
+statements:
+  | ss = statements s = statement   { ss @ [s] }
+  | s = statement                   { [s] }
+
+statement:
+  | LET i = IDEN EQUALS e = expression    { Let(i, e) }
+  | e = expression                        { e }
 
 boolexp:
   | TRUE                            { BTrue }
   | FALSE                           { BFalse }
   | IF e1 = boolexp THEN e2 = boolexp ELSE e3 = boolexp 
                                     { BIf(e1, e2, e3) }
+expression:
+  | boolexp                                       { BoolExp($1) }
+  | n = NUMBER                                    { Num(n) }
+  | i = IDEN                                      { Iden(i) }
+  | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
+  | LPAREN e = expression RPAREN                  { e }
+
+(* TypeScript Lang *)
+tsstatements:
+  | ss = tsstatements s = tsstatement   { ss @ [s] }
+  | s = tsstatement                     { [s] }
+
+tsstatement:
+  | LET i = IDEN EQUALS tse = tsexp     { TSLet(i, tse) }
+  | e = tsexp                           { e }
 
 tsexp:
   | n = NUMBER                          { TSNum(n) }
-  | LET i = IDEN EQUALS tse = tsexp     { TSLet(i, tse) }
   | UNQUOTE e = expression UNQUOTEEND   { tsexpr_of_expr e }
-
-expression: 
-  | boolexp                               { BoolExp($1) }
-  | n = NUMBER                            { Num(n) }
-  | i = IDEN                              { Iden(i) }
-  | LET i = IDEN EQUALS e = expression    { Let(i, e) }
-  | TYPESCRIPT COLON tse = tsexp END      { TS(tse) }
-  | LPAREN e = expression RPAREN          { e }
-

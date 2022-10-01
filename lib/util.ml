@@ -11,13 +11,15 @@ let rec string_of_ts_expr e = match e with
   | TSIden(i) -> "ts-" ^ i
   | TSNum(n) -> "ts-" ^ string_of_int n
   | TSLet(v, ie) -> "ts-let ts-" ^ v ^ " = " ^ string_of_ts_expr ie
+  | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
 
 let rec string_of_expr e = match e with
-  | TS(tse) -> "ts: " ^ string_of_ts_expr tse
+  | TS(tse) -> "ts: " ^ String.concat "\n" (List.map string_of_ts_expr tse)
   | Let(name, body) -> "let " ^ name ^ " = " ^ string_of_expr body
   | Iden(_) -> "iden"
   | Num(n) -> string_of_int n
   | BoolExp(_) -> "boolexp"
+  | StmtList(ss) -> String.concat "\n" (List.map string_of_expr ss)
 
 let print_position lexbuf =
   let pos = lexbuf.lex_curr_p in
