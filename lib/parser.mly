@@ -19,7 +19,6 @@ open Core
 %token LET
 %token <string> IDEN
 %token TYPESCRIPT
-%token TSEND
 %token COLON
 %token END
 %token EQUALS

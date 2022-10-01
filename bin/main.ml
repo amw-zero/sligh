@@ -15,6 +15,6 @@ open Edsl
 |} *)
 
 (* let prog = "let x = typescript: 5 tsend" *)
-let ts = "typescript: 5 end"
+let ts = "let x = typescript: let x = 5 end"
 
 let () = Util.evaluate_e ts

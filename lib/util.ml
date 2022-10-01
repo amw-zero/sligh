@@ -7,8 +7,13 @@ let rec string_of_boolexp t = match t with
   | BFalse -> "false"
   | BIf (t1, t2, t3) -> Printf.sprintf "if %s then %s else %s" (string_of_boolexp t1) (string_of_boolexp t2) (string_of_boolexp t3)
 
+let rec string_of_ts_expr e = match e with
+  | TSIDen(i) -> i
+  | TSNum(n) -> string_of_int n
+  | TSLet(v, ie) -> "let " ^ v ^ " = " ^ string_of_ts_expr ie
+
 let rec string_of_expr e = match e with
-  | TS(_) -> "ts"
+  | TS(tse) -> "ts: " ^ string_of_ts_expr tse
   | Let(name, body) -> "let " ^ name ^ " = " ^ string_of_expr body
   | Iden(_) -> "iden"
   | Num(n) -> string_of_int n
@@ -21,7 +26,7 @@ let print_position lexbuf =
 
 let parse_with_error lexbuf =
   let ctx = new Lexer.lexer_context in
-  try Parser.prog (Lexer.read ctx) lexbuf with
+  try Parser.prog (Lexer.lexer ctx) lexbuf with
   | SyntaxError msg ->
     print_endline "SYntaxErr";
     Printf.printf "%s: %s\n" (print_position lexbuf) msg;

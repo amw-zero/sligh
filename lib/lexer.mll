@@ -49,15 +49,16 @@ and read_ts ctx = parse
   | ':'               { print_endline "TS Parsing :"; COLON }
   | "="               { EQUALS }
   | "let"             { LET }
-  | "tsend"            { print_endline "popping ts ctx tsend"; ctx#pop_lexer; TSEND }
   | "end"             { print_endline "popping ts ctx"; ctx#pop_lexer; END }
   | num               { print_endline "TS num"; NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
   | iden              { IDEN (Lexing.lexeme lexbuf) }
   | _                 { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
 
+(* I am not sure if this is needed - appears in Links lexer *)
 {
  let lexer : lexer_context
          -> (Lexing.lexbuf -> Parser.token) =
   fun ctxt ->
+    ctxt#push_lexer (read ctxt);
    fun lexbuf -> print_endline "Next context?"; ctxt#next_lexer lexbuf
 }
