@@ -34,7 +34,7 @@ open Core
 
 prog: 
   | es = expressions e = expression EOF { (es, Some(e)) }
-  | e = expression EOF                      { ([], Some(e)) }
+  | e = expression EOF                  { ([], Some(e)) }
   | EOF                                 { ([], None) }
 
 expressions: 
