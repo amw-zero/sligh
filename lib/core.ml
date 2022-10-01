@@ -13,6 +13,23 @@ type expr =
   | Num of int
   | BoolExp of boolexp
   | StmtList of expr list
+  | Domain of string * domain_def list
+
+and typed_attr =
+  { name: string;
+    (* Elevate the type to an actual type datatype *)
+    typ: string;
+  }
+
+and domain_action =
+  { aname: string;
+    args: typed_attr list; 
+    body: expr;
+  }
+
+and domain_def =
+| DomainAttr of typed_attr
+| DomainAction of domain_action
 
 let rec tsexpr_of_expr e = match e with
   | Let(v, b) -> TSLet(v, tsexpr_of_expr b)

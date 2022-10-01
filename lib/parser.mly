@@ -14,7 +14,7 @@ open Core
 %token RPAREN
 %token EOF
 
-// Edsl
+// TS EDSL
 %token <int> NUMBER
 %token LET
 %token <string> IDEN
@@ -24,6 +24,10 @@ open Core
 %token EQUALS
 %token UNQUOTE
 %token UNQUOTEEND
+
+// Sligh
+%token DOMAIN
+%token DEF
 
 %start prog
 %type <expr list * expr option> prog 
@@ -42,8 +46,9 @@ statements:
   | s = statement                   { [s] }
 
 statement:
-  | LET i = IDEN EQUALS e = expression    { Let(i, e) }
-  | e = expression                        { e }
+  | LET i = IDEN EQUALS e = expression            { Let(i, e) }
+  | DOMAIN i = IDEN COLON d = domain_def* END      { Domain(i, d) }
+  | e = expression                                { e }
 
 boolexp:
   | TRUE                            { BTrue }
@@ -56,6 +61,15 @@ expression:
   | i = IDEN                                      { Iden(i) }
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | LPAREN e = expression RPAREN                  { e }
+
+domain_def:
+  | attr = IDEN COLON typ = IDEN                  { DomainAttr({name=attr; typ=typ}) }
+  | DEF act= IDEN LPAREN RPAREN COLON e = expression END 
+                                                  { DomainAction({
+                                                      aname=act;
+                                                      args=[];
+                                                      body=e
+                                                    }) }
 
 (* TypeScript Lang *)
 tsstatements:

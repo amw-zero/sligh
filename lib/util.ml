@@ -20,6 +20,10 @@ let rec string_of_expr e = match e with
   | Num(n) -> string_of_int n
   | BoolExp(_) -> "boolexp"
   | StmtList(ss) -> String.concat "\n" (List.map string_of_expr ss)
+  | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs)
+and string_of_domain_def def = match def with
+| DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
+| DomainAction({ aname; body; _}) -> Printf.sprintf "def %s():\n\t%s" aname (string_of_expr body)
 
 let print_position lexbuf =
   let pos = lexbuf.lex_curr_p in
@@ -47,14 +51,4 @@ let rec parse_and_print lexbuf =
   | (_, None) -> ()
 
 let evaluate_e expr =
-  let lexbuf = Lexing.from_string expr in
-  parse_and_print lexbuf
-
-(* let evaluate expr =
-  let lexbuf = Lexing.from_string expr in
-  let ctx = new Lexer.lexer_context in
-  match Parser.prog (Lexer.read ctx) lexbuf with
-  | Some value ->
-    let parsed = string_of_expr value in
-    Printf.printf "Parsed term: %s\n" parsed;
-  | None -> () *)
+  Lexing.from_string expr |> parse_and_print
