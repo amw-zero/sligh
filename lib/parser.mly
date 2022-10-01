@@ -41,8 +41,8 @@ boolexp:
                                     { BIf(e1, e2, e3) }
 
 tsexp:
-  | n = NUMBER                          { print_endline "TSExp Num hit"; TSNum(n) }
-  | LET i = IDEN EQUALS tse = tsexp     { print_endline "TSExp Let hit"; TSLet(i, tse) }
+  | n = NUMBER                          { TSNum(n) }
+  | LET i = IDEN EQUALS tse = tsexp     { TSLet(i, tse) }
 
 expression: 
   | boolexp                               { BoolExp($1) }

@@ -8,9 +8,9 @@ let rec string_of_boolexp t = match t with
   | BIf (t1, t2, t3) -> Printf.sprintf "if %s then %s else %s" (string_of_boolexp t1) (string_of_boolexp t2) (string_of_boolexp t3)
 
 let rec string_of_ts_expr e = match e with
-  | TSIDen(i) -> i
-  | TSNum(n) -> string_of_int n
-  | TSLet(v, ie) -> "let " ^ v ^ " = " ^ string_of_ts_expr ie
+  | TSIDen(i) -> "ts-" ^ i
+  | TSNum(n) -> "ts-" ^ string_of_int n
+  | TSLet(v, ie) -> "ts-let ts-" ^ v ^ " = " ^ string_of_ts_expr ie
 
 let rec string_of_expr e = match e with
   | TS(tse) -> "ts: " ^ string_of_ts_expr tse
@@ -28,7 +28,7 @@ let parse_with_error lexbuf =
   let ctx = new Lexer.lexer_context in
   try Parser.prog (Lexer.lexer ctx) lexbuf with
   | SyntaxError msg ->
-    print_endline "SYntaxErr";
+    print_endline "SyntaxErr";
     Printf.printf "%s: %s\n" (print_position lexbuf) msg;
     None
   | Parser.Error ->
@@ -39,7 +39,6 @@ let parse_with_error lexbuf =
 let rec parse_and_print lexbuf =
   match parse_with_error lexbuf with
   | Some value ->
-    print_endline "parse_and_print";
     string_of_expr value |> print_endline;
     parse_and_print lexbuf
   | None -> ()

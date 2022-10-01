@@ -39,18 +39,18 @@ rule read ctx = parse
   | "="               { EQUALS }
   | "let"             { LET }
   | "end"             { END }  
-  | "typescript"      { print_endline "pushing TS context"; ctx#push_lexer (read_ts ctx); TYPESCRIPT }
+  | "typescript"      { ctx#push_lexer (read_ts ctx); TYPESCRIPT }
   | num               { NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
   | iden              { IDEN (Lexing.lexeme lexbuf) }
   | _                 { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
 and read_ts ctx = parse
   | eof               { EOF }
   | whitespace+       { read_ts ctx lexbuf }
-  | ':'               { print_endline "TS Parsing :"; COLON }
+  | ':'               { COLON }
   | "="               { EQUALS }
   | "let"             { LET }
-  | "end"             { print_endline "popping ts ctx"; ctx#pop_lexer; END }
-  | num               { print_endline "TS num"; NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
+  | "end"             { ctx#pop_lexer; END }
+  | num               { NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
   | iden              { IDEN (Lexing.lexeme lexbuf) }
   | _                 { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
 
@@ -60,5 +60,5 @@ and read_ts ctx = parse
          -> (Lexing.lexbuf -> Parser.token) =
   fun ctxt ->
     ctxt#push_lexer (read ctxt);
-   fun lexbuf -> print_endline "Next context?"; ctxt#next_lexer lexbuf
+   fun lexbuf -> ctxt#next_lexer lexbuf
 }
