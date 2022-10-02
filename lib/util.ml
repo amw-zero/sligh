@@ -16,11 +16,12 @@ let rec string_of_ts_expr e = match e with
 let rec string_of_expr e = match e with
   | TS(tse) -> "ts: " ^ String.concat "\n" (List.map string_of_ts_expr tse)
   | Let(name, body) -> "let " ^ name ^ " = " ^ string_of_expr body
-  | Iden(_) -> "iden"
+  | Iden(i) -> i
   | Num(n) -> string_of_int n
   | BoolExp(_) -> "boolexp"
   | StmtList(ss) -> String.concat "\n" (List.map string_of_expr ss)
   | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs)
+  | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
 and string_of_domain_def def = match def with
 | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
 | DomainAction({ aname; body; _}) -> Printf.sprintf "def %s():\n\t%s" aname (string_of_expr body)

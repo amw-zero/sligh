@@ -14,6 +14,7 @@ type expr =
   | BoolExp of boolexp
   | StmtList of expr list
   | Domain of string * domain_def list
+  | Call of string * expr list
 
 and typed_attr =
   { name: string;

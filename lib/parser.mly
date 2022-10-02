@@ -24,10 +24,12 @@ open Core
 %token EQUALS
 %token UNQUOTE
 %token UNQUOTEEND
+%token COMMA
 
 // Sligh
 %token DOMAIN
 %token DEF
+%token DOT
 
 %start prog
 %type <expr list * expr option> prog 
@@ -59,6 +61,8 @@ expression:
   | boolexp                                       { BoolExp($1) }
   | n = NUMBER                                    { Num(n) }
   | i = IDEN                                      { Iden(i) }
+  | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN 
+                                                  { Call(meth, [Iden(recv)] @ args) }
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | LPAREN e = expression RPAREN                  { e }
 

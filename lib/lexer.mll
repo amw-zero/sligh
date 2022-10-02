@@ -37,6 +37,8 @@ rule read ctx = parse
   | '('               { LPAREN }
   | ')'               { RPAREN }
   | ':'               { COLON }
+  | ','               { COMMA }
+  | '.'               { DOT }
   | "="               { EQUALS }
   | "let"             { LET }
   | "end"             { END }

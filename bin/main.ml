@@ -29,7 +29,7 @@ domain Test:
   state: Int
 
   def change():
-    5
+    state.push(5)
   end
 end
 
