@@ -28,7 +28,7 @@ let action = {|
 domain Test:
   state: Int
 
-  def change():
+  def change(a: int):
     state.push(5)
   end
 end

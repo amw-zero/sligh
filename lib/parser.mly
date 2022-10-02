@@ -67,13 +67,15 @@ expression:
   | LPAREN e = expression RPAREN                  { e }
 
 domain_def:
-  | attr = IDEN COLON typ = IDEN                  { DomainAttr({name=attr; typ=typ}) }
-  | DEF act= IDEN LPAREN RPAREN COLON e = expression END 
+  | ta = typed_attr                               { DomainAttr(ta) }
+  | DEF act= IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON e = expression END
                                                   { DomainAction({
                                                       aname=act;
-                                                      args=[];
+                                                      args;
                                                       body=e
                                                     }) }
+typed_attr:
+  | attr = IDEN COLON typ = IDEN                  { {name=attr; typ=typ} }
 
 (* TypeScript Lang *)
 tsstatements:

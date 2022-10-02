@@ -13,6 +13,9 @@ let rec string_of_ts_expr e = match e with
   | TSLet(v, ie) -> "ts-let ts-" ^ v ^ " = " ^ string_of_ts_expr ie
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
 
+let string_of_typed_attr ta =
+  Printf.sprintf "%s: %s" ta.name ta.typ
+
 let rec string_of_expr e = match e with
   | TS(tse) -> "ts: " ^ String.concat "\n" (List.map string_of_ts_expr tse)
   | Let(name, body) -> "let " ^ name ^ " = " ^ string_of_expr body
@@ -24,7 +27,7 @@ let rec string_of_expr e = match e with
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
 and string_of_domain_def def = match def with
 | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
-| DomainAction({ aname; body; _}) -> Printf.sprintf "def %s():\n\t%s" aname (string_of_expr body)
+| DomainAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
 
 let print_position lexbuf =
   let pos = lexbuf.lex_curr_p in
