@@ -61,14 +61,14 @@ expression:
   | boolexp                                       { BoolExp($1) }
   | n = NUMBER                                    { Num(n) }
   | i = IDEN                                      { Iden(i) }
-  | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN 
-                                                  { Call(meth, [Iden(recv)] @ args) }
+  | recv = expression DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN 
+                                                  { Call(meth, [recv] @ args) }
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | LPAREN e = expression RPAREN                  { e }
 
 domain_def:
   | ta = typed_attr                               { DomainAttr(ta) }
-  | DEF act= IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON e = expression END
+  | DEF act = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON e = expression END
                                                   { DomainAction({
                                                       aname=act;
                                                       args;

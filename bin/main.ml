@@ -28,12 +28,20 @@ let action = {|
 domain Test:
   state: Int
 
-  def change(a: int):
-    state.push(5)
+  def change(a: Int):
+    state.create!(5)
   end
 end
 
-y
+domain Test2:
+  state: String
+
+  def change(a: String):
+    (state.create!(a)).other!(b)
+  end
+end
+
+Test.change(5)
 |}
 
 (* let () = Util.evaluate_e plain *)
