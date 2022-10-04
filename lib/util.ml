@@ -23,7 +23,7 @@ let rec string_of_expr e = match e with
   | Num(n) -> string_of_int n
   | BoolExp(_) -> "boolexp"
   | StmtList(ss) -> String.concat "\n" (List.map string_of_expr ss)
-  | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs)
+  | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs) ^ "\nend\n"
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
 and string_of_domain_def def = match def with
 | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ

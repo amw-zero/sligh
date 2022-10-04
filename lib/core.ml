@@ -32,6 +32,7 @@ and domain_def =
 | DomainAttr of typed_attr
 | DomainAction of domain_action
 
+(* This effectively 'compiles' a Sligh expr into TS *)
 let rec tsexpr_of_expr e = match e with
   | Let(v, b) -> TSLet(v, tsexpr_of_expr b)
   | Iden (s) -> TSIden(s)

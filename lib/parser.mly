@@ -63,6 +63,10 @@ expression:
   | i = IDEN                                      { Iden(i) }
   | recv = expression DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN 
                                                   { Call(meth, [recv] @ args) }
+
+  (* This causes a shift/reduce warning currently *)
+  | meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
+                                                  { Call(meth, args) }
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | LPAREN e = expression RPAREN                  { e }
 
