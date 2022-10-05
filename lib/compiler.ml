@@ -26,5 +26,21 @@ let rec parse_and_print lexbuf =
     parse_and_print lexbuf
   | (_, None) -> ()
 
-let evaluate_e expr =
+let print expr =
   Lexing.from_string expr |> parse_and_print
+
+let rec _compile lexbuf =
+  match parse_with_error lexbuf with
+  | (statements, Some _) -> 
+    (* First we analyze the model, extracting information useful to metaprogramming an implementation *)
+    let model = Model.new_model () in
+    List.fold_left Model.analyze model statements
+    |> Model.print_model;
+
+    _compile lexbuf
+  | (_, None) -> print_endline "Got None during compilation"; ()
+
+let compile expr =
+  let lexbuf = Lexing.from_string expr in
+  _compile lexbuf
+  

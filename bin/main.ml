@@ -33,6 +33,14 @@ domain Test:
   end
 end
 
+domain Test2:
+  state: Int
+
+  def change(a: Int):
+    state.create!(5)
+  end
+end
+
 typescript:
   let x = 5
 end
@@ -114,12 +122,12 @@ implementation:
   client:
     typescript:
       // Make all schemas available on the Client
-      #*[
+      #[
         Model.schemas.map(|schema|
           typescript:
             interface #[schema.name] {
               // Note: Need splicing here
-              #*[schema.attributes.map(|attr|
+              #[schema.attributes.map(|attr|
                 typescript: #[attr.name]: #[attr.type] end
               )]
             }
@@ -190,5 +198,7 @@ end
     end
 *)
 
-(* let () = Util.evaluate_e plain *)
-let () = Compiler.evaluate_e action
+let () = Compiler.compile action;
+
+let ls = List.fold_left (fun a e -> a + e) 0 [1;2;3] in
+print_endline (string_of_int ls)
