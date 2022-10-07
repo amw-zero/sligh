@@ -23,6 +23,7 @@ let rec string_of_expr e = match e with
   | StmtList(ss) -> String.concat "\n" (List.map string_of_expr ss)
   | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs) ^ "\nend\n"
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
+  | Env(ss) -> "environment:\n\t" ^ String.concat "\n" (List.map string_of_expr ss) ^ "\nend"
 and string_of_domain_def def = match def with
 | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
 | DomainAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)

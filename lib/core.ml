@@ -15,6 +15,7 @@ type expr =
   | StmtList of expr list
   | Domain of string * domain_def list
   | Call of string * expr list
+  | Env of expr list
 
 and typed_attr =
   { name: string;

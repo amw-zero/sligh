@@ -1,89 +1,140 @@
 open Edsl
 
-(* let nested = {|
-let y = 5
-let x = typescript:
-  let tsvar = {{
-    let again = typescript: {{y}} end
-  }}
-  5
+(* let simple = {|
+entity Todo:
+  name: String
+  completed: Bool
 end
-y
-|} *)
 
-(* let plain = {|
-let x = typescript:
-  let t = 1
-  let t2 = 2
-  let t3 = {{
+domain TodoMVC:
+  todos: State(Todo)
+
+  def createTodo(t: CreateTodo):
+    todos.create!(t)
+  end
+
+  def markCompleted(todoId: TodoId):
+    todos.find(todoId).completed := true <=> todos.complete!(todoId)
+  end
+end
+
+effect create!(todos: State(todo), t: CreateTodo):
+  model:
+    todos.push(t)
+  end
+
+  client:
     typescript:
-      5
+      let resp = fetch("todos", { json, body: JSON.serialize({{ t }}) });
+      let data = await resp.json();
+    
+
+      ENV.todos.push(data);
     end
-  }}
-end
-y
-|} *)
-
-let action = {|
-domain Test:
-  state: Int
-
-  def change(a: Int):
-    state.create!(5)
-  end
-end
-
-domain Test2:
-  state: Int
-
-  def change(a: Int):
-    state.create!(5)
-  end
-end
-
-typescript:
-  let x = 5
-end
-
-change(Test, 5, 6)
-|}
-
-(* let action = {|
-domain Test:
-  state: Int
-
-  def change(a: Int):
-    state.create!(5)
-  end
-end
-
-domain Test2:
-  state: String
-
-  def change(a: String):
-    state.create!(a)
-  end
-end
-
-effect create!(s: idk):
-  client = typescript:
-    fetch()
   end
 
-  server = typescript:
-
+  server:
+    typescript:
+      app.post({{ }})
+    end
   end
 end
 
 environment:
-  def 
-  client = typescript:
+  def toTsProperty(v: Variable)
+    typescript:
+      {{ v.name }}: {{ v.type }}
+    end
+  end
 
+  def toTsInterface(s: Schema)
+    typescript:
+      interface {{ s.name }} {
+        {{ s.state.map(toTsProperty) }}
+      }
+    end
+  end
+
+  def toTsArg(arg: Attribute)
+    typescript:
+      {{ arg.name }}: {{ arg.typ }}
+    end
+  end
+
+  def toTsAction(a: Action)
+    typescript:
+      async {{ a.name }}({{ a.args.map(toTsArg) }}) {
+        {{ a.applyEffects!(:client) }}
+      }
+    end
+  end
+
+  def toTsActions(s: Schema)
+    s.actions.map(toTsAction)    
+  end
+
+  client:
+    typescript:
+      {{ Model.domains.map(toTsInterface) }}
+
+      class Client {
+        constructor(config: (a: Client) => void = () => {}) {
+          config(this);
+        }
+
+        {{ Model.domains.map(toTsProperty) }}
+
+        {{ Model.domains.flatMap(toTsActions) }}
+      }
+    end
   end
 end
 
-Test.change(5)
-|} *)
+(* let environment = {|
+entity Todo:
+  name: String
+  completed: Bool
+end
+
+domain TodoMVC:
+  todos: State(Todo)
+
+  def createTodo(t: CreateTodo):
+    todos.create!(t)
+  end
+
+  def markCompleted(todoId: TodoId):
+    todos.complete!(todoId)
+  end
+end
+
+environment:
+  def toTsProperty(v: Variable)
+    typescript:
+      {{ v.name }}: {{ v.type }}
+    end
+  end
+
+  def toTsInterface(s: Schema)
+    typescript:
+      interface {{ s.name }} {
+        {{ s.state.map(toTsProperty) }}
+      }
+    end
+  end
+
+  def toTsArg(arg: Attribute)
+    typescript:
+      {{ arg.name }}: {{ arg.typ }}
+    end
+  end
+
+  client:
+    typescript:
+      {{ Model.domains.map(toTsInterface) }}
+    end
+  end
+end
 
 (* let impl = {|
 domain Test:
@@ -196,9 +247,62 @@ end
         5
       end 
     end
+
+    let unquoted = typescript: let x = unquote: 5 end end
+    let unquote_nested = typescript:
+      let x = unquote:
+        5
+      end
+    end
 *)
+let env_simpl = {|
+entity Todo:
+  name: String
+  completed: Bool
+end
 
-let () = Compiler.compile action;
+domain TodoMVC:
+  todos: Todo
 
-let ls = List.fold_left (fun a e -> a + e) 0 [1;2;3] in
-print_endline (string_of_int ls)
+  def createTodo(t: CreateTodo):
+    todos.create!(t)
+  end
+
+  def markCompleted(todoId: TodoId):
+    todos.complete!(todoId)
+  end
+end
+
+environment:
+  typescript:
+    let x = {{ Model.test(4) }}
+  end
+end
+|}
+
+(* let working = {|
+domain Test:
+  state: Int
+
+  def change(a: Int):
+    state.create!(5)
+  end
+end
+
+domain Test2:
+  state: Int
+
+  def change(a: Int):
+    state.create!(5)
+  end
+end
+
+typescript:
+  let x = 5
+end
+
+change(Test, 5, 6)
+|} *)
+
+
+let () = Compiler.compile env_simpl;

@@ -43,7 +43,9 @@ rule read ctx = parse
   | "let"             { LET }
   | "end"             { END }
   | "domain"          { DOMAIN }  
-  | "def"             { DEF }  
+  | "def"             { DEF }
+  | "environment"     { ENVIRONMENT }
+  | "entity"          { ENTITY }
   | "typescript"      { ctx#push_lexer (read_ts ctx); TYPESCRIPT }
   | num               { NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
   | iden              { IDEN (Lexing.lexeme lexbuf) }

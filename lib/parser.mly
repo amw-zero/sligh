@@ -30,27 +30,30 @@ open Core
 %token DOMAIN
 %token DEF
 %token DOT
+%token ENVIRONMENT
+%token ENTITY
 
 %start prog
-%type <expr list * expr option> prog 
+%type <expr list> prog 
 %type <boolexp> boolexp
 %type <tsexpr> tsexp
 
 %%
 
 prog: 
-  | ss = statements e = expression EOF { (ss, Some(e)) }
-  | e = expression EOF                  { ([], Some(e)) }
-  | EOF                                 { ([], None) }
+  | ss = statements EOF     { ss }
+  | EOF                     { [] }
 
 statements:
   | ss = statements s = statement   { ss @ [s] }
   | s = statement                   { [s] }
 
 statement:
-  | LET i = IDEN EQUALS e = expression            { Let(i, e) }
-  | DOMAIN i = IDEN COLON d = domain_def* END      { Domain(i, d) }
-  | e = expression                                { e }
+  | LET i = IDEN EQUALS e = expression              { Let(i, e) }
+  | DOMAIN i = IDEN COLON d = domain_def* END       { Domain(i, d) }
+  | ENTITY i = IDEN COLON d = domain_def* END       { Domain(i, d) }
+  | ENVIRONMENT COLON ss = statements END           { Env(ss) }
+  | e = expression                                  { e }
 
 boolexp:
   | TRUE                            { BTrue }
