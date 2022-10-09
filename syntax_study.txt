@@ -1,0 +1,218 @@
+(*
+  Todo:
+    * Closures
+    * Unquote splicing (#*[] vs #[])
+    * applyEffects
+    * separatedList
+    * Model - Model.actions, Model.transferredStateVariables
+    * 
+*)
+
+(*
+  Closure syntax study:
+   let c = |x| x + 1
+   let c2 = (x): x + 1
+   let c3 = (x: Int) -> Int: x + 1 end
+   let mapped = [1,2,4].map (x): x + 1 end
+*)
+
+(*
+  Effect syntax study
+  domain TodoMvc
+    todos: State(Todo)
+
+    def doSomethin(t: Todo)
+      todos.create!(t)
+    end
+  end
+
+  effect create!(env: Environment, state: State('a), t: Todo):
+    model: state.push(t) end
+
+    client:
+      typescript:
+        let res = await fetch();
+        let data = await res.json();
+
+        {{ env.todos }}.push(data);
+      end
+    end
+
+    server:
+      typescript:
+      end
+    end
+  end
+
+  def domainToTsState(d: Domain)
+    d.state
+  end
+
+  def actionToClientAction(a: Action)
+    typescript:
+      async {{ a.name }}({{ a.args }}) {
+        {{ a.body }}
+      }
+    end
+  end
+
+  def domainToClientActions(d: Domain)
+    d.actions.map(actionToClientAction)
+  end
+
+  def ClientEnv()
+    typescript:
+      class Env {
+        {{ Model.domains.flatMap(domainToTsState) }}
+
+        {{ Model.domains.map(domainToClientActions) }}
+      }
+    end
+  end
+
+  def actionToServerAction(a: Action)
+
+  end
+
+  def domainToServerActions(d: Domain)
+    d.actions.map(actionToServerAction)
+  end
+
+  def ServerEnv()
+    typescript:
+      import express, { Express } from "express";
+      import cors from "cors";
+      import sqlite3 from "sqlite3";
+
+      sqlite3.verbose();
+
+      export function makeApp(db: sqlite3.Database) {
+        const app = express();
+
+        app.use(cors({ origin: "*" }));
+        app.use(express.json());
+        defineEndpoints(app, db);
+
+        return { app };
+      }
+
+      export function startApp(app: Express, onStart: () => void) {
+        const port = 3000;
+        return app.listen(port, () => {
+          console.log(`Example app listening at http://localhost:${port}`);
+          onStart();
+        });
+      }
+
+      {{ Model.domains.map(domainToServerActions) }}
+    end
+  end
+
+  environment:
+    client: ClientEnv() end
+    server: ServerEnv() end
+  end
+*)
+
+(*
+  Unquote syntax study:
+    let c = typescript: let x = sligh: 5 end end
+    let indented = typescript: 
+      let x = sligh: 
+        5
+      end 
+    end
+
+    let unquoted = typescript: let x = unquote: 5 end end
+    let unquote_nested = typescript:
+      let x = unquote:
+        5
+      end
+    end
+*)
+
+(* Fullstack Impl study *)
+(* let impl = {|
+domain Test:
+  state: Int
+
+  def change(a: Int):
+    state.create!(5)
+  end
+end
+
+effect create!(state: 'a, n: Int):
+  client:
+    typescript:
+      let resp = await fetch(#[relationFrom(state)], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(n),
+      });
+      let data = await resp.json();
+
+      // ??
+      // #[action.transferedStateVariabels.map(|sv|:
+      //   typescript: client.#[sv.name]
+      // end)]
+    end
+  end
+
+  server:
+    typescript:
+      app.post(...)
+    end
+  end
+end
+
+implementation:
+  client:
+    typescript:
+      // Make all schemas available on the Client
+      #[
+        Model.schemas.map(|schema|
+          typescript:
+            interface #[schema.name] {
+              // Note: Need splicing here
+              #[schema.attributes.map(|attr|
+                typescript: #[attr.name]: #[attr.type] end
+              )]
+            }
+          end
+        )
+      ]
+
+      class Client {
+        constructor(config: (a: Client) => void = () => {}) {
+          config(this);
+        }
+
+        #*[
+          Model.transferredStateVariables.map(|sv|
+            typescript: 
+              #[sv.name]: #[sv.type]
+            end
+          )
+        ]
+
+        #*[ Model.actions.map(|action| 
+          typescript:
+            async #[action.name](#*[separatedList(',' action.args)]) {
+              // Since the effect definition separates client and server
+              // functionality, the client side can be chosen here
+              // The applyEffects function replaces all effects in a term 
+              // with the specified argument's definition, i.e. 'applyEffects(client)'
+              // replaces all effect invocations with the client definition.
+              await #[ action.body.applyEffects(client) ];
+            }
+          end
+        )]
+      }
+    end
+  end
+
+  server:
+    applyEffects(server)
+  end
+end
+|} *)
