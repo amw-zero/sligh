@@ -20,10 +20,12 @@ let rec string_of_expr e = match e with
   | Iden(i) -> i
   | Num(n) -> string_of_int n
   | BoolExp(_) -> "boolexp"
-  | StmtList(ss) -> String.concat "\n" (List.map string_of_expr ss)
+  | StmtList(ss) -> string_of_stmt_list ss
   | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs) ^ "\nend\n"
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
-  | Env(ss) -> "environment:\n\t" ^ String.concat "\n" (List.map string_of_expr ss) ^ "\nend"
+  | Env(es) -> String.concat "\n\n" (List.map (fun e -> "environment:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody)) es) ^ "\nend"
 and string_of_domain_def def = match def with
 | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
 | DomainAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
+and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)
+

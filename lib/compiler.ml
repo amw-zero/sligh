@@ -18,22 +18,25 @@ let parse_with_error lexbuf =
     Printf.printf "%s: syntax error\n" (print_position lexbuf);
     exit (-1)
 
-let rec parse_and_print lexbuf =
+let parse_and_print lexbuf =
   match parse_with_error lexbuf with
   | statements ->
-    List.iter (fun e ->  Util.string_of_expr e |> print_endline) statements;
-    parse_and_print lexbuf
+    List.iter (fun e ->  Util.string_of_expr e |> print_endline) statements
 
 let print expr =
   Lexing.from_string expr |> parse_and_print
 
 let _compile lexbuf =
-  let statements = parse_with_error lexbuf in
-
-  (* First we analyze the model, extracting information useful to metaprogramming an implementation *)
+  let init_env_map = Environment.new_environment () in
   let init_model = Model.new_model () in
+
+  let statements = parse_with_error lexbuf in
+  
   let model = List.fold_left Model.analyze init_model statements in
-  Model.print_model model
+  Model.print_model model;
+
+  let env_map = List.fold_left Environment.build_env init_env_map statements in
+  Environment.print_env env_map
 
 let compile expr =
   let lexbuf = Lexing.from_string expr in

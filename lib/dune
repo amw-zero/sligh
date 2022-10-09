@@ -1,11 +1,12 @@
 (menhir
- (modules parser))
+ (modules parser)
+ (flags --explain))
 
 (ocamllex lexer)
 
 (library
  (name edsl)
- (modules compiler model parser lexer util core))
+ (modules compiler model environment parser lexer util core))
 
 (env
  (dev

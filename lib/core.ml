@@ -6,7 +6,7 @@ type tsexpr =
   | TSLet of string * tsexpr
   | TSStmtList of tsexpr list
 
-type expr = 
+  type expr = 
   TS of tsexpr list
   | Let of string * expr
   | Iden of string
@@ -15,7 +15,7 @@ type expr =
   | StmtList of expr list
   | Domain of string * domain_def list
   | Call of string * expr list
-  | Env of expr list
+  | Env of env_component list
 
 and typed_attr =
   { name: string;
@@ -32,6 +32,11 @@ and domain_action =
 and domain_def =
 | DomainAttr of typed_attr
 | DomainAction of domain_action
+
+and env_component = {
+  ename: string;
+  ebody: expr list
+}
 
 (* This effectively 'compiles' a Sligh expr into TS *)
 let rec tsexpr_of_expr e = match e with

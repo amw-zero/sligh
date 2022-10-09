@@ -255,7 +255,7 @@ end
       end
     end
 *)
-let env_simpl = {|
+(* let env_simpl = {|
 entity Todo:
   name: String
   completed: Bool
@@ -274,13 +274,15 @@ domain TodoMVC:
 end
 
 environment:
-  typescript:
-    let x = {{ Model.test(4) }}
+  client:
+    typescript:
+      let x = {{ Model.domains }}
+    end
   end
 end
-|}
+|} *)
 
-(* let working = {|
+let working = {|
 domain Test:
   state: Int
 
@@ -301,8 +303,14 @@ typescript:
   let x = 5
 end
 
-change(Test, 5, 6)
-|} *)
+environment:
+  client:
+    typescript:
+      let x = {{Model.domains()}}
+    end
+  end
+end
 
+|}
 
-let () = Compiler.compile env_simpl;
+let () = Compiler.compile working;
