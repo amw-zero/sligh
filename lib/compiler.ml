@@ -26,7 +26,8 @@ let parse_and_print lexbuf =
 let print expr =
   Lexing.from_string expr |> parse_and_print
 
-let _compile lexbuf =
+let compile expr =
+  let lexbuf = Lexing.from_string expr in
   let init_env_map = Environment.new_environment () in
   let init_model = Model.new_model () in
 
@@ -36,9 +37,7 @@ let _compile lexbuf =
   Model.print_model model;
 
   let env_map = List.fold_left Environment.build_env init_env_map statements in
-  Environment.print_env env_map
+  Environment.print_env env_map;
 
-let compile expr =
-  let lexbuf = Lexing.from_string expr in
-  _compile lexbuf
+  Environment.output_env env_map;
   

@@ -178,16 +178,8 @@ domain Test:
   end
 end
 
-domain Test2:
-  state: Int
-
-  def change(a: Int):
-    state.create!(5)
-  end
-end
-
 environment:
-client:
+  client:
     typescript:
       class Env {
         {{ x: Int }}
@@ -195,7 +187,6 @@ client:
     end
   end
 end
-
 
 |}
 
@@ -209,4 +200,4 @@ end
   end
 end *)
 
-let () = Compiler.print working;
+let () = Compiler.compile working;

@@ -29,7 +29,6 @@ let analyze m stmt =
   | _ -> m
 
 let print_schema s =
-  print_endline "Hello";
   Printf.printf "Schema: %s\n" s.name
 
 let print_model m =

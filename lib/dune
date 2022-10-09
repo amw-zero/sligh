@@ -6,7 +6,7 @@
 
 (library
  (name edsl)
- (modules compiler model environment parser lexer util core))
+ (modules compiler model environment codegen parser lexer util core))
 
 (env
  (dev
