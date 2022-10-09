@@ -25,6 +25,9 @@ open Core
 %token UNQUOTE
 %token UNQUOTEEND
 %token COMMA
+%token CLASS
+%token LBRACE
+%token RBRACE
 
 // Sligh
 %token DOMAIN
@@ -72,7 +75,7 @@ boolexp:
                                     { BIf(e1, e2, e3) }
 expression:
   | n = NUMBER                                    { Num(n) }
-  | i = IDEN                                      { Iden(i) }
+  | i = IDEN                                      { Iden(i, None) }
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | boolexp                                       { BoolExp($1) }
   | LPAREN e = expression RPAREN                  { e }
@@ -100,7 +103,16 @@ tsstatements:
 
 tsstatement:
   | LET i = IDEN EQUALS tse = tsexp     { TSLet(i, tse) }
+  | CLASS i = IDEN LBRACE ds = tsclassdef* RBRACE        { TSClass(i, ds) }
   | e = tsexp                           { e }
+
+tsclassdef_unquote:
+  | i = IDEN COLON typ = IDEN { tsclassdef_of_expr (Iden(i, Some(type_of_string typ))) }
+  | e = expression  { tsclassdef_of_expr e }
+
+tsclassdef:
+  | UNQUOTE e = tsclassdef_unquote UNQUOTEEND   { e }
+  | i = IDEN COLON typ = IDEN           { TSClassProp(i, tstype_of_string typ) }
 
 tsexp:
   | n = NUMBER                          { TSNum(n) }

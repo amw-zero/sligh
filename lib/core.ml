@@ -1,15 +1,27 @@
 type boolexp = BTrue | BFalse | BIf of boolexp * boolexp * boolexp
 
+type sligh_type =
+  | STInt
+  | STCustom of string
+
+type ts_type = 
+  | TSTNumber
+  | TSTCustom of string  
+
+type tsclassdef =
+  | TSClassProp of string * ts_type
+
 type tsexpr =
-  | TSIden of string
+  | TSIden of string * ts_type option
   | TSNum of int
   | TSLet of string * tsexpr
   | TSStmtList of tsexpr list
+  | TSClass of string * tsclassdef list
 
-  type expr = 
+type expr = 
   TS of tsexpr list
   | Let of string * expr
-  | Iden of string
+  | Iden of string * sligh_type option
   | Num of int
   | BoolExp of boolexp
   | StmtList of expr list
@@ -38,10 +50,26 @@ and env_component = {
   ebody: expr list
 }
 
+let type_of_string s = match s with
+  | "Int" -> STInt
+  | _ -> STCustom(s)
+
+let tstype_of_string s = match s with
+  | "number" -> TSTNumber
+  | _ -> TSTCustom(s)
+
+let tstype_of_type t = match t with
+  | STInt -> TSTNumber
+  | STCustom s -> TSTCustom s
+
 (* This effectively 'compiles' a Sligh expr into TS *)
 let rec tsexpr_of_expr e = match e with
   | Let(v, b) -> TSLet(v, tsexpr_of_expr b)
-  | Iden (s) -> TSIden(s)
+  | Iden (s, Some(t)) -> TSIden(s, Some(tstype_of_type t))
   | Num(n) -> TSNum(n)
   | TS(ts) -> TSStmtList(ts)
   | _ -> TSNum(-1)
+
+let tsclassdef_of_expr e = match e with
+  | Iden(i, Some(t)) -> TSClassProp(i, tstype_of_type t)
+  | _ -> TSClassProp("!error!", TSTNumber)
