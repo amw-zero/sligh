@@ -183,6 +183,7 @@ environment:
     typescript:
       class Env {
         {{ x: Int }}
+        {{ y: Int }}
        }
     end
   end

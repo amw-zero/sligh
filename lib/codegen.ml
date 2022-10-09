@@ -12,7 +12,7 @@ let string_of_tstype tst = match tst with
   | TSTCustom c -> c
 
 let string_of_tsclassdef cd = match cd with
-  | TSClassProp(n, typ) -> Printf.sprintf "ts-%s: ts-%s" n (string_of_tstype typ)
+  | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
 
 let string_of_type t = match t with
   | STInt -> "Int"
@@ -23,12 +23,12 @@ let string_of_typed_attr ta =
 
 let rec string_of_ts_expr e = match e with
   | TSIden(i, t) -> (match t with
-    | Some(t) -> Printf.sprintf "ts-%s: %s" i (string_of_tstype t)
-    | None -> Printf.sprintf "ts-%s" i)
-  | TSNum(n) -> "ts-" ^ string_of_int n
-  | TSLet(v, ie) -> "ts-let ts-" ^ v ^ " = " ^ string_of_ts_expr ie
+    | Some(t) -> Printf.sprintf "%s: %s" i (string_of_tstype t)
+    | None -> Printf.sprintf "%s" i)
+  | TSNum(n) -> string_of_int n
+  | TSLet(v, ie) -> "let" ^ v ^ " = " ^ string_of_ts_expr ie
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
-  | TSClass(n, ds) -> Printf.sprintf "ts-class %s\n\t%s" n (String.concat "\n" (List.map string_of_tsclassdef ds))
+  | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
 
 let rec string_of_expr e = match e with
   | TS(tse) -> String.concat "\n" (List.map string_of_ts_expr tse)
