@@ -1,5 +1,6 @@
 %{
 open Core
+open Typescript_syntax
 %}
 
 // Values
@@ -116,4 +117,6 @@ tsclassdef:
 
 tsexp:
   | n = NUMBER                          { TSNum(n) }
+  | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
+                                        { TSMethodCall(recv, meth, args) }
   | UNQUOTE e = expression UNQUOTEEND   { tsexpr_of_expr e }

@@ -1,4 +1,7 @@
 open Core
+open Typescript_syntax
+
+let print_list l = String.concat "\n" l
 
 let rec string_of_boolexp t = match t with
   | BTrue -> "true"
@@ -24,6 +27,8 @@ let rec string_of_ts_expr e = match e with
   | TSLet(v, ie) -> "ts-let ts-" ^ v ^ " = " ^ string_of_ts_expr ie
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
   | TSClass(n, ds) -> Printf.sprintf "ts-class %s\n\t%s" n (String.concat "\n" (List.map string_of_tsclassdef ds))
+  | TSMethodCall(recv, m, args) -> Printf.sprintf "ts-%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
+
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name ta.typ

@@ -1,4 +1,5 @@
 open Core
+open Typescript_syntax
 
 let print_list l = String.concat "\n" l
 
@@ -29,6 +30,7 @@ let rec string_of_ts_expr e = match e with
   | TSLet(v, ie) -> "let" ^ v ^ " = " ^ string_of_ts_expr ie
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
   | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
+  | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
 
 let rec string_of_expr e = match e with
   | TS(tse) -> String.concat "\n" (List.map string_of_ts_expr tse)

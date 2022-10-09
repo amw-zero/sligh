@@ -187,6 +187,12 @@ environment:
        }
     end
   end
+
+  server:
+    typescript:
+      app.post(5)
+    end
+  end
 end
 
 |}

@@ -55,11 +55,14 @@ and read_ts ctx = parse
   | whitespace+       { read_ts ctx lexbuf }
   | "{{"              { ctx#push_lexer (read ctx); UNQUOTE }
   | ':'               { COLON }
+  | '.'               { DOT }
   | "="               { EQUALS }
   | "let"             { LET }
   | "class"           { CLASS }
   | '{'               { LBRACE }
   | '}'               { RBRACE }
+  | '('               { LPAREN }
+  | ')'               { RPAREN }
   | "end"             { ctx#pop_lexer; END }
   | num               { NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
   | iden              { IDEN (Lexing.lexeme lexbuf) }

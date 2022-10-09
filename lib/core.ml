@@ -1,22 +1,10 @@
+open Typescript_syntax
+
 type boolexp = BTrue | BFalse | BIf of boolexp * boolexp * boolexp
 
 type sligh_type =
   | STInt
   | STCustom of string
-
-type ts_type = 
-  | TSTNumber
-  | TSTCustom of string  
-
-type tsclassdef =
-  | TSClassProp of string * ts_type
-
-type tsexpr =
-  | TSIden of string * ts_type option
-  | TSNum of int
-  | TSLet of string * tsexpr
-  | TSStmtList of tsexpr list
-  | TSClass of string * tsclassdef list
 
 type expr = 
   TS of tsexpr list
