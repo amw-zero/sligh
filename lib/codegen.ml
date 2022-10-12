@@ -1,5 +1,4 @@
 open Core
-open Typescript_syntax
 
 let print_list l = String.concat "\n" l
 
@@ -14,6 +13,7 @@ let string_of_tstype tst = match tst with
 
 let string_of_tsclassdef cd = match cd with
   | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
+  | CDSLExpr(_) -> "CDSLExpr remove"
 
 let string_of_type t = match t with
   | STInt -> "Int"
@@ -31,6 +31,7 @@ let rec string_of_ts_expr e = match e with
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
   | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
+  | SLExpr(_) -> "SLExpr"
 
 let rec string_of_expr e = match e with
   | TS(tse) -> String.concat "\n" (List.map string_of_ts_expr tse)
@@ -44,6 +45,7 @@ let rec string_of_expr e = match e with
   | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs) ^ "\nend\n"
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
   | Env(es) -> String.concat "\n\n" (List.map (fun e -> "environment:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody)) es) ^ "\nend"
+  | FuncDef(name, args, body) -> Printf.sprintf "def %s(%s):\n\t%s" name (String.concat ", " (List.map string_of_typed_attr args)) (string_of_stmt_list body)
   and string_of_domain_def def = match def with
   | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
   | DomainAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)

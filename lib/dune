@@ -6,7 +6,9 @@
 
 (library
  (name edsl)
- (modules compiler model environment codegen parser lexer util core typescript_syntax))
+ (modules compiler parser lexer interpreter model environment codegen util core)
+ (inline_tests)
+ (preprocess (pps ppx_inline_test)))
 
 (env
  (dev

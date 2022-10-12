@@ -1,175 +1,6 @@
 open Edsl
 
-(* let simple = {|
-entity Todo:
-  name: String
-  completed: Bool
-end
-
-domain TodoMVC:
-  todos: State(Todo)
-
-  def createTodo(t: CreateTodo):
-    todos.create!(t)
-  end
-
-  def markCompleted(todoId: TodoId):
-    todos.find(todoId).completed := true <=> todos.complete!(todoId)
-  end
-end
-
-effect create!(todos: State(todo), t: CreateTodo):
-  model:
-    todos.push(t)
-  end
-
-  client:
-    typescript:
-      let resp = fetch("todos", { json, body: JSON.serialize({{ t }}) });
-      let data = await resp.json();
-    
-
-      ENV.todos.push(data);
-    end
-  end
-
-  server:
-    typescript:
-      app.post({{ }})
-    end
-  end
-end
-
-environment:
-  def toTsProperty(v: Variable)
-    typescript:
-      {{ v.name }}: {{ v.type }}
-    end
-  end
-
-  def toTsInterface(s: Schema)
-    typescript:
-      interface {{ s.name }} {
-        {{ s.state.map(toTsProperty) }}
-      }
-    end
-  end
-
-  def toTsArg(arg: Attribute)
-    typescript:
-      {{ arg.name }}: {{ arg.typ }}
-    end
-  end
-
-  def toTsAction(a: Action)
-    typescript:
-      async {{ a.name }}({{ a.args.map(toTsArg) }}) {
-        {{ a.applyEffects!(:client) }}
-      }
-    end
-  end
-
-  def toTsActions(s: Schema)
-    s.actions.map(toTsAction)    
-  end
-
-  client:
-    typescript:
-      {{ Model.domains.map(toTsInterface) }}
-
-      class Client {
-        constructor(config: (a: Client) => void = () => {}) {
-          config(this);
-        }
-
-        {{ Model.domains.map(toTsProperty) }}
-
-        {{ Model.domains.flatMap(toTsActions) }}
-      }
-    end
-  end
-end
-
-(* let environment = {|
-entity Todo:
-  name: String
-  completed: Bool
-end
-
-domain TodoMVC:
-  todos: State(Todo)
-
-  def createTodo(t: CreateTodo):
-    todos.create!(t)
-  end
-
-  def markCompleted(todoId: TodoId):
-    todos.complete!(todoId)
-  end
-end
-
-environment:
-  def toTsProperty(v: Variable)
-    typescript:
-      {{ v.name }}: {{ v.type }}
-    end
-  end
-
-  def toTsInterface(s: Schema)
-    typescript:
-      interface {{ s.name }} {
-        {{ s.state.map(toTsProperty) }}
-      }
-    end
-  end
-
-  def toTsArg(arg: Attribute)
-    typescript:
-      {{ arg.name }}: {{ arg.typ }}
-    end
-  end
-
-  client:
-    typescript:
-      {{ Model.domains.map(toTsInterface) }}
-    end
-  end
-end
-
-(* let env_simpl = {|
-entity Todo:
-  name: String
-  completed: Bool
-end
-
-domain TodoMVC:
-  todos: Todo
-
-  def createTodo(t: CreateTodo):
-    todos.create!(t)
-  end
-
-  def markCompleted(todoId: TodoId):
-    todos.complete!(todoId)
-  end
-end
-
-def domainToTsState(d: Domain)
-  d.name: d.type
-end
-
-environment:
-  client:
-    typescript:
-      class Env {
-        {{ Model.domains.map(domainToTsState) }}
-      }
-    end
-  end
-end
-|} *)
-
-let working = {|
+(* let working = {|
 domain Test:
   state: Int
 
@@ -178,13 +9,21 @@ domain Test:
   end
 end
 
+def topLevel():
+  let x = 5
+end
+
+def other(i: Int):
+  let x = i
+end
+
 environment:
   client:
     typescript:
       class Env {
         {{ x: Int }}
         {{ y: Int }}
-       }
+      }
     end
   end
 
@@ -195,16 +34,67 @@ environment:
   end
 end
 
-|}
+|} *)
 
-(* environment:
+(* let eval = {|
+domain Test:
+  state: Int
+
+  def change(a: Int):
+    state.create!(5)
+  end
+end
+
+def func(i: Int):
+  let x = 5
+end
+
+environment:
   client:
     typescript:
-      class Env {
-        {{ x: int }}
-       }
+      {{ func(5) }}
     end
   end
-end *)
+end
 
-let () = Compiler.compile working;
+
+|} *)
+
+let eval = {|
+domain Test:
+  state: Int
+
+  def change(a: Int):
+    state.create!(5)
+  end
+end
+
+def func(i: Int):
+  i
+end
+
+typescript:
+  {{ func(8) }}
+end
+|}
+
+(* 
+  TODO: 
+    Compile-time evaluation of Sligh terms.
+      This will require interpreting Sligh terms in Ocaml.
+      This may require taking a naming context as an arg in multiple places.
+      This also will require creating the special variable "Model" which is the
+      compiled model.
+      Replace tsclassdef_of_expr with syntax construction functions, a la template
+        Haskell and Nim. Have to create TSClassProp for example, and that context
+        can't be created in a quasi-quote.
+
+    For environment, should the typescript expressions be evaluated during
+    parsing or after? If after, need to represent Sligh terms inside of TS,
+    which isn't possible right now.
+
+    I think that's pretty much necessary anyway, since the Environment has to use definitions
+    from the fully built Model.
+*)
+
+let () = Compiler.compile eval;

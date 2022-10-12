@@ -1,6 +1,6 @@
 %{
 open Core
-open Typescript_syntax
+open Interpreter
 %}
 
 // Values
@@ -58,8 +58,9 @@ statement:
 
   (* This should get parsed into an Entity node *)
   | ENTITY i = IDEN COLON d = domain_def* END       { Domain(i, d) }
-  | ENVIRONMENT COLON es = env_components END           { Env(es) }
-
+  | ENVIRONMENT COLON es = env_components END       { Env(es) }
+  | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
+                                                    { FuncDef(i, args, body) }
   | e = expression                                  { e }
 
 env_components:
@@ -104,19 +105,20 @@ tsstatements:
 
 tsstatement:
   | LET i = IDEN EQUALS tse = tsexp     { TSLet(i, tse) }
-  | CLASS i = IDEN LBRACE ds = tsclassdef* RBRACE        { TSClass(i, ds) }
+  | CLASS i = IDEN LBRACE ds = tsclassdef* RBRACE
+                                        { TSClass(i, ds) }
   | e = tsexp                           { e }
 
 tsclassdef_unquote:
-  | i = IDEN COLON typ = IDEN { tsclassdef_of_expr (Iden(i, Some(type_of_string typ))) }
-  | e = expression  { tsclassdef_of_expr e }
+  | i = IDEN COLON typ = IDEN   { CDSLExpr (Iden(i, Some(type_of_string typ))) }
+  | e = expression              { CDSLExpr e }
 
 tsclassdef:
   | UNQUOTE e = tsclassdef_unquote UNQUOTEEND   { e }
-  | i = IDEN COLON typ = IDEN           { TSClassProp(i, tstype_of_string typ) }
+  | i = IDEN COLON typ = IDEN                   { TSClassProp(i, tstype_of_string typ) }
 
 tsexp:
   | n = NUMBER                          { TSNum(n) }
   | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
                                         { TSMethodCall(recv, meth, args) }
-  | UNQUOTE e = expression UNQUOTEEND   { tsexpr_of_expr e }
+  | UNQUOTE e = expression UNQUOTEEND   { SLExpr(e) }

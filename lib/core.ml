@@ -1,5 +1,3 @@
-open Typescript_syntax
-
 type boolexp = BTrue | BFalse | BIf of boolexp * boolexp * boolexp
 
 type sligh_type =
@@ -16,6 +14,7 @@ type expr =
   | Domain of string * domain_def list
   | Call of string * expr list
   | Env of env_component list
+  | FuncDef of string * typed_attr list * expr list
 
 and typed_attr =
   { name: string;
@@ -38,26 +37,21 @@ and env_component = {
   ebody: expr list
 }
 
-let type_of_string s = match s with
-  | "Int" -> STInt
-  | _ -> STCustom(s)
+and tsexpr =
+| TSIden of string * ts_type option
+| TSNum of int
+| TSLet of string * tsexpr
+| TSStmtList of tsexpr list
+| TSMethodCall of string * string * tsexpr list
+| TSClass of string * tsclassdef list
+| SLExpr of expr
 
-let tstype_of_string s = match s with
-  | "number" -> TSTNumber
-  | _ -> TSTCustom(s)
+and ts_type = 
+  | TSTNumber
+  | TSTCustom of string  
 
-let tstype_of_type t = match t with
-  | STInt -> TSTNumber
-  | STCustom s -> TSTCustom s
+and tsclassdef =
+  | CDSLExpr of expr
+  | TSClassProp of string * ts_type
 
-(* This effectively 'compiles' a Sligh expr into TS *)
-let rec tsexpr_of_expr e = match e with
-  | Let(v, b) -> TSLet(v, tsexpr_of_expr b)
-  | Iden (s, Some(t)) -> TSIden(s, Some(tstype_of_type t))
-  | Num(n) -> TSNum(n)
-  | TS(ts) -> TSStmtList(ts)
-  | _ -> TSNum(-1)
-
-let tsclassdef_of_expr e = match e with
-  | Iden(i, Some(t)) -> TSClassProp(i, tstype_of_type t)
-  | _ -> TSClassProp("!error!", TSTNumber)
+let tsclassprop s t = TSClassProp(s, t)
