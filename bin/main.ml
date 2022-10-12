@@ -65,11 +65,9 @@ def func(i: Int):
   i
 end
 
-environment:
-  client:
-    typescript:
-      {{ func(8) }}
-    end
+process client:
+  typescript:
+    {{ func(8) }}
   end
 end
 |}

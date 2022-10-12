@@ -6,7 +6,7 @@
 
 (library
  (name edsl)
- (modules compiler parser lexer interpreter model environment codegen util core)
+ (modules compiler parser lexer interpreter model process codegen util core)
  (inline_tests)
  (preprocess (pps ppx_inline_test)))
 

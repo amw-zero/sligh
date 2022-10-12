@@ -13,7 +13,7 @@ type expr =
   | StmtList of expr list
   | Domain of string * domain_def list
   | Call of string * expr list
-  | Env of env_component list
+  | Process of env_component
   | FuncDef of string * typed_attr list * expr list
 
 and typed_attr =

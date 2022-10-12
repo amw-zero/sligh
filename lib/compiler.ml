@@ -34,7 +34,7 @@ let print expr =
 
 let compile expr =
   let lexbuf = Lexing.from_string expr in
-  let init_env_map = Environment.new_environment () in
+  let init_procs = Process.new_processes () in
   let init_model = Model.new_model () in
   let init_interp_env = Interpreter.new_environment () in
 
@@ -47,12 +47,12 @@ let compile expr =
   Interpreter.print_env interp_env;
 
   (* 
-    It's important to compile the Environment last, because Environment's will be
-    derived from the Model, so the Model has to be analyzed and built first. Environment's
+    It's important to compile the Process last, because Process's will be
+    derived from the Model, so the Model has to be analyzed and built first. Process's
     will also likely have interpreted Sligh code, so that all needs to be executable, i.e.
     a proper Interpreter.Env needs to be set up.
   *)
-  let env_map = List.fold_left Environment.build_env init_env_map statements in
-  Environment.print_env env_map;
-  Environment.output_env env_map interp_env;
+  let procs_map = List.fold_left Process.build_procs init_procs statements in
+  Process.print procs_map;
+  Process.output procs_map interp_env;
 

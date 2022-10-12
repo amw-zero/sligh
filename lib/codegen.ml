@@ -44,7 +44,7 @@ let rec string_of_expr e = match e with
   | StmtList(ss) -> string_of_stmt_list ss
   | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs) ^ "\nend\n"
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
-  | Env(es) -> String.concat "\n\n" (List.map (fun e -> "environment:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody)) es) ^ "\nend"
+  | Process(e) -> "process:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody) ^ "\nend"
   | FuncDef(name, args, body) -> Printf.sprintf "def %s(%s):\n\t%s" name (String.concat ", " (List.map string_of_typed_attr args)) (string_of_stmt_list body)
   and string_of_domain_def def = match def with
   | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ

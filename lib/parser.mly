@@ -34,7 +34,7 @@ open Interpreter
 %token DOMAIN
 %token DEF
 %token DOT
-%token ENVIRONMENT
+%token PROCESS
 %token ENTITY
 
 %start prog
@@ -58,17 +58,10 @@ statement:
 
   (* This should get parsed into an Entity node *)
   | ENTITY i = IDEN COLON d = domain_def* END       { Domain(i, d) }
-  | ENVIRONMENT COLON es = env_components END       { Env(es) }
+  | PROCESS n = IDEN COLON es = statement* END      { Process({ename=n;ebody=es}) }
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
                                                     { FuncDef(i, args, body) }
   | e = expression                                  { e }
-
-env_components:
-  | es = env_components e = env_component           { es @ [e] }  
-  | e = env_component                               { [e] }
-
-env_component:
-   | i = IDEN COLON ss = statement* END           { {ename=i; ebody=ss} }
 
 boolexp:
   | TRUE                            { BTrue }
