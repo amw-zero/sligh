@@ -46,13 +46,6 @@ let compile expr =
   let interp_env = List.fold_left Interpreter.build_env init_interp_env statements in
   Interpreter.print_env interp_env;
 
-  (* 
-    It's important to compile the Process last, because Process's will be
-    derived from the Model, so the Model has to be analyzed and built first. Process's
-    will also likely have interpreted Sligh code, so that all needs to be executable, i.e.
-    a proper Interpreter.Env needs to be set up.
-  *)
   let procs_map = List.fold_left Process.build_procs init_procs statements in
   Process.print procs_map;
   Process.output procs_map interp_env;
-

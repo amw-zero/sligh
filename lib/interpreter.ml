@@ -47,6 +47,9 @@ and eval_and_return expr_list call_env =
 
 and eval_ts ts_expr env = match ts_expr with
 | SLExpr(e) -> tsexpr_of_expr (eval e env)
+| TSMethodCall(recv, call, args) ->
+    let reduced_args = List.map (fun a -> eval_ts a env) args in
+    TSMethodCall(recv, call, reduced_args)
 | _ -> ts_expr
 
 and tsexpr_of_expr e = match e with

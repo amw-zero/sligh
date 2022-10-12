@@ -36,6 +36,18 @@ end
 
 |} *)
 
+let eval = {|
+def func(i: Int):
+  i
+end
+
+process client:
+  typescript:
+    something.call({{ func(5) }})
+  end
+end
+|}
+
 (* let eval = {|
 domain Test:
   state: Int
@@ -46,31 +58,20 @@ domain Test:
 end
 
 def func(i: Int):
-  let x = 5
-end
-
-environment:
-  client:
-    typescript:
-      {{ func(5) }}
-    end
-  end
-end
-
-
-|} *)
-
-let eval = {|
-def func(i: Int):
   i
 end
 
 process client:
+  def testing():
+    5
+  end
+
   typescript:
+    {{ Model.map(5) }}
     {{ func(8) }}
   end
 end
-|}
+|} *)
 
 (* 
   TODO: 

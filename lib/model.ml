@@ -33,3 +33,5 @@ let print_schema s =
 
 let print_model m =
   List.iter print_schema m.schemas
+
+(* let expr_of_model m =  *)
