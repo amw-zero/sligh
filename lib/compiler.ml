@@ -46,12 +46,6 @@ let compile expr =
   let interp_env = List.fold_left Interpreter.build_env init_interp_env statements in
   Interpreter.print_env interp_env;
 
-  let last_stmt = List.rev statements |> List.hd in
-  let res = Interpreter.eval last_stmt interp_env in
-  Util.string_of_expr res |> print_endline;
-
-  (* let expanded = Interpreter.compeval statements interp_env in *)
-
   (* 
     It's important to compile the Environment last, because Environment's will be
     derived from the Model, so the Model has to be analyzed and built first. Environment's
@@ -60,5 +54,5 @@ let compile expr =
   *)
   let env_map = List.fold_left Environment.build_env init_env_map statements in
   Environment.print_env env_map;
-  Environment.output_env env_map;
-  
+  Environment.output_env env_map interp_env;
+

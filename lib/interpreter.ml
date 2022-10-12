@@ -22,9 +22,9 @@ let build_call_env (env: expr Env.t) (pair: (typed_attr * expr)) =
   let (arg_sig, arg) = pair in
   Env.add arg_sig.name arg env
 
-
 (* Evaluate a Sligh expression *)
-let rec eval (e: expr) (env: expr Env.t) = match e with
+let rec evaln es env = eval_and_return es env
+and eval (e: expr) (env: expr Env.t) = match e with
   | Iden(i, _) -> eval (Env.find i env) env
   | Num(_) -> e
   | Call(name, args) ->
@@ -67,7 +67,6 @@ let type_of_string s = match s with
 let tstype_of_string s = match s with
   | "number" -> TSTNumber
   | _ -> TSTCustom(s)
-
 
 (* let rec tsclassdef_of_expr e = match e with
   | Iden(i, Some(t)) -> TSClassProp(i, tstype_of_type t)

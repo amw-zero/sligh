@@ -61,20 +61,16 @@ end
 |} *)
 
 let eval = {|
-domain Test:
-  state: Int
-
-  def change(a: Int):
-    state.create!(5)
-  end
-end
-
 def func(i: Int):
   i
 end
 
-typescript:
-  {{ func(8) }}
+environment:
+  client:
+    typescript:
+      {{ func(8) }}
+    end
+  end
 end
 |}
 
