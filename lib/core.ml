@@ -13,7 +13,7 @@ type expr =
   | StmtList of expr list
   | Domain of string * domain_def list
   | Call of string * expr list
-  | Process of env_component
+  | Process of process
   | FuncDef of string * typed_attr list * expr list
 
 and typed_attr =
@@ -32,7 +32,7 @@ and domain_def =
 | DomainAttr of typed_attr
 | DomainAction of domain_action
 
-and env_component = {
+and process = {
   ename: string;
   ebody: expr list
 }
