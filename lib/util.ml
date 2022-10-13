@@ -50,6 +50,7 @@ let rec string_of_expr e = match e with
   | FuncDef(name, args, body) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" name (String.concat ", " (List.map string_of_typed_attr args)) (string_of_stmt_list body)
 and string_of_domain_def def = match def with
 | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
-| DomainAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
+| DomainAction(a) -> string_of_domain_action a
+and string_of_domain_action { aname; body; args} = Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
 and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)
 

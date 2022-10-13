@@ -4,6 +4,7 @@ type schema = {
   name: string;
   attrs: typed_attr list;
 }
+
 type model = {
   schemas: schema list;
   variables: Core.typed_attr list;
@@ -46,8 +47,12 @@ let print_schema s =
 let print_variable v =
   Printf.printf "Var: %s\n" (Util.string_of_typed_attr v)
 
+let print_action a =
+  Printf.printf "Action: %s\n" (Util.string_of_domain_action a)
+
 let print_model m =
   List.iter print_schema m.schemas;
-  List.iter print_variable m.variables
+  List.iter print_variable m.variables;
+  List.iter print_action m.actions
 
 (* let expr_of_model m =  *)
