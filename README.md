@@ -24,6 +24,7 @@ end
 
 This is a simple model of a todo app. `create!` now denotes an _effect_ which is an operation that has different definitions in the model and implementation. Effects are hand-implemented via metaprogramming:
 
+**Effects**:
 ```
 // Effect definition - how is an effect executed
 // across implementation components?
@@ -54,8 +55,9 @@ end
 
 Here we generated the client implementation of a `create!` effect, which simply sends a POST request to the proper endpoint. The key here is that we're defining the client definition in a `typescript` block, which is a quasi-quotation block for defining TypeScript code. `{{ ... }}` unquotes / splices, so the TS client can be generated from definitions in the model.
 
-And putting it all together, we need a top-level application "shell" that is the entry point for each system component:
+And putting it all together, we need to define the top-level application processes that are the entry point for each system component:
 
+**Processes**:
 ```
 // Helpers to convert model definitions to TS
 def toTsTypedIden(var: Variable)
