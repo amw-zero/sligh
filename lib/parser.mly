@@ -56,7 +56,7 @@ statement:
   | LET i = IDEN EQUALS e = expression              { Let(i, e) }
   | DOMAIN i = IDEN COLON d = domain_def* END       { Domain(i, d) }
 
-//  | ENTITY i = IDEN COLON ta = typed_attr* END       { Entity(i, ta) }
+  | ENTITY i = IDEN COLON ta = typed_attr* END       { Entity(i, ta) }
   | PROCESS n = IDEN COLON es = statement* END      { Process({ename=n;ebody=es}) }
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
                                                     { FuncDef(i, args, body) }
@@ -73,7 +73,6 @@ expression:
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | boolexp                                       { BoolExp($1) }
   | LPAREN e = expression RPAREN                  { e }
-  | s = expression DOT t = IDEN                   { Access(s, t) }
   | recv = expression DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
                                                   { Call(meth, [recv] @ args) }
   (* This causes a shift/reduce warning currently *)
