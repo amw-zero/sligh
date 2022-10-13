@@ -33,7 +33,7 @@ effect create!<'a>(state: SystemState<'a>, val: 'a):
     state.push(val)
   end
 
-  // Client code generated from 
+  // Client code generated from model definitions
   client:
     typescript:
       let resp = fetch({{ state.name }}, {
@@ -48,7 +48,7 @@ effect create!<'a>(state: SystemState<'a>, val: 'a):
   end
 
   server:
-    // Generate endpoint code
+    // Generate endpoint code in same way
   end
 end
 ```
