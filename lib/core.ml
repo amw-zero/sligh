@@ -12,9 +12,11 @@ type expr =
   | BoolExp of boolexp
   | StmtList of expr list
   | Domain of string * domain_def list
+  | Entity of string * typed_attr list
   | Call of string * expr list
   | Process of process
   | FuncDef of string * typed_attr list * expr list
+  | Access of expr * string
 
 and typed_attr =
   { name: string;

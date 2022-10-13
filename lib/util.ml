@@ -44,9 +44,11 @@ let rec string_of_expr e = match e with
   | BoolExp(_) -> "boolexp"
   | StmtList(ss) -> string_of_stmt_list ss
   | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs) ^ "\nend\n"
+  | Entity(n, attrs) -> Printf.sprintf "entity %s\n\t%s" n (print_list (List.map string_of_typed_attr attrs))
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
   | Process(e) -> "process:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody) ^ "\nend"
   | FuncDef(name, args, body) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" name (String.concat ", " (List.map string_of_typed_attr args)) (string_of_stmt_list body)
+  | Access(recv, member) -> Printf.sprintf "%s.%s" (string_of_expr recv) member
 and string_of_domain_def def = match def with
 | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
 | DomainAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
