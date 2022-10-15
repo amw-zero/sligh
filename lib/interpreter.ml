@@ -71,6 +71,7 @@ let tstype_of_string s = match s with
   | "number" -> TSTNumber
   | _ -> TSTCustom(s)
 
+  
 (* let rec tsclassdef_of_expr e = match e with
   | Iden(i, Some(t)) -> TSClassProp(i, tstype_of_type t)
   | Call(_, _) -> eval e |> tsclassdef_of_expr

@@ -48,6 +48,7 @@ let rec string_of_expr e = match e with
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
   | Process(e) -> "process:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody) ^ "\nend"
   | FuncDef(name, args, body) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" name (String.concat ", " (List.map string_of_typed_attr args)) (string_of_stmt_list body)
+  | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
 and string_of_domain_def def = match def with
 | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
 | DomainAction(a) -> string_of_domain_action a

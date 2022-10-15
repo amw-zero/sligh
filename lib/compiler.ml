@@ -46,6 +46,8 @@ let compile expr =
   let interp_env = List.fold_left Interpreter.build_env init_interp_env statements in
   Interpreter.print_env interp_env;
 
+  (* let interp_env = Interpreter.add_model interp_env model in *)
+
   let procs_map = List.fold_left Process.build_procs init_procs statements in
   Process.print procs_map;
   Process.output procs_map interp_env;

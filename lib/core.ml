@@ -16,6 +16,7 @@ type expr =
   | Call of string * expr list
   | Process of process
   | FuncDef of string * typed_attr list * expr list
+  | Access of expr * string
 
 and typed_attr =
   { name: string;

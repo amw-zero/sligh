@@ -68,16 +68,24 @@ boolexp:
   | IF e1 = boolexp THEN e2 = boolexp ELSE e3 = boolexp 
                                     { BIf(e1, e2, e3) }
 expression:
-  | n = NUMBER                                    { Num(n) }
-  | i = IDEN                                      { Iden(i, None) }
-  | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
-  | boolexp                                       { BoolExp($1) }
-  | LPAREN e = expression RPAREN                  { e }
-  | recv = expression DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
+  | non_app  { $1 }
+  | app      { $1 }
+
+app:
+  | recv = non_app DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
                                                   { Call(meth, [recv] @ args) }
   (* This causes a shift/reduce warning currently *)
   | func = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
                                                   { Call(func, args) }
+
+non_app:
+  | n = NUMBER                                    { Num(n) }
+  | i = IDEN                                      { Iden(i, None) }
+  | LPAREN e = expression RPAREN                  { e }
+  | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
+  | boolexp                                       { BoolExp($1) }
+  | e = non_app DOT i = IDEN                     { Access(e, i) }
+  
 
 domain_def:
   | ta = typed_attr                               { DomainAttr(ta) }
