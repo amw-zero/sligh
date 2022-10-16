@@ -15,6 +15,7 @@ type primitive_typ =
 
 type value =
   | VNum of int
+  | VString of string
   | VArray of value list
   | VFunc of func_def
   | VType of type_val
@@ -42,6 +43,7 @@ let rec string_of_value v = match v with
     | VPrimitive(_) -> "primitive type")
   | VArray(vs) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_value vs))
   | VTS(_) -> "VTS"
+  | VString(s) -> s
 
 type interp_env = value Env.t
 
@@ -70,7 +72,9 @@ let add_schema_to_env name attrs (env: interp_env) =
       (* failwith (Printf.sprintf "Referencing unknown identifier %s" attr.name) *)
   ) attrs in
 
-  Env.add name (VType(VSchema({sname=name;attrs=schema_attrs}))) env
+  let attrs_with_name = {aname="name";value=VString(name)} :: schema_attrs in
+
+  Env.add name (VType(VSchema({sname=name;attrs=attrs_with_name}))) env
 
 let build_env env stmt = match stmt with
   | FuncDef(fd) -> Env.add fd.fdname (VFunc(fd)) env
@@ -101,6 +105,7 @@ let build_call_env (env: interp_env) (pair: (typed_attr * value)) =
   Env.add arg_sig.name arg env
 
 let find_attr attr_name schema =
+  Printf.printf "Checking for attr %s in schema %s" attr_name (string_of_value (VType(VSchema(schema))));
   let attr = List.find (fun attr -> attr.aname = attr_name) schema.attrs in
   attr.value
 
@@ -156,7 +161,8 @@ and eval_builtin_func name args env =
       | _ -> failwith (Printf.sprintf "Tried calling map builtin with non-array arg %s" (string_of_value lst_arg)) in
     
     let result = List.map (fun e ->
-      let arg_pairs: (typed_attr * value) list = [(List.hd builtin_map_def.fdargs, e)] in
+      (* let arg_pairs: (typed_attr * value) list = [(List.hd builtin_map_def.fdargs, e)] in *)
+      let arg_pairs: (typed_attr * value) list = List.combine fd.fdargs [e] in
       let call_env = List.fold_left build_call_env env arg_pairs in
 
       eval_and_return fd.fdbody call_env
@@ -176,6 +182,7 @@ and tsexpr_of_val v = match v with
 | VNum(n) -> TSNum(n)
 | VTS(tss) -> TSStmtList(tss)
 | VArray(vs) -> TSArray(List.map tsexpr_of_val vs)
+| VString(s) -> TSString(s)
 | _ -> failwith (Printf.sprintf "Cannot tseval value %s" (string_of_value v))
 
 and tstype_of_type t = match t with

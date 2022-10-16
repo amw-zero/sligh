@@ -29,6 +29,7 @@ let rec string_of_ts_expr e = match e with
   | TSClass(n, ds) -> Printf.sprintf "ts-class %s\n\t%s" n (String.concat "\n" (List.map string_of_tsclassdef ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "ts-%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
+  | TSString(s) -> s
   | SLExpr(_) -> "SLExpr"
 
 let string_of_typed_attr ta =

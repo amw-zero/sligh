@@ -128,8 +128,8 @@ domain Todos:
   todos: Todo
 end
 
-def toSomething(a: Int):
-  5
+def toSomething(a: Schema):
+  a.name
 end
 
 process cli:

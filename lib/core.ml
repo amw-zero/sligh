@@ -53,6 +53,7 @@ and tsexpr =
 | TSMethodCall of string * string * tsexpr list
 | TSClass of string * tsclassdef list
 | TSArray of tsexpr list
+| TSString of string
 | SLExpr of expr
 
 and ts_type = 
