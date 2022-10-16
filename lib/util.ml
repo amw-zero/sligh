@@ -28,11 +28,11 @@ let rec string_of_ts_expr e = match e with
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
   | TSClass(n, ds) -> Printf.sprintf "ts-class %s\n\t%s" n (String.concat "\n" (List.map string_of_tsclassdef ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "ts-%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
+  | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
   | SLExpr(_) -> "SLExpr"
 
-
 let string_of_typed_attr ta =
-  Printf.sprintf "%s: %s" ta.name ta.typ
+  Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
 
 let rec string_of_expr e = match e with
   | TS(tse) -> "ts: " ^ String.concat "\n" (List.map string_of_ts_expr tse)
@@ -47,10 +47,10 @@ let rec string_of_expr e = match e with
   | Entity(n, attrs) -> Printf.sprintf "entity %s\n\t%s" n (print_list (List.map string_of_typed_attr attrs))
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
   | Process(e) -> "process:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody) ^ "\nend"
-  | FuncDef(name, args, body) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" name (String.concat ", " (List.map string_of_typed_attr args)) (string_of_stmt_list body)
+  | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
 and string_of_domain_def def = match def with
-| DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name typ
+| DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
 | DomainAction(a) -> string_of_domain_action a
 and string_of_domain_action { aname; body; args} = Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
 and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)

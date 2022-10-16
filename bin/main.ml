@@ -1,6 +1,10 @@
 open Edsl
 
 (* let working = {|
+entity Other:
+  val: Int
+end
+
 domain Test:
   state: Int
 
@@ -14,7 +18,7 @@ def topLevel():
 end
 
 def other(i: Int):
-  let x = i
+  i
 end
 
 process client:
@@ -24,11 +28,11 @@ process client:
       {{ y: Int }}
     }
   end
-end 
+end
 
 process server:
   typescript:
-    app.post(5)
+    app.post({{ other(5) }})
   end
 end
 
@@ -106,13 +110,33 @@ process server:
 end
 |} *)
 
+(* 
+env = key -> value
+*)
+
 let eval = {|
-entity Todo:
-  name: String
+entity Other:
+  val: Int
 end
 
-let x = Model.test.other.test()
-let y = test(Model.other)
+entity Todo:
+  name: String
+  other: Other
+end
+
+domain Todos:
+  todos: Todo
+end
+
+def toSomething(a: Int):
+  5
+end
+
+process cli:
+  typescript:
+    {{ Model.schemas.map(toSomething) }}
+  end
+end
 |}
 
 (* next process client:
@@ -131,4 +155,4 @@ end *)
         can't be created in a quasi-quote.
 *)
 
-let () = Compiler.compile working;
+let () = Compiler.compile eval;

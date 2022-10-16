@@ -59,7 +59,7 @@ statement:
   | ENTITY i = IDEN COLON ta = typed_attr* END       { Entity(i, ta) }
   | PROCESS n = IDEN COLON es = statement* END      { Process({ename=n;ebody=es}) }
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
-                                                    { FuncDef(i, args, body) }
+                                                    { FuncDef({fdname=i; fdargs=args; fdbody=body}) }
   | e = expression                                  { e }
 
 boolexp:
@@ -72,10 +72,10 @@ expression:
   | app      { $1 }
 
 app:
-  | recv = non_app DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
+  | recv = non_app DOT meth = IDEN LPAREN args = separated_list(COMMA, non_app) RPAREN
                                                   { Call(meth, [recv] @ args) }
   (* This causes a shift/reduce warning currently *)
-  | func = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
+  | func = IDEN LPAREN args = separated_list(COMMA, non_app) RPAREN
                                                   { Call(func, args) }
 
 non_app:
@@ -84,7 +84,9 @@ non_app:
   | LPAREN e = expression RPAREN                  { e }
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | boolexp                                       { BoolExp($1) }
-  | e = non_app DOT i = IDEN                     { Access(e, i) }
+
+  (* Shift / reduce warning *)
+  | e = non_app DOT i = IDEN                      { Access(e, i) }
   
 
 domain_def:
@@ -96,7 +98,7 @@ domain_def:
                                                       body=e
                                                     }) }
 typed_attr:
-  | attr = IDEN COLON typ = IDEN                  { {name=attr; typ=typ} }
+  | attr = IDEN COLON typ = IDEN                  { {name=attr; typ=type_of_string typ} }
 
 (* TypeScript Lang *)
 tsstatements:

@@ -6,6 +6,7 @@ type sligh_type =
 
 type expr = 
   TS of tsexpr list
+  (* TargetLang of tlang_expr list - to make target languages extensible*)
   | Let of string * expr
   | Iden of string * sligh_type option
   | Num of int
@@ -15,13 +16,18 @@ type expr =
   | Entity of string * typed_attr list
   | Call of string * expr list
   | Process of process
-  | FuncDef of string * typed_attr list * expr list
+  | FuncDef of func_def
   | Access of expr * string
+
+and func_def = {
+  fdname: string;
+  fdargs: typed_attr list;
+  fdbody: expr list;
+}
 
 and typed_attr =
   { name: string;
-    (* Elevate the type to an actual type datatype *)
-    typ: string;
+    typ: sligh_type;
   }
 
 and domain_action =
@@ -46,6 +52,7 @@ and tsexpr =
 | TSStmtList of tsexpr list
 | TSMethodCall of string * string * tsexpr list
 | TSClass of string * tsclassdef list
+| TSArray of tsexpr list
 | SLExpr of expr
 
 and ts_type = 

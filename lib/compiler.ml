@@ -36,7 +36,7 @@ let compile expr =
   let lexbuf = Lexing.from_string expr in
   let init_procs = Process.new_processes () in
   let init_model = Model.new_model () in
-  let init_interp_env = Interpreter.new_environment () in
+  let init_interp_env = Interpreter.new_environment_with_builtins () in
 
   let statements = parse_with_error lexbuf in
   
@@ -44,9 +44,9 @@ let compile expr =
   Model.print_model model;
 
   let interp_env = List.fold_left Interpreter.build_env init_interp_env statements in
-  Interpreter.print_env interp_env;
 
-  (* let interp_env = Interpreter.add_model interp_env model in *)
+  let interp_env = Interpreter.add_model_to_env model interp_env in
+  Interpreter.print_env interp_env;
 
   let procs_map = List.fold_left Process.build_procs init_procs statements in
   Process.print procs_map;

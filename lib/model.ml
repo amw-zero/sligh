@@ -34,10 +34,14 @@ let analyze m stmt =
   | Core.Domain(name, defs) ->
     let actions = filter_actions defs in
     let attrs = filter_attrs defs in
-    { 
+    {
       schemas = {name; attrs;} :: m.schemas;
       variables = attrs @ m.variables;
       actions = actions @ m.actions;
+    }
+  | Core.Entity(e, attrs) -> 
+    { m with
+      schemas = {name=e; attrs;} :: m.schemas;
     }
   | _ -> m
 
@@ -51,8 +55,9 @@ let print_action a =
   Printf.printf "Action: %s\n" (Util.string_of_domain_action a)
 
 let print_model m =
+  print_endline "Model.schemas";
   List.iter print_schema m.schemas;
+  print_endline "Model.variables";
   List.iter print_variable m.variables;
+  print_endline "Model.actions";
   List.iter print_action m.actions
-
-(* let expr_of_model m =  *)
