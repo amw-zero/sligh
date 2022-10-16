@@ -27,7 +27,7 @@ let rec string_of_ts_expr e = match e with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_tstype t)
     | None -> Printf.sprintf "%s" i)
   | TSNum(n) -> string_of_int n
-  | TSLet(v, ie) -> "let" ^ v ^ " = " ^ string_of_ts_expr ie
+  | TSLet(v, ie) -> Printf.sprintf "let %s = %s" v (string_of_ts_expr ie)
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
   | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)

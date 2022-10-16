@@ -173,6 +173,7 @@ and eval_builtin_func name args env =
 
 and eval_ts ts_expr env = match ts_expr with
 | SLExpr(e) -> tsexpr_of_val (eval e env)
+| TSLet(var, exp) -> TSLet(var, eval_ts exp env)
 | TSMethodCall(recv, call, args) ->
     let reduced_args = List.map (fun a -> eval_ts a env) args in
     TSMethodCall(recv, call, reduced_args)

@@ -128,13 +128,13 @@ domain Todos:
   todos: Todo
 end
 
-def toSomething(a: Schema):
+def toName(a: Schema):
   a.name
 end
 
 process cli:
   typescript:
-    {{ Model.schemas.map(toSomething) }}
+    let allModelNames = {{ Model.schemas.map(toName) }}
   end
 end
 |}
@@ -147,12 +147,9 @@ end *)
 
 (* 
   TODO: 
-    Compile-time evaluation of Sligh terms.
-      This also will require creating the special variable "Model" which is the
-      compiled model.
-      Replace tsclassdef_of_expr with syntax construction functions, a la template
-        Haskell and Nim. Have to create TSClassProp for example, and that context
-        can't be created in a quasi-quote.
+    Replace tsclassdef_of_expr with syntax construction functions, a la template
+      Haskell and Nim. Have to create TSClassProp for example, and that context
+      can't be created in a quasi-quote.
 *)
 
 let () = Compiler.compile eval;
