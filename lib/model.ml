@@ -27,7 +27,7 @@ let collect_attrs attrs def = match def with
   | DomainAttr(attr) -> attr :: attrs
   | _ -> attrs
 
-let filter_attrs defs = List.fold_left collect_attrs [] defs
+let filter_attrs (defs: domain_def list): typed_attr list  = List.fold_left collect_attrs [] defs
 
 let analyze m stmt =
   match stmt with

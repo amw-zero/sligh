@@ -10,6 +10,7 @@ let rec string_of_boolexp t = match t with
 let string_of_tstype tst = match tst with
   | TSTNumber -> "number"
   | TSTCustom c -> c
+  | TSTString -> "string"
 
 let string_of_tsclassdef cd = match cd with
   | TSClassProp(n, typ) -> Printf.sprintf "ts-%s: ts-%s" n (string_of_tstype typ)
@@ -18,6 +19,7 @@ let string_of_tsclassdef cd = match cd with
 let string_of_type t = match t with
   | STInt -> "Int"
   | STCustom s -> s
+  | STString -> "String"
 
 let rec string_of_ts_expr e = match e with
   | TSIden(i, t) -> (match t with

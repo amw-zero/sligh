@@ -10,6 +10,7 @@ let rec string_of_boolexp t = match t with
 let string_of_tstype tst = match tst with
   | TSTNumber -> "number"
   | TSTCustom c -> c
+  | TSTString -> "string"
 
 let string_of_tsclassdef cd = match cd with
   | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
@@ -18,6 +19,7 @@ let string_of_tsclassdef cd = match cd with
 let string_of_type t = match t with
   | STInt -> "Int"
   | STCustom s -> s
+  | STString -> "String"
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
@@ -32,7 +34,7 @@ let rec string_of_ts_expr e = match e with
   | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
-  | TSString(s) -> s
+  | TSString(s) -> Printf.sprintf "\"%s\"" s
   | SLExpr(_) -> "SLExpr"
 
 let rec string_of_expr e = match e with

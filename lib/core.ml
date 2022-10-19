@@ -2,6 +2,7 @@ type boolexp = BTrue | BFalse | BIf of boolexp * boolexp * boolexp
 
 type sligh_type =
   | STInt
+  | STString
   | STCustom of string
 
 type expr = 
@@ -58,10 +59,14 @@ and tsexpr =
 
 and ts_type = 
   | TSTNumber
-  | TSTCustom of string  
+  | TSTString
+  | TSTCustom of string
 
 and tsclassdef =
   | CDSLExpr of expr
   | TSClassProp of string * ts_type
+  (* | TSClassMethod of string * tstyped_attr list * tsexpr list *)
 
-let tsclassprop s t = TSClassProp(s, t)
+let tsClassProp name typ = TSClassProp(name, typ)
+
+let tsClass name defs = TSClass(name, defs)

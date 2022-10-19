@@ -112,6 +112,14 @@ end
 
 (* 
 env = key -> value
+Model = {
+  Other: {
+    val: Int
+  },
+  Todo: {
+    other: Other
+  }
+}
 *)
 
 let eval = {|
@@ -124,6 +132,10 @@ entity Todo:
   other: Other
 end
 
+entity User:
+  username: String
+end
+
 domain Todos:
   todos: Todo
 end
@@ -132,17 +144,79 @@ def toName(a: Schema):
   a.name
 end
 
+def toTsClassBody(a: Attribute):
+  tsClassProp(a.name, a.type)
+end
+
+def toTsClass(s: Schema):
+  let body = s.attributes.map(toTsClassBody)
+  
+  tsClass(s.name, body)
+end
+
+def toTestTsClass(s: Schema):
+  let schemas = Model.schemas
+  tsClass(s.name, schemas)
+end
+
+def attrName(a: Attribute):
+  a.name
+end
+
 process cli:
   typescript:
     let allModelNames = {{ Model.schemas.map(toName) }}
+    let testing = {{ Todo.name }}
+    let todoAttrs = {{ Todo.attributes.map(attrName) }}
+
+    {{ Model.schemas.map(toTestTsClass) }}
+
+    {{ Model.schemas.map(toTsClass )}}
   end
 end
 |}
+
+(*
+
+{
+  Todo: {
+    name: Todo,
+    attrs: [
+      { name: "name", type: Primitive(String) },
+    ]
+  },
+  Todos: {
+    name: Todos,
+    attrs: [
+      { name: "todo", type: Custom(Todo) }
+    ]
+  },
+  Model: {
+    name: Model,
+    attrs: [
+      { name: "schemas", type: Array(Schema([Todo, Todos])) }
+    ]
+  }
+}   
+
+
+*)
 
 (* next process client:
   typescript:
     let names = {{ Model.schemas.map(toName) }}
   end
+
+  def toTsClass(a: Schema):
+    tsclass(a.name, )
+
+    typescript:
+      tsclass 
+      class {{ a.name }} {
+
+      }
+    end
+end
 end *)
 
 (* 
