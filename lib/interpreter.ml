@@ -21,7 +21,6 @@ type value =
   | VType of type_val
   | VTS of tsexpr list
   | VTSClassDef of tsclassdef
-  | VTSType of ts_type
 
 and schema = {
   sname: string;
@@ -45,7 +44,6 @@ let rec string_of_value v = match v with
   | VArray(vs) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_value vs))
   | VTS(_) -> "VTS"
   | VTSClassDef(_) -> "VTSClassDef"
-  | VTSType(_) -> "VTSType"
   | VString(s) -> s
 and string_of_type_val tv = match tv with
   | VSchema s -> string_of_schema s

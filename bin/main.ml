@@ -123,17 +123,12 @@ Model = {
 *)
 
 let eval = {|
-entity Other:
-  val: Int
-end
-
 entity Todo:
-  name: String
-  other: Other
+  note: String
 end
 
-domain Todos:
-  todos: Todo
+entity SomethingElse:
+  property: Int
 end
 
 def toName(a: Schema):
@@ -156,13 +151,17 @@ def attrName(a: Attribute):
   a.name
 end
 
-process cli:
+process client:
   typescript:
     let allModelNames = {{ Model.schemas.map(toName) }}
+    let allTypes = {{ Model.schemas.map(toTsClass )}}
+  end
+end
+
+process server:
+  typescript:
     let todoName = {{ Todo.name }}
     let todoAttrs = {{ Todo.attributes.map(attrName) }}
-
-   let allTypes = {{ Model.schemas.map(toTsClass )}}
   end
 end
 |}
@@ -212,9 +211,12 @@ end *)
 
 (* 
   TODO: 
-    Replace tsclassdef_of_expr with syntax construction functions, a la template
-      Haskell and Nim. Have to create TSClassProp for example, and that context
-      can't be created in a quasi-quote.
+    * Effect system. Algebraic effects?
+      - Convenient syntax for inlining a handler in the model, so model functionality
+        is apparent without looking anywhere else, i.e. handle todos.create!(t) with todos.push(t)
+      - Handle effects at thte process level, i.e. process client: handle create! with clientCreate
+        this is how effects are "overridden" per each process
+    * Model conformance test
 *)
 
 let () = Compiler.compile eval;
