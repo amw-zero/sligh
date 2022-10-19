@@ -132,10 +132,6 @@ entity Todo:
   other: Other
 end
 
-entity User:
-  username: String
-end
-
 domain Todos:
   todos: Todo
 end
@@ -151,12 +147,9 @@ end
 def toTsClass(s: Schema):
   let body = s.attributes.map(toTsClassBody)
   
-  tsClass(s.name, body)
-end
-
-def toTestTsClass(s: Schema):
-  let schemas = Model.schemas
-  tsClass(s.name, schemas)
+  typescript:
+    {{ tsClass(s.name, body) }} 
+  end
 end
 
 def attrName(a: Attribute):
@@ -166,12 +159,10 @@ end
 process cli:
   typescript:
     let allModelNames = {{ Model.schemas.map(toName) }}
-    let testing = {{ Todo.name }}
+    let todoName = {{ Todo.name }}
     let todoAttrs = {{ Todo.attributes.map(attrName) }}
 
-    {{ Model.schemas.map(toTestTsClass) }}
-
-    {{ Model.schemas.map(toTsClass )}}
+   let allTypes = {{ Model.schemas.map(toTsClass )}}
   end
 end
 |}
