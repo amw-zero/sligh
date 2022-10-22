@@ -174,7 +174,7 @@ type_synonym ('e, 's, 'v) dt_step_transformer = "'e \<Rightarrow> ('e, 's, 'v) l
 
 definition "x_view p = TranslateXView (X p)"
 text "Had bug here where the y_view impl returned TranslateXView instead"
-definition "y_view p = TranslateXView (Y p)"
+definition "y_view p = TranslateYView (Y p)"
 
 definition "lens_put v p = (case v of
   TranslateXView x \<Rightarrow> p\<lparr> X := x \<rparr>
@@ -282,13 +282,42 @@ theorem "\<lbrakk>
   optimized = \<lparr> state=s, step=substate_step substate_mapping\<rparr> 
 \<rbrakk> \<Longrightarrow> exec_dt dt1 es = exec_dt optimized es"
   unfolding well_behaved_def get_put_def put_get_def substate_step_def exec_dt_def
-proof(induction es arbitrary: f s v lns)
+proof(induction es arbitrary: f)
   case Nil
   then show ?case unfolding Let_def apply auto sledgehammer sorry
   
 next
   case (Cons a es)
   then show ?case sorry
+qed
+
+section "Example substate mapping of Point translation"
+
+definition "point_substate_mapping e = (case e of
+  TranslateX x \<Rightarrow> (let lns = \<lparr> Get=x_view, Put=lens_put \<rparr> in
+    \<lparr> sdlens=lns, sdview_func=translate_view x \<rparr>)
+  | TranslateY y \<Rightarrow> (let lns = \<lparr> Get=y_view, Put=lens_put \<rparr> in
+    \<lparr> sdlens=lns, sdview_func=translate_view y \<rparr>))"
+
+theorem "well_behaved (sdlens (point_substate_mapping e)) v s"
+  sorry
+
+definition "optimized_point_step = substate_step point_substate_mapping"
+definition "optimized_point_dt = \<lparr> state=initPoint, step=optimized_point_step\<rparr>"
+
+theorem "exec_dt point_dt2 es = exec_dt optimized_point_dt es"
+unfolding exec_dt_def and point_dt2_def and point_dt_lens2_def and point_step_def 
+    and point_step_lens_def translateXInt_def translateYInt_def
+    and initPoint_def and xlens_def and ylens_def and updateX_def and updateY_def and getX_def
+    and getY_def and Let_def and optimized_point_dt_def and optimized_point_step_def 
+    and point_substate_mapping_def and substate_step_def and lens_put_def and x_view_def and y_view_def
+    and translate_view_def
+proof(induction es)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons a es)
+  then show ?case apply auto
 qed
 
 end
