@@ -160,20 +160,11 @@ datatype View =
   TranslateXView int
   | TranslateYView int
 
-record ('s, 'e, 'v) datatype_lens =
-  lens_state :: 's
-  lens_step :: "('e \<Rightarrow> ('s, 'v) lens) \<Rightarrow> 'e \<Rightarrow> 's \<Rightarrow> 's"
-
 type_synonym ('e, 's) dt_step = "'e \<Rightarrow> 's \<Rightarrow> 's"
 
-type_synonym ('e, 's, 'v) lens_mapping = "'e \<Rightarrow> ('s, 'v) lens"
-type_synonym ('e, 'v) view_func_mapping = "'e \<Rightarrow> ('v \<Rightarrow> 'v)"
-
-type_synonym ('e, 's, 'v) dt_step_transformer = "'e \<Rightarrow> ('e, 's, 'v) lens_mapping \<Rightarrow> ('e, 's) dt_step"
-
-
 definition "x_view p = TranslateXView (X p)"
-text "Had bug here where the y_view impl returned TranslateXView instead"
+text "Had bug here where the y_view impl returned TranslateXView instead - this made the 
+      lens not well behaved"
 definition "y_view p = TranslateYView (Y p)"
 
 definition "lens_put v p = (case v of
@@ -189,33 +180,6 @@ definition "translate_view i = (\<lambda>v. (case v of
   TranslateXView x \<Rightarrow> TranslateXView (translateXInt i x)
   | TranslateYView y \<Rightarrow> TranslateYView (translateYInt i y)))"
 
-definition "map_view_fun e = (case e of
-  TranslateX x \<Rightarrow> translate_view x
-  | TranslateY y \<Rightarrow> translate_view y)"
-
-text "This is a generic combinator from lens and view func mappings to a step function"
-
-definition lens_step :: "('e, 's, 'v) lens_mapping \<Rightarrow> ('e, 'v) view_func_mapping \<Rightarrow> ('e, 's) dt_step"  where
-"lens_step lm vfn = (\<lambda>e s.(
-  let lns = lm e in
-  let v = (Get lns) s in
-  let view_op = vfn e in
-  let res = view_op v in
-  
-  (Put lns) res s
-))"
-
-definition optimized_step :: "point_action \<Rightarrow> Point \<Rightarrow> Point" where
-"optimized_step = lens_step    map_lens    map_view_fun"
-  
-definition "optimized_dt = \<lparr> state = initPoint, step = optimized_step \<rparr>"
-
-value "(step optimized_dt) (TranslateX (-1)) (state optimized_dt)"
-
-value "exec_dt optimized_dt [TranslateX (-1), TranslateY 0]"
-
-theorem "exec_dt point_dt2 es = exec_dt optimized_dt es"
-  sorry
 
 section "Substate Mapping"
 
@@ -244,6 +208,11 @@ definition substate_step :: "('e, 's, 'v) substate_mapping \<Rightarrow> ('e, 's
   
   (Put lns) res s
 ))"
+
+(*definition fullstate_step = "'e \<Rightarrow> 'f"*)
+
+definition "translatex_full x p = p\<lparr> X := translateXInt (X p) x \<rparr>"
+definition "translatey_full y p = p\<lparr> Y := translateYInt (Y p) y \<rparr>"
 
 text "Show a sufficient condition / proof obligation for proving that an optimized datatype
      will always have the same execution as an unoptimized version. Show the left hand side of
@@ -274,22 +243,22 @@ definition "get_put lns  s = (
   put (get s) s = s 
 )"
 
+definition "regular_step lns vfn = (\<lambda>e s. (
+  let v = (Get lns) s in
+  let res = vfn v in
+  
+  (Put lns) res s)
+)"
+
 definition "well_behaved lns v s = (put_get lns v s \<and> get_put lns s)"
 
-theorem "\<lbrakk> 
-  well_behaved lns v s; 
-  substate_mapping = (\<lambda>e. \<lparr>sdlens=lns, sdview_func=f \<rparr>);
-  optimized = \<lparr> state=s, step=substate_step substate_mapping\<rparr> 
-\<rbrakk> \<Longrightarrow> exec_dt dt1 es = exec_dt optimized es"
-  unfolding well_behaved_def get_put_def put_get_def substate_step_def exec_dt_def
-proof(induction es arbitrary: f)
-  case Nil
-  then show ?case unfolding Let_def apply auto sledgehammer sorry
-  
-next
-  case (Cons a es)
-  then show ?case sorry
-qed
+theorem "\<lbrakk>
+  substate_mapping = (\<lambda>e. \<lparr>sdlens=lns, sdview_func=vfn \<rparr>);
+  normal = \<lparr> state = s, step=regular_step lns vfn \<rparr>;
+  optimized = \<lparr> state=s, step=substate_step substate_mapping\<rparr>
+\<rbrakk> \<Longrightarrow> exec_dt normal es = exec_dt optimized es"
+  unfolding substate_step_def regular_step_def exec_dt_def
+  by simp
 
 section "Example substate mapping of Point translation"
 
@@ -303,7 +272,7 @@ theorem "well_behaved (sdlens (point_substate_mapping e)) v s"
   sorry
 
 definition "optimized_point_step = substate_step point_substate_mapping"
-definition "optimized_point_dt = \<lparr> state=initPoint, step=optimized_point_step\<rparr>"
+definition "optimized_point_dt = \<lparr> state=initPoint, step=optimized_point_step \<rparr>"
 
 theorem "exec_dt point_dt2 es = exec_dt optimized_point_dt es"
 unfolding exec_dt_def and point_dt2_def and point_dt_lens2_def and point_step_def 
