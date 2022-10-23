@@ -181,6 +181,12 @@ definition "translate_view i = (\<lambda>v. (case v of
   | TranslateYView y \<Rightarrow> TranslateYView (translateYInt i y)))"
 
 
+text "What full-state step function components would look like"
+
+definition "translatex_full x p = p\<lparr> X := translateXInt (X p) x \<rparr>"
+definition "translatey_full y p = p\<lparr> Y := translateYInt (Y p) y \<rparr>"
+
+
 section "Substate Mapping"
 
 text "A sub data type consists of a lens on the state and
@@ -209,27 +215,42 @@ definition substate_step :: "('e, 's, 'v) substate_mapping \<Rightarrow> ('e, 's
   (Put lns) res s
 ))"
 
-(*definition fullstate_step = "'e \<Rightarrow> 'f"*)
-
-definition "translatex_full x p = p\<lparr> X := translateXInt (X p) x \<rparr>"
-definition "translatey_full y p = p\<lparr> Y := translateYInt (Y p) y \<rparr>"
-
 text "Show a sufficient condition / proof obligation for proving that an optimized datatype
      will always have the same execution as an unoptimized version. Show the left hand side of
      the implication, and you know the dts are equivalent.
     
     Has to be some kind of relation between the lens and view_func.
-
-    Fundmentally looking for something that gets rid of the 's - the assumption is that states of
-    type 's are always large, even in the model.
-
-    As long as the lens is _well_behaved_, then an optimized datatype derived using the substate_step
-    combinator has _equal_ execution.
   
     The value proposition of this method is that writing a well behaved lens is relatively easy,
     and once you have that you can test drastically reduced subsets of the state space and get the
     same simulation and refinement guarantees since the lens-optimized data type has the exact same
     execution as the original."
+
+definition "regular_step lns vfn = (\<lambda>e s. (
+  let v = (Get lns) s in
+  let res = vfn v in
+  
+  (Put lns) res s)
+)"
+
+text "If we have the view-level functions which instead of mapping a global state to a global state
+      map a view state to a view state, we can build a global state data type and view state 
+      data type such that they have equal execution. This means that the view state data type can be
+      substituded for the global state dt anywhere.
+
+      In practice, this means building an optimized data type in this way requires defining the
+      lens between global state and view given an event, the view state function, and the global state
+      dt and optmized dts can be derived from that."
+
+theorem "\<lbrakk>
+  substate_mapping = (\<lambda>e. \<lparr>sdlens=lns, sdview_func=vfn \<rparr>);
+  normal = \<lparr> state = s, step=regular_step lns vfn \<rparr>;
+  optimized = \<lparr> state=s, step=substate_step substate_mapping\<rparr>
+\<rbrakk> \<Longrightarrow> exec_dt normal es = exec_dt optimized es"
+  unfolding substate_step_def regular_step_def exec_dt_def
+  by simp
+
+section "Well-behavedness"
 
 definition "put_get lns v s = (
   let get = Get lns in
@@ -243,22 +264,8 @@ definition "get_put lns  s = (
   put (get s) s = s 
 )"
 
-definition "regular_step lns vfn = (\<lambda>e s. (
-  let v = (Get lns) s in
-  let res = vfn v in
-  
-  (Put lns) res s)
-)"
-
 definition "well_behaved lns v s = (put_get lns v s \<and> get_put lns s)"
 
-theorem "\<lbrakk>
-  substate_mapping = (\<lambda>e. \<lparr>sdlens=lns, sdview_func=vfn \<rparr>);
-  normal = \<lparr> state = s, step=regular_step lns vfn \<rparr>;
-  optimized = \<lparr> state=s, step=substate_step substate_mapping\<rparr>
-\<rbrakk> \<Longrightarrow> exec_dt normal es = exec_dt optimized es"
-  unfolding substate_step_def regular_step_def exec_dt_def
-  by simp
 
 section "Example substate mapping of Point translation"
 
