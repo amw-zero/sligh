@@ -24,31 +24,9 @@ text "This is a study about showing the correctness of a program without referri
 
 type_synonym ('s) state = "'s list"
 
-type_synonym ('s, 'e) program = "'s \<Rightarrow> 'e \<Rightarrow> 's"
-
 record ('s, 'v) lens  = 
   Get :: "'s \<Rightarrow> 'v"
   Put :: "'v \<Rightarrow> 's \<Rightarrow> 's"
-
-definition execution :: "('s, 'e) program \<Rightarrow> 's \<Rightarrow> 'e list \<Rightarrow> 's" where
-"execution p s es = foldl p s es"
-
-definition refines :: "('s, 'e) program \<Rightarrow> ('s, 'e) program \<Rightarrow> bool" where
-"refines c a = (\<forall>s s' es. execution c s es = s' \<longrightarrow> execution a s es = s')"
-
-definition simpl_simulates :: "('s, 'e) program \<Rightarrow> ('s, 'e) program \<Rightarrow> bool" where
-"simpl_simulates impl model = (\<forall>s e. (impl s e) = (model s e))"
-
-record ('s, 'e) data_type =
-  state :: 's
-  actions :: "('e \<Rightarrow> 's \<Rightarrow> 's) list"
-
-type_synonym counter_state = "int"
-
-definition "inc i c = c + i"
-definition "dec i c = c - i"
-
-definition "counter = \<lparr> state=0, actions=[inc, dec] \<rparr>"
 
 section "Point Datatype with Translation Functionality"
 
@@ -61,8 +39,6 @@ print_theorems
 definition "translateX x p = p\<lparr> X := (X p) + x \<rparr>"
 definition "translateY y p = p\<lparr> Y := (Y p) + y \<rparr>" 
 definition "initPoint = \<lparr> X=0, Y=0 \<rparr>"
-
-definition "point_dt = \<lparr> state=initPoint, actions=[translateX, translateY] \<rparr>"
 
 section "Point Datatype with Transaction Functionality Implemented with Lenses"
 
@@ -105,8 +81,6 @@ definition "translateYLens y p =
 
 value "translateXLens 8 initPoint"
 
-definition "point_dt_lens = \<lparr> state=initPoint, actions=[translateXLens, translateYLens] \<rparr>"
-
 datatype point_action =
   TranslateX int
   | TranslateY int
@@ -118,7 +92,7 @@ record ('s, 'e) dt =
 definition exec_dt :: "('s, 'e) dt \<Rightarrow> 'e list \<Rightarrow> 's" where
 "exec_dt dt i = foldl (\<lambda>s e. (step dt) e s) (state dt) i"
 
-definition "fw_sim I M = (\<forall>s s' es. exec_dt I es s = s'\<longrightarrow> exec_dt M es s = s')" 
+definition "fw_sim I M = (\<forall>s s' e. (step I) e s = s'\<longrightarrow> (step M) e s = s')" 
 
 definition "point_step e p = (case e of
   TranslateX x \<Rightarrow> p\<lparr> X := (X p) + x \<rparr> 
@@ -171,10 +145,6 @@ definition "lens_put v p = (case v of
   TranslateXView x \<Rightarrow> p\<lparr> X := x \<rparr>
   | TranslateYView y \<Rightarrow> p\<lparr> Y := y \<rparr>)"
 
-definition map_lens :: "point_action \<Rightarrow> (Point, View) lens" where
-"map_lens e = (case e of
-  TranslateX x \<Rightarrow> \<lparr> Get=x_view, Put=lens_put \<rparr>
-  | TranslateY y \<Rightarrow> \<lparr>Get=y_view, Put=lens_put\<rparr>)"
 
 definition "translate_view i = (\<lambda>v. (case v of
   TranslateXView x \<Rightarrow> TranslateXView (translateXInt i x)
@@ -204,8 +174,8 @@ text "The substate_mapping generates a sub data type given an event"
 
 type_synonym ('e, 's, 'v) substate_mapping = "'e \<Rightarrow> ('s, 'v) sub_dt"
 
-definition substate_step :: "('e, 's, 'v) substate_mapping \<Rightarrow> ('e, 's) dt_step"  where
-"substate_step ssmap = (\<lambda>e s.(
+definition substate_mapping_to_step :: "('e, 's, 'v) substate_mapping \<Rightarrow> ('e, 's) dt_step"  where
+"substate_mapping_to_step ssmap = (\<lambda>e s.(
   let sub_dt = ssmap e in
   let lns = (sdlens sub_dt) in
   let vfn = (sdview_func sub_dt) in
@@ -226,7 +196,13 @@ text "Show a sufficient condition / proof obligation for proving that an optimiz
     same simulation and refinement guarantees since the lens-optimized data type has the exact same
     execution as the original."
 
-definition "regular_step lns vfn = (\<lambda>e s. (
+text "Something not right about this - lens has to be derived from event, which makes this 
+      equivalent to substate_step"
+
+definition "view_step ssmap = (\<lambda>e s. (
+  let sub_dt = ssmap e in
+  let lns = (sdlens sub_dt) in
+  let vfn = (sdview_func sub_dt) in
   let v = (Get lns) s in
   let res = vfn v in
   
@@ -242,12 +218,13 @@ text "If we have the view-level functions which instead of mapping a global stat
       lens between global state and view given an event, the view state function, and the global state
       dt and optmized dts can be derived from that."
 
+
 theorem "\<lbrakk>
   substate_mapping = (\<lambda>e. \<lparr>sdlens=lns, sdview_func=vfn \<rparr>);
-  normal = \<lparr> state = s, step=regular_step lns vfn \<rparr>;
-  optimized = \<lparr> state=s, step=substate_step substate_mapping\<rparr>
-\<rbrakk> \<Longrightarrow> exec_dt normal es = exec_dt optimized es"
-  unfolding substate_step_def regular_step_def exec_dt_def
+  gs_dt = \<lparr> state = s, step=substate_mapping_to_step substate_mapping \<rparr>;
+  vs_dt = \<lparr> state=(Get lns) s, step=(\<lambda>e s. vfn s) \<rparr>
+\<rbrakk> \<Longrightarrow> (step gs_dt) e (state gs_dt) = (Put lns) ((step vs_dt) e (state vs_dt)) s"
+  unfolding substate_mapping_to_step_def
   by simp
 
 section "Well-behavedness"
@@ -293,7 +270,26 @@ proof(induction es)
   then show ?case by simp
 next
   case (Cons a es)
-  then show ?case apply auto
+  then show ?case apply auto sorry
 qed
+
+section "Solution via data refinement"
+
+record ('s, 'v, 'e) dt_dr =
+  init :: "'s \<Rightarrow> 'v"
+  step :: "'e \<Rightarrow> 'v \<Rightarrow> 'v"
+  fin :: "'v \<Rightarrow> 's"
+
+definition "exec_dt_dr dt s es = foldl (\<lambda>state e. (step dt) e ((init dt) state)) s es"
+
+definition "view_get s = 5" 
+
+(*
+
+definition "view_dt = \<lparr> init=view_get, step=view_step, fin=view_put \<rparr>" 
+
+theorem "exec_dt_dr view_dt s es = exec_dt point_dt_2 s es"
+
+*)
 
 end
