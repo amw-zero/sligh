@@ -293,20 +293,20 @@ definition "exec_dt_dr dt s es = foldl (\<lambda>v e. (step dt) e v) ((init dt) 
 
 definition "refines C M = (\<forall>s s' es. exec_dt_dr C s es = s' \<longrightarrow> exec_dt_dr M s es = s')"
 
-definition "action_refines vfn_c vfn_m = (\<forall>v v'. vfn_c v = v' \<longrightarrow> vfn_m v = v')"
+definition "single_action_refines vfn_c vfn_m = (\<forall>v v'. vfn_c v = v' \<longrightarrow> vfn_m v = v')"
+
+definition "action_refines spmm spmi = (\<forall>e. 
+    let vfn_m = sdview_func (spmm e) in
+    let vfn_i = sdview_func (spmi e) in
+    single_action_refines vfn_i vfn_m)"
 
 theorem "\<lbrakk>  
-  model_proc = \<lparr> init = (\<lambda>ex. s), step=compose_substates spmm, fin=(\<lambda>s. ext) \<rparr>; 
-  impl_proc = \<lparr> init = (\<lambda>ex. s), step=compose_substates spmi, fin=(\<lambda>s. ext) \<rparr>;
+  model_proc = \<lparr> init = any, step=compose_substates spmm, fin=anyf \<rparr>; 
+  impl_proc = \<lparr> init = any, step=compose_substates spmi, fin=anyf \<rparr>;
+  action_refines spmm spmi
   
-  (\<forall>e. 
-    let vfn_m = sdview_func (spmm e) in
-    let lns_m = sdlens (spmm e) in
-    let vfn_i = sdview_func (spmi e) in
-    let lns_i = sdlens (spmi e) in
-    action_refines vfn_i vfn_m)
 \<rbrakk> \<Longrightarrow> refines impl_proc model_proc"
-  unfolding compose_substates_def refines_def action_refines_def exec_dt_dr_def
+  unfolding compose_substates_def refines_def action_refines_def exec_dt_dr_def single_action_refines_def
   sorry
 
 (*text "SR is a relation between states in I and M, i.e. SR \<subseteq> 's x 's"
