@@ -94,7 +94,7 @@ definition "point_step e p = (case e of
   TranslateX x \<Rightarrow> p\<lparr> X := (X p) + x \<rparr> 
 | TranslateY y \<Rightarrow> p\<lparr> Y := (Y p) + y \<rparr>)"
 
-definition "point_dt2 = \<lparr> state=initPoint, step=point_step \<rparr>"
+definition "point_dt = \<lparr> state=initPoint, step=point_step \<rparr>"
 
 definition "point_step_lens e p = (case e of
   TranslateX x \<Rightarrow>  (let get = Get xlens in 
@@ -111,8 +111,8 @@ definition "point_step_lens e p = (case e of
 
 definition "point_dt_lens2 = \<lparr> state=initPoint, step=point_step_lens \<rparr>"
 
-theorem "exec_dt point_dt2 es = exec_dt point_dt_lens2 es"
-unfolding exec_dt_def and point_dt2_def and point_dt_lens2_def and point_step_def 
+theorem "exec_dt point_dt es = exec_dt point_dt_lens2 es"
+unfolding exec_dt_def and point_dt_def and point_dt_lens2_def and point_step_def 
     and point_step_lens_def translateXInt_def translateYInt_def
     and initPoint_def and xlens_def and ylens_def and updateX_def and updateY_def and getX_def
     and getY_def and Let_def 
@@ -255,8 +255,8 @@ theorem "well_behaved (splens (point_subproc_mapping e)) v s"
 definition "optimized_point_step = compose_subprocs point_subproc_mapping"
 definition "optimized_point_dt = \<lparr> state=initPoint, step=optimized_point_step \<rparr>"
 
-theorem "exec_dt point_dt2 es = exec_dt optimized_point_dt es"
-unfolding exec_dt_def and point_dt2_def and point_dt_lens2_def and point_step_def 
+theorem "exec_dt point_dt es = exec_dt optimized_point_dt es"
+unfolding exec_dt_def and point_dt_def and point_dt_lens2_def and point_step_def 
     and point_step_lens_def translateXInt_def translateYInt_def
     and initPoint_def and xlens_def and ylens_def and updateX_def and updateY_def and getX_def
     and getY_def and Let_def and optimized_point_dt_def and optimized_point_step_def 
@@ -285,7 +285,7 @@ text "'Action Refinement' is where each isolated implementation action refines i
     action in the model. The state type of the step function vfn is local to the action and does
     not refer to the global state in any way."
 
-definition "single_action_refines stp_i stp_m = (\<forall>a a'. stp_i a = a' \<longrightarrow> stp_m a = a')"
+definition "single_action_refines stp_i stp_m = (\<forall>ss ss'. stp_i ss = ss' \<longrightarrow> stp_m ss = ss')"
 
 definition "action_refines spmi spmm = (\<forall>e.
   let stp_i = spstep (spmi e) in 
@@ -312,6 +312,18 @@ qed
 
 section "No data refinement"
 
+lemma 
+  fixes n :: nat
+  shows "n mod 2 = 0 \<or> n mod 2 = 1"
+  using [[simp_trace]]
+proof (induction n)
+  case 0
+  then show ?case by auto
+next
+  case (Suc n)
+  then show ?case by auto
+qed
+
 definition "refines_dt C M = (\<forall>s s' es. exec_dt C s es = s' \<longrightarrow> exec_dt M s es = s')"
 
 theorem "\<lbrakk>
@@ -319,16 +331,64 @@ theorem "\<lbrakk>
   impl_proc = \<lparr> state=s, step=compose_subprocs spmi \<rparr>;
   action_refines spmi spmm
 \<rbrakk> \<Longrightarrow> exec_dt impl_proc es = s' \<longrightarrow> exec_dt model_proc es = s'"
-  unfolding compose_subprocs_def action_refines_def single_action_refines_def refines_dt_def exec_dt_def Let_def
-proof(induction es arbitrary: s spmm spmi)
+proof(induction es arbitrary: s s' spmm spmi)
   case Nil
-  then show ?case by auto
+  then show ?case unfolding exec_dt_def by auto
 next
-  case (Cons a es)
+  case (Cons e es)
   then show ?case
-    apply clarsimp
-  qed
-  
+    apply (clarsimp simp: compose_subprocs_def action_refines_def single_action_refines_def exec_dt_def)
+    unfolding compose_subprocs_def action_refines_def single_action_refines_def refines_dt_def 
+      exec_dt_def Let_def
+    sorry
+qed
+
+section "Subprocs for banking"
+
+text "operations: Open account, Transfer between accounts"
+
+record account =
+  name :: string
+  balance :: int
+
+record transaction = 
+  src :: account
+  dst :: account
+  amount :: int
+
+datatype BankingEvent =
+    OpenAccount string
+    | Transfer account account int
+
+record banking_state_m =
+  accounts :: "account set"
+  ledger :: "transaction set"
+
+definition "banking_step_m e s = (case e of
+  OpenAccount nm \<Rightarrow> s\<lparr> accounts := insert \<lparr>name=nm, balance=0\<rparr> (accounts s) \<rparr>
+| Transfer srcAct dstAct amt \<Rightarrow> s\<lparr> ledger := insert \<lparr>src=srcAct, dst=dstAct, amount=amt \<rparr> (ledger s) \<rparr>)"
+
+(* Subproc version *)
+
+definition "open_account nm acts = insert \<lparr>name=nm, balance=0\<rparr> acts"
+
+definition "transfer srcAct dstAct amt ledg = insert \<lparr>src=srcAct, dst=dstAct, amount=amt \<rparr> ledg"
+
+datatype banking_subproc_view =
+    VOpenAccount "account set"
+    | VTransfer "transaction set"
+
+definition "set_banking_state v s = (case v of
+  VOpenAccount as \<Rightarrow> s\<lparr> accounts := as \<rparr>
+| VTransfer ts \<Rightarrow> s\<lparr> ledger := ts \<rparr> )"
+
+definition "get_acts s = VOpenAccount (accounts s)"
+definition "get_ledg s = ledger s"
+
+definition "bank_subproc_mapping e = (case e of
+    OpenAccount nm \<Rightarrow> \<lparr> splens=\<lparr>Get=get_acts, Put=set_banking_state\<rparr>, spstep=(\<lambda>v. open_account nm acts) \<rparr>
+  | Transfer srcAct dstAct amt \<Rightarrow> 
+    \<lparr>splens=\<lparr>Get=get_ledg, Put=set_banking_state\<rparr>, spstep=(\<lambda>ledg. transfer srcAct dstAct amt ledg) \<rparr>)"
 
 section "Data refinement point translation"
 
