@@ -88,7 +88,7 @@ record ('s, 'e) dt =
   step :: "'e \<Rightarrow> 's \<Rightarrow> 's"
 
 definition exec_dt :: "('s, 'e) dt \<Rightarrow> 'e list \<Rightarrow> 's" where
-"exec_dt dt i = foldl (\<lambda>s e. (step dt) e s) (state dt) i"
+"exec_dt dt es = foldl (\<lambda>s e. (step dt) e s) (state dt) es"
 
 definition "point_step e p = (case e of
   TranslateX x \<Rightarrow> p\<lparr> X := (X p) + x \<rparr> 
@@ -162,21 +162,21 @@ text "A sub data type consists of a lens on the state and
       subset of the state that that event needs to carry out its
       operation."
       
-record ('s, 'v) sub_dt =
-  sdlens :: "('s, 'v) lens"
-  sdview_func :: "'v \<Rightarrow> 'v"
+record ('s, 'v) subproc =
+  splens :: "('s, 'v) lens"
+  spstep :: "'v \<Rightarrow> 'v"
 
-text "The substate_mapping generates a sub data type given an event"
+text "The subproc_mapping generates a sub data type given an event"
 
-type_synonym ('e, 's, 'v) substate_mapping = "'e \<Rightarrow> ('s, 'v) sub_dt"
+type_synonym ('e, 's, 'v) subproc_mapping = "'e \<Rightarrow> ('s, 'v) subproc"
 
-definition compose_substates :: "('e, 's, 'v) substate_mapping \<Rightarrow> ('e, 's) dt_step"  where
-"compose_substates ssmap = (\<lambda>e s.(
-  let sub_dt = ssmap e in
-  let lns = (sdlens sub_dt) in
-  let vfn = (sdview_func sub_dt) in
+definition compose_subprocs :: "('e, 's, 'v) subproc_mapping \<Rightarrow> ('e, 's) dt_step"  where
+"compose_subprocs spmap = (\<lambda>e s.(
+  let subproc = spmap e in
+  let lns = (splens subproc) in
+  let stp = (spstep subproc) in
   let v = (Get lns) s in
-  let res = vfn v in
+  let res = stp v in
   
   (Put lns) res s
 ))"
@@ -192,18 +192,6 @@ text "Show a sufficient condition / proof obligation for proving that an optimiz
     same simulation and refinement guarantees since the lens-optimized data type has the exact same
     execution as the original."
 
-text "Something not right about this - lens has to be derived from event, which makes this 
-      equivalent to substate_step"
-
-definition "view_step ssmap = (\<lambda>e s. (
-  let sub_dt = ssmap e in
-  let lns = (sdlens sub_dt) in
-  let vfn = (sdview_func sub_dt) in
-  let v = (Get lns) s in
-  let res = vfn v in
-  
-  (Put lns) res s)
-)"
 
 text "If we have the view-level functions which instead of mapping a global state to a global state
       map a view state to a view state, we can build a global state data type and view state 
@@ -219,13 +207,13 @@ definition test :: "int \<Rightarrow> point_action" where "test =  TranslateX"
 definition "take_step e dt = (step dt) e (state dt)"
 
 theorem "\<lbrakk>
-  substate_mapping = (\<lambda>e. ssm);
-  vfn = sdview_func ssm;
-  lns = sdlens ssm;
-  gs_dt = \<lparr> state = s, step=compose_substates substate_mapping \<rparr>;
+  subproc_mapping = (\<lambda>e. ssm);
+  vfn = spstep ssm;
+  lns = splens ssm;
+  gs_dt = \<lparr> state = s, step=compose_subprocs subproc_mapping \<rparr>;
   ss_dt = \<lparr> state=(Get lns) s, step=(\<lambda>e s. vfn s) \<rparr>
 \<rbrakk> \<Longrightarrow> take_step e gs_dt = (Put lns) (take_step e ss_dt) s"
-  unfolding compose_substates_def take_step_def
+  unfolding compose_subprocs_def take_step_def
   by (metis (no_types, lifting) dt.select_convs(1) dt.select_convs(2))
 
 theorem "\<lbrakk>take_step e dt1 = take_step e dt2\<rbrakk> \<Longrightarrow> (exec_dt dt1 es) = (exec_dt dt2 es)" 
@@ -255,16 +243,16 @@ definition "well_behaved lns v s = (put_get lns v s \<and> get_put lns s)"
 
 section "Example substate mapping of Point translation"
 
-definition "point_substate_mapping e = (case e of
+definition "point_subproc_mapping e = (case e of
   TranslateX x \<Rightarrow> (let lns = \<lparr> Get=x_view, Put=lens_put \<rparr> in
-    \<lparr> sdlens=lns, sdview_func=translate_view x \<rparr>)
+    \<lparr> splens=lns, spstep=translate_view x \<rparr>)
   | TranslateY y \<Rightarrow> (let lns = \<lparr> Get=y_view, Put=lens_put \<rparr> in
-    \<lparr> sdlens=lns, sdview_func=translate_view y \<rparr>))"
+    \<lparr> splens=lns, spstep=translate_view y \<rparr>))"
 
-theorem "well_behaved (sdlens (point_substate_mapping e)) v s"
+theorem "well_behaved (splens (point_subproc_mapping e)) v s"
   sorry
 
-definition "optimized_point_step = compose_substates point_substate_mapping"
+definition "optimized_point_step = compose_subprocs point_subproc_mapping"
 definition "optimized_point_dt = \<lparr> state=initPoint, step=optimized_point_step \<rparr>"
 
 theorem "exec_dt point_dt2 es = exec_dt optimized_point_dt es"
@@ -272,7 +260,7 @@ unfolding exec_dt_def and point_dt2_def and point_dt_lens2_def and point_step_de
     and point_step_lens_def translateXInt_def translateYInt_def
     and initPoint_def and xlens_def and ylens_def and updateX_def and updateY_def and getX_def
     and getY_def and Let_def and optimized_point_dt_def and optimized_point_step_def 
-    and point_substate_mapping_def and compose_substates_def and lens_put_def and x_view_def and y_view_def
+    and point_subproc_mapping_def and compose_subprocs_def and lens_put_def and x_view_def and y_view_def
     and translate_view_def
 proof(induction es)
   case Nil
@@ -282,37 +270,65 @@ next
   then show ?case  sorry
 qed
 
-section "Global processes exhibit  data refinement"
+section "Global processes exhibit data refinement"
 
 record ('ext, 's, 'e) dt_dr =
   init :: "'ext \<Rightarrow> 's"
   step :: "'e \<Rightarrow> 's \<Rightarrow> 's"
   fin :: "'s \<Rightarrow> 'ext"
 
-definition "exec_dt_dr dt s es = foldl (\<lambda>v e. (step dt) e v) ((init dt) s) es"
+definition "exec_dt_dr dt s es = (fin dt) (foldl (\<lambda>v e. (step dt) e v) ((init dt) s) es)"
 
 definition "refines C M = (\<forall>s s' es. exec_dt_dr C s es = s' \<longrightarrow> exec_dt_dr M s es = s')"
 
-definition "single_action_refines vfn_c vfn_m = (\<forall>v v'. vfn_c v = v' \<longrightarrow> vfn_m v = v')"
+text "'Action Refinement' is where each isolated implementation action refines its corresponding
+    action in the model. The state type of the step function vfn is local to the action and does
+    not refer to the global state in any way."
 
-definition "action_refines spmm spmi = (\<forall>e. 
-    let vfn_m = sdview_func (spmm e) in
-    let vfn_i = sdview_func (spmi e) in
-    single_action_refines vfn_i vfn_m)"
+definition "single_action_refines stp_i stp_m = (\<forall>a a'. stp_i a = a' \<longrightarrow> stp_m a = a')"
 
-theorem "\<lbrakk>  
-  model_proc = \<lparr> init = any, step=compose_substates spmm, fin=anyf \<rparr>; 
-  impl_proc = \<lparr> init = any, step=compose_substates spmi, fin=anyf \<rparr>;
-  action_refines spmm spmi
+definition "action_refines spmi spmm = (\<forall>e.
+  let stp_i = spstep (spmi e) in 
+  let stp_m = spstep (spmm e) in
+
+  single_action_refines stp_i stp_m)"
+
+text "Action refinement implies refinement of the processes with global state, provided that 
+    each process at the global level's step function is defined via the 'compose_subprocs' 
+    function"
+
+theorem "\<lbrakk>
+  model_proc = \<lparr> init = any, step=compose_subprocs spmm, fin=anyf \<rparr>; 
+  impl_proc = \<lparr> init = any', step=compose_subprocs spmi, fin=anyf' \<rparr>;
+  action_refines spmi spmm
+\<rbrakk> \<Longrightarrow> exec_dt_dr impl_proc s es = s' \<longrightarrow> exec_dt_dr model_proc s es = s'"
+proof (induction es arbitrary: any any' anyf anyf' spmm spmi)
+  case Nil
+  then show ?case unfolding compose_subprocs_def refines_def action_refines_def exec_dt_dr_def single_action_refines_def Let_def sorry
+next
+  case (Cons a es)
+  then show ?case sorry
+qed
+
+section "No data refinement"
+
+definition "refines_dt C M = (\<forall>s s' es. exec_dt C s es = s' \<longrightarrow> exec_dt M s es = s')"
+
+theorem "\<lbrakk>
+  model_proc = \<lparr> state=s, step=compose_subprocs spmm \<rparr>;
+  impl_proc = \<lparr> state=s, step=compose_subprocs spmi \<rparr>;
+  action_refines spmi spmm
+\<rbrakk> \<Longrightarrow> exec_dt impl_proc es = s' \<longrightarrow> exec_dt model_proc es = s'"
+  unfolding compose_subprocs_def action_refines_def single_action_refines_def refines_dt_def exec_dt_def Let_def
+proof(induction es arbitrary: s spmm spmi)
+  case Nil
+  then show ?case by auto
+next
+  case (Cons a es)
+  then show ?case
+    apply clarsimp
+  qed
   
-\<rbrakk> \<Longrightarrow> refines impl_proc model_proc"
-  unfolding compose_substates_def refines_def action_refines_def exec_dt_dr_def single_action_refines_def
-  sorry
-
-(*text "SR is a relation between states in I and M, i.e. SR \<subseteq> 's x 's"
-
-definition "fw_sim SR I M = 
-  (\<forall>ex s. init I ex = s \<longrightarrow>   (\<forall>s s' e. (step I) e s = s'\<longrightarrow> (step M) e s = s')" *)
 
 section "Data refinement point translation"
 
