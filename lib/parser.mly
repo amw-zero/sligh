@@ -36,6 +36,7 @@ open Interpreter
 %token DOT
 %token PROCESS
 %token ENTITY
+%token REFINES
 
 %start prog
 %type <expr list> prog 
@@ -52,12 +53,14 @@ statements:
   | ss = statements s = statement   { ss @ [s] }
   | s = statement                   { [s] }
 
+refines_model:
+  | REFINES IDEN                   { $1 }
+
 statement:
   | LET i = IDEN EQUALS e = expression              { Let(i, e) }
   | DOMAIN i = IDEN COLON d = domain_def* END       { Domain(i, d) }
-
   | ENTITY i = IDEN COLON ta = typed_attr* END       { Entity(i, ta) }
-  | PROCESS n = IDEN COLON es = statement* END      { Process({ename=n;ebody=es}) }
+  | PROCESS n = IDEN refines = refines_model? COLON es = statement* END      { Process({ename=n;ebody=es;entry=Option.is_some(refines)}) }
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
                                                     { FuncDef({fdname=i; fdargs=args; fdbody=body}) }
   | e = expression                                  { e }

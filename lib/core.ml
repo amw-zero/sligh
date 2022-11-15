@@ -43,7 +43,10 @@ and domain_def =
 
 and process = {
   ename: string;
-  ebody: expr list
+  ebody: expr list;
+
+  (* Is this process the entry point to the implementation *)
+  entry: bool;
 }
 
 and tsexpr =
@@ -57,6 +60,11 @@ and tsexpr =
 | TSString of string
 | SLExpr of expr
 
+and tstyped_attr = {
+  tsname: string;
+  tstyp: ts_type;
+}
+
 and ts_type = 
   | TSTNumber
   | TSTString
@@ -65,8 +73,10 @@ and ts_type =
 and tsclassdef =
   | CDSLExpr of expr
   | TSClassProp of string * ts_type
-  (* | TSClassMethod of string * tstyped_attr list * tsexpr list *)
+  | TSClassMethod of string * tstyped_attr list * tsexpr list
 
 let tsClassProp name typ = TSClassProp(name, typ)
 
 let tsClass name defs = TSClass(name, defs)
+
+let tsClassMethod name args body = TSClassMethod(name, args, body)

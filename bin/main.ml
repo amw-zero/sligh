@@ -38,19 +38,80 @@ end
 
 |} *)
 
+(* 
+   
+let model = new Model();
+let client = new Client();
+
+*)
+let processes = {|
+entity Account:
+  balance: Int
+  name: String
+end
+
+entity Transaction:
+  srcAccount: Account
+  dstAccount: Account
+  amount: Real
+end
+
+domain Accounts: 
+  accounts: Account
+
+  def OpenAccount(newAct: AccountCreate):
+    accounts.push(newAct)
+  end
+
+  def UpdateBalance(act: Account, balance: Real):
+    accounts.find(act.id)
+  end
+end
+
+domain Ledger:
+  transactions: Transactions
+
+  def transfer(srcAct: Account, dstAct: Account, amount: Real):
+    transactions.push(5)
+  end
+end
+
+def toTsClassProp(schema: Schema):
+  tsClassProp(schema.name, schema.type)
+end
+
+def toTsAction(action: Action):
+  tsMethod(action.name, action.body)
+end
+
+def clientBody():
+  let props = Model.schemas.map(toTsClassProp)
+  let actions = Model.actions.map(toTsAction)
+
+  props.concat(actions)
+end
+
+process Impl refines Model:
+  typescript:
+    {{ tsClass(idk, 5) }}
+  end
+end
+
+|}
+
+
+(* 
 let eval = {|
 entity Todo:
   note: String
 end
-
-
 
 def toName(a: Schema):
   a.name
 end
 
 def toTsClassBody(a: Attribute):
-  tsClassProp(a.name, a.type)
+  Action(tsClassProp(a.name, a.type))
 end
 
 def toTsClass(s: Schema):
@@ -78,7 +139,13 @@ process server:
     let todoAttrs = {{ Todo.attributes.map(attrName) }}
   end
 end
-|}
+
+process test:
+  typescript:
+    
+  end
+end
+|} *)
 
 (*
 
@@ -131,6 +198,7 @@ end *)
       - Handle effects at thte process level, i.e. process client: handle create! with clientCreate
         this is how effects are "overridden" per each process
     * Model conformance test
+      - This requires marking Actions in the implementation. Otherwise, how to create test?
 *)
 
-let () = Compiler.compile eval;
+let () = Compiler.compile processes;

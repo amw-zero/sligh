@@ -17,7 +17,6 @@ let output_tsexpr_list proc_name tss =
   Printf.fprintf open_chan "%s\n" (String.concat "\n\n" (List.map Codegen.string_of_ts_expr tss));
   close_out open_chan
 
-
 let output_process proc_name proc_body interp_env =
   let proc_body = Interpreter.evaln proc_body interp_env in
 

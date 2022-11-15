@@ -7,15 +7,6 @@ let rec string_of_boolexp t = match t with
   | BFalse -> "false"
   | BIf (t1, t2, t3) -> Printf.sprintf "if %s then %s else %s" (string_of_boolexp t1) (string_of_boolexp t2) (string_of_boolexp t3)
 
-let string_of_tstype tst = match tst with
-  | TSTNumber -> "number"
-  | TSTCustom c -> c
-  | TSTString -> "string"
-
-let string_of_tsclassdef cd = match cd with
-  | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
-  | CDSLExpr(_) -> "CDSLExpr remove"
-
 let string_of_type t = match t with
   | STInt -> "Int"
   | STCustom s -> s
@@ -36,6 +27,18 @@ let rec string_of_ts_expr e = match e with
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
   | TSString(s) -> Printf.sprintf "\"%s\"" s
   | SLExpr(_) -> "SLExpr"
+
+and string_of_tstype tst = match tst with
+  | TSTNumber -> "number"
+  | TSTCustom c -> c
+  | TSTString -> "string"
+
+and string_of_ts_typed_attr ta = Printf.sprintf "%s: %s" ta.tsname (string_of_tstype ta.tstyp)
+
+and string_of_tsclassdef cd = match cd with
+  | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
+  | TSClassMethod(nm, args, body) -> Printf.sprintf "%s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list)
+  | CDSLExpr(_) -> "CDSLExpr remove"
 
 let rec string_of_expr e = match e with
   | TS(tse) -> String.concat "\n" (List.map string_of_ts_expr tse)

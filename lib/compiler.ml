@@ -44,7 +44,6 @@ let compile expr =
   Model.print_model model;
 
   let interp_env = List.fold_left Interpreter.build_env init_interp_env statements in
-
   let interp_env = Interpreter.add_model_to_env model interp_env in
   Interpreter.print_env interp_env;
 
