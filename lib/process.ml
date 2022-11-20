@@ -5,19 +5,19 @@ type schema = {
   attrs: typed_attr list;
 }
 
-type model = {
+type process = {
   schemas: schema list;
   variables: Core.typed_attr list;
   actions: Core.proc_action list;
 }
 
-let new_model () = {
+let new_process () = {
   schemas=[];
   variables=[];
   actions=[];
 }
 
-let filter stmts = List.filter_map (fun stmt -> match stmt with
+let filter_model stmts = List.filter_map (fun stmt -> match stmt with
 | Core.Process(_) -> Some(stmt)
 | Core.Entity(_) -> Some(stmt)
 | _ -> None) stmts
@@ -34,7 +34,7 @@ let collect_attrs attrs def = match def with
 
 let filter_attrs (defs: proc_def list): typed_attr list  = List.fold_left collect_attrs [] defs
 
-let analyze m stmt =
+let analyze_model m stmt =
   match stmt with
   | Core.Process(name, defs) ->
     let actions = filter_actions defs in
@@ -59,10 +59,10 @@ let print_variable v =
 let print_action a =
   Printf.printf "Action: %s\n" (Util.string_of_proc_action a)
 
-let print_model m =
-  print_endline "Model.schemas";
+let print_process m =
+  print_endline "Process.schemas";
   List.iter print_schema m.schemas;
-  print_endline "Model.variables";
+  print_endline "Process.variables";
   List.iter print_variable m.variables;
-  print_endline "Model.actions";
+  print_endline "Process.actions";
   List.iter print_action m.actions

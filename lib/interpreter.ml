@@ -120,7 +120,7 @@ let build_env env stmt =
   match stmt with
   | FuncDef(fd) -> Env.add fd.fdname (VFunc(fd)) env
   | Process(d, defs) -> 
-      let attrs: typed_attr list = Model.filter_attrs defs in
+      let attrs: typed_attr list = Process.filter_attrs defs in
       add_schema_to_env d attrs env
   | Entity(e, attrs) -> 
       add_schema_to_env e attrs env
@@ -129,12 +129,12 @@ let build_env env stmt =
 let add_model_to_env m env =
   (* Create a type named Schemas whose attributes are all of the existing schema definitions *)
   let schema_type_vals = List.filter_map 
-    (fun schema -> match Env.find Model.(schema.name) env with 
+    (fun schema -> match Env.find Process.(schema.name) env with 
       | VType(tv) -> (match tv with 
         | VSchema(s) -> Some(VSchema(s))
         | _ -> None)
       | _ -> None) 
-    Model.(m.schemas) in
+    Process.(m.schemas) in
 
   (* let schemas_schema = VSchema({ sname="Schemas"; attrs=schema_attrs }) in
   let env = Env.add "Schemas" (VType(schemas_schema)) env in *)

@@ -36,14 +36,16 @@ let compile expr =
   (* TODO: rename domain -> process *)
   let lexbuf = Lexing.from_string expr in
   let init_files = File.new_files () in
-  let init_model = Model.new_model () in
+  let init_process = Process.new_process () in
   let init_interp_env = Interpreter.new_environment_with_builtins () in
 
   let stmts = parse_with_error lexbuf in
   
-  let model_ast = Model.filter stmts in
-  let model_proc = List.fold_left Model.analyze init_model model_ast in
-  Model.print_model model_proc;
+  let model_ast = Process.filter_model stmts in
+  let model_proc = List.fold_left Process.analyze_model init_process model_ast in
+  print_endline "Model process:";
+  Process.print_process model_proc;
+  print_endline "";
 
   (* let impl_expr = Implementation.filter stmts in *)
 
