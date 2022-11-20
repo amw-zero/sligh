@@ -42,11 +42,11 @@ rule read ctx = parse
   | "="               { EQUALS }
   | "let"             { LET }
   | "end"             { END }
-  | "domain"          { DOMAIN }  
   | "def"             { DEF }
   | "process"         { PROCESS }
   | "entity"          { ENTITY }
-  | "refines"         { REFINES }
+  | "file"            { FILE }
+  | "implementation"  { IMPLEMENTATION }
   | "typescript"      { ctx#push_lexer (read_ts ctx); TYPESCRIPT }
   | num               { NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
   | iden              { IDEN (Lexing.lexeme lexbuf) }

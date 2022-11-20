@@ -8,7 +8,7 @@ type schema = {
 type model = {
   schemas: schema list;
   variables: Core.typed_attr list;
-  actions: Core.domain_action list;
+  actions: Core.proc_action list;
 }
 
 let new_model () = {
@@ -17,21 +17,26 @@ let new_model () = {
   actions=[];
 }
 
+let filter stmts = List.filter_map (fun stmt -> match stmt with
+| Core.Process(_) -> Some(stmt)
+| Core.Entity(_) -> Some(stmt)
+| _ -> None) stmts
+
 let collect_actions actions def = match def with
-  | DomainAction(act) -> act :: actions
+  | ProcAction(act) -> act :: actions
   | _ -> actions
 
 let filter_actions defs = List.fold_left collect_actions [] defs
 
 let collect_attrs attrs def = match def with
-  | DomainAttr(attr) -> attr :: attrs
+  | ProcAttr(attr) -> attr :: attrs
   | _ -> attrs
 
-let filter_attrs (defs: domain_def list): typed_attr list  = List.fold_left collect_attrs [] defs
+let filter_attrs (defs: proc_def list): typed_attr list  = List.fold_left collect_attrs [] defs
 
 let analyze m stmt =
   match stmt with
-  | Core.Domain(name, defs) ->
+  | Core.Process(name, defs) ->
     let actions = filter_actions defs in
     let attrs = filter_attrs defs in
     {
@@ -52,7 +57,7 @@ let print_variable v =
   Printf.printf "Var: %s\n" (Util.string_of_typed_attr v)
 
 let print_action a =
-  Printf.printf "Action: %s\n" (Util.string_of_domain_action a)
+  Printf.printf "Action: %s\n" (Util.string_of_proc_action a)
 
 let print_model m =
   print_endline "Model.schemas";

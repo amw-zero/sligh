@@ -13,10 +13,15 @@ type expr =
   | Num of int
   | BoolExp of boolexp
   | StmtList of expr list
-  | Domain of string * domain_def list
+
+  | Process of string * proc_def list
   | Entity of string * typed_attr list
   | Call of string * expr list
-  | Process of process
+
+  | File of file
+
+  (* Should only be decl, possibly only be class decl *)
+  | Implementation of expr
   | FuncDef of func_def
   | Access of expr * string
 
@@ -31,22 +36,19 @@ and typed_attr =
     typ: sligh_type;
   }
 
-and domain_action =
+and proc_action =
   { aname: string;
     args: typed_attr list; 
     body: expr;
   }
 
-and domain_def =
-| DomainAttr of typed_attr
-| DomainAction of domain_action
+and proc_def =
+| ProcAttr of typed_attr
+| ProcAction of proc_action
 
-and process = {
+and file = {
   ename: string;
   ebody: expr list;
-
-  (* Is this process the entry point to the implementation *)
-  entry: bool;
 }
 
 and tsexpr =

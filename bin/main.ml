@@ -56,49 +56,49 @@ entity Transaction:
   amount: Real
 end
 
-domain Accounts: 
+process Accounts: 
   accounts: Account
 
   def OpenAccount(newAct: AccountCreate):
-    accounts.push(newAct)
+    5
   end
 
   def UpdateBalance(act: Account, balance: Real):
-    accounts.find(act.id)
+    6
   end
 end
 
-domain Ledger:
+process Ledger:
   transactions: Transactions
 
   def transfer(srcAct: Account, dstAct: Account, amount: Real):
-    transactions.push(5)
+    7
   end
 end
 
-def toTsClassProp(schema: Schema):
-  tsClassProp(schema.name, schema.type)
+def toImplMethod(action: Action):
+  tsClassMethod(action.name, action.args, action.body)
 end
 
-def toTsAction(action: Action):
-  tsMethod(action.name, action.body)
+def impl():
+  let methods = Model.actions.map(toImplMethod)
+
+  tsClass(idk, methods)
 end
 
-def clientBody():
-  let props = Model.schemas.map(toTsClassProp)
-  let actions = Model.actions.map(toTsAction)
-
-  props.concat(actions)
-end
-
-process Impl refines Model:
+implementation:
   typescript:
-    {{ tsClass(idk, 5) }}
+    {{ impl() }}
   end
+end
+
+file another:
+  typescript: 5 end
 end
 
 |}
 
+(*      *)
 
 (* 
 let eval = {|

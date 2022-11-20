@@ -49,13 +49,14 @@ let rec string_of_expr e = match e with
   | Num(n) -> string_of_int n
   | BoolExp(_) -> "boolexp"
   | StmtList(ss) -> string_of_stmt_list ss
-  | Domain(n, defs) -> "domain " ^ n ^ String.concat "\n" (List.map string_of_domain_def defs) ^ "\nend\n"
+  | Process(n, defs) -> "process " ^ n ^ String.concat "\n" (List.map string_of_proc_def defs) ^ "\nend\n"
   | Entity(n, attrs) -> Printf.sprintf "entity %s\n\t%s" n (print_list (List.map string_of_typed_attr attrs))
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
-  | Process(e) -> "process:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody) ^ "\nend"
+  | File(e) -> "file:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody) ^ "\nend"
   | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
-  and string_of_domain_def def = match def with
-  | DomainAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
-  | DomainAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
+  | Implementation(e) -> Printf.sprintf "impl: %s" (string_of_expr e)
+  and string_of_proc_def def = match def with
+  | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
+  | ProcAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
   and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)

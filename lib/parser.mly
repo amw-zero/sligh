@@ -31,12 +31,12 @@ open Interpreter
 %token RBRACE
 
 // Sligh
-%token DOMAIN
 %token DEF
 %token DOT
 %token PROCESS
+%token FILE
 %token ENTITY
-%token REFINES
+%token IMPLEMENTATION
 
 %start prog
 %type <expr list> prog 
@@ -53,14 +53,12 @@ statements:
   | ss = statements s = statement   { ss @ [s] }
   | s = statement                   { [s] }
 
-refines_model:
-  | REFINES IDEN                   { $1 }
-
 statement:
   | LET i = IDEN EQUALS e = expression              { Let(i, e) }
-  | DOMAIN i = IDEN COLON d = domain_def* END       { Domain(i, d) }
-  | ENTITY i = IDEN COLON ta = typed_attr* END       { Entity(i, ta) }
-  | PROCESS n = IDEN refines = refines_model? COLON es = statement* END      { Process({ename=n;ebody=es;entry=Option.is_some(refines)}) }
+  | PROCESS i = IDEN COLON p = proc_def* END        { Process(i, p) }
+  | ENTITY i = IDEN COLON ta = typed_attr* END      { Entity(i, ta) }
+  | IMPLEMENTATION COLON e = expression END         { Implementation(e) }
+  | FILE n = IDEN COLON es = statement* END         { File({ename=n;ebody=es;}) }  
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
                                                     { FuncDef({fdname=i; fdargs=args; fdbody=body}) }
   | e = expression                                  { e }
@@ -92,10 +90,10 @@ non_app:
   | e = non_app DOT i = IDEN                      { Access(e, i) }
   
 
-domain_def:
-  | ta = typed_attr                               { DomainAttr(ta) }
+proc_def:
+  | ta = typed_attr                               { ProcAttr(ta) }
   | DEF act = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON e = expression END
-                                                  { DomainAction({
+                                                  { ProcAction({
                                                       aname=act;
                                                       args;
                                                       body=e

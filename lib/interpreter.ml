@@ -119,7 +119,7 @@ let build_env env stmt =
   let _ = Printf.printf "Building env for statement %s\n" (Util.string_of_expr stmt) in
   match stmt with
   | FuncDef(fd) -> Env.add fd.fdname (VFunc(fd)) env
-  | Domain(d, defs) -> 
+  | Process(d, defs) -> 
       let attrs: typed_attr list = Model.filter_attrs defs in
       add_schema_to_env d attrs env
   | Entity(e, attrs) -> 
