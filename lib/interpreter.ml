@@ -295,8 +295,6 @@ and eval_builtin_func name args env =
     let args_arg = match args_arg with
     | VArray(is) -> List.map (fun inst -> match inst with
       | VInstance(inst) ->
-        let _ = Printf.printf "Converting tsClassMethod args - %s" (string_of_value args_arg) in
-
         let name = match find_attr "name" inst |> Option.get with 
           | VString(n) -> n
           | _ -> failwith "should be a string" in
