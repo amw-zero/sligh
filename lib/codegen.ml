@@ -59,6 +59,14 @@ let rec string_of_expr e = match e with
   and string_of_proc_def def = match def with
   | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
   | ProcAction({ aname; body; args}) -> Printf.sprintf "%s(%s) {\n\t%s\n}" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
-  and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)
+  and string_of_stmt_list sl =
+    let rev_list = List.rev sl in
+    let ret_stmt = List.hd rev_list in 
+    let rest = List.tl rev_list in
+    let ret_str = Printf.sprintf "return %s;" (string_of_expr ret_stmt) in
+    let rest_strs = List.map string_of_expr rest in
+    let all_strs = ret_str :: rest_strs in
+
+    String.concat "\n" (List.rev all_strs)
 
 let string_of_model model_ast = String.concat "\n\n" (List.map string_of_expr model_ast)
