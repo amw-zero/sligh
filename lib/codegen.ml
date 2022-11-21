@@ -41,23 +41,24 @@ and string_of_tsclassdef cd = match cd with
   | TSClassMethod(nm, args, body) -> Printf.sprintf "%s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list)
   | CDSLExpr(_) -> "CDSLExpr remove"
 
+  (* Only supporting codegen to TS right now *)
 let rec string_of_expr e = match e with
-  | TS(tse) -> String.concat "\n" (List.map string_of_ts_expr tse)
-  | Let(name, body) -> "let " ^ name ^ " = " ^ string_of_expr body
+  | Let(name, body) -> Printf.sprintf "let %s = %s;\n" name (string_of_expr body)
   | Iden(i, too) -> (match too with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)
   | Num(n) -> string_of_int n
   | BoolExp(_) -> "boolexp"
   | StmtList(ss) -> string_of_stmt_list ss
-  | Process(n, defs) -> "process " ^ n ^ String.concat "\n" (List.map string_of_proc_def defs) ^ "\nend\n"
-  | Entity(n, attrs) -> Printf.sprintf "entity %s\n\t%s" n (print_list (List.map string_of_typed_attr attrs))
+  | Process(n, defs) -> Printf.sprintf "class %s {\n  %s\n}" n (String.concat "\n" (List.map string_of_proc_def defs)) 
+  | Entity(n, attrs) -> Printf.sprintf "interface %s {\n\t%s\n}" n (print_list (List.map string_of_typed_attr attrs))
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
-  | File(e) -> "file:\n\t" ^ Printf.sprintf "%s: %s\n" e.ename (string_of_stmt_list e.ebody) ^ "\nend"
-  | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
+  | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "function %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
-  | Implementation(e) -> Printf.sprintf "impl: %s" (string_of_expr e)
+  | _ -> failwith (Printf.sprintf "Unable to generate code for expr: %s" (Util.string_of_expr e))
   and string_of_proc_def def = match def with
   | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
-  | ProcAction({ aname; body; args}) -> Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
+  | ProcAction({ aname; body; args}) -> Printf.sprintf "%s(%s) {\n\t%s\n}" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
   and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)
+
+let string_of_model model_ast = String.concat "\n\n" (List.map string_of_expr model_ast)

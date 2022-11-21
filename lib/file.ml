@@ -11,11 +11,14 @@ let build_files ps stmt = match stmt with
 let print ps =
   Files.iter (fun k v -> Printf.printf "%s -> %s\n" k (Util.string_of_stmt_list v)) ps
 
-let output_tsexpr_list file_name tss =
+let output_str file_name strg =  
   let fname = Printf.sprintf "%s.ts" file_name in
   let open_chan = open_out fname in
-  Printf.fprintf open_chan "%s\n" (String.concat "\n\n" (List.map Codegen.string_of_ts_expr tss));
+  Printf.fprintf open_chan "%s\n" strg;
   close_out open_chan
+
+let output_tsexpr_list file_name tss =
+  output_str file_name (String.concat "\n\n" (List.map Codegen.string_of_ts_expr tss))
 
 let output_tsexpr file_name (e: Interpreter.value) =
   match e with

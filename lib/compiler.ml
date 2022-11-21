@@ -42,6 +42,8 @@ let compile expr =
   
   (* Extract and convert Model to Process *)
   let model_ast = Process.filter_model stmts in
+  File.output_str "model" (Codegen.string_of_model model_ast);
+
   let model_proc = List.fold_left Process.analyze_model init_process model_ast in
   print_endline "Model process:";
   Process.print_process model_proc;
