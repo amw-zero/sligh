@@ -17,6 +17,11 @@ let output_tsexpr_list file_name tss =
   Printf.fprintf open_chan "%s\n" (String.concat "\n\n" (List.map Codegen.string_of_ts_expr tss));
   close_out open_chan
 
+let output_tsexpr file_name (e: Interpreter.value) =
+  match e with
+  | VTS(tss) -> output_tsexpr_list file_name tss
+  | _ -> print_endline "Unable to generate code for non-TS expr"
+
 let output_file file_name file_body interp_env =
   let file_expr = Interpreter.evaln file_body interp_env in
 

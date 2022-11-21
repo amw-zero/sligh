@@ -3,6 +3,7 @@ type boolexp = BTrue | BFalse | BIf of boolexp * boolexp * boolexp
 type sligh_type =
   | STInt
   | STString
+  | STDecimal
   | STCustom of string
 
 type expr = 

@@ -33,7 +33,6 @@ let print expr =
   Lexing.from_string expr |> parse_and_print
 
 let compile expr =
-  (* TODO: rename domain -> process *)
   let lexbuf = Lexing.from_string expr in
   let init_files = File.new_files () in
   let init_process = Process.new_process () in
@@ -41,17 +40,22 @@ let compile expr =
 
   let stmts = parse_with_error lexbuf in
   
+  (* Extract and convert Model to Process *)
   let model_ast = Process.filter_model stmts in
   let model_proc = List.fold_left Process.analyze_model init_process model_ast in
   print_endline "Model process:";
   Process.print_process model_proc;
   print_endline "";
 
-  (* let impl_expr = Implementation.filter stmts in *)
+  (* Extract Impl *)
+  let impl_expr = Implementation.filter stmts in 
 
   let interp_env = List.fold_left Interpreter.build_env init_interp_env stmts in
   let interp_env = Interpreter.add_model_to_env model_proc interp_env in
-  Interpreter.print_env interp_env;
+  (* Interpreter.print_env interp_env; *)
+
+  let evaled_impl = Interpreter.evaln impl_expr interp_env in
+  File.output_tsexpr "impl" evaled_impl;
 
   let file_map = List.fold_left File.build_files init_files stmts in
   File.print file_map;

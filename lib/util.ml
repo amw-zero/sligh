@@ -11,6 +11,7 @@ let string_of_type t = match t with
   | STInt -> "Int"
   | STCustom s -> s
   | STString -> "String"
+  | STDecimal -> "Decimal"
 
 let rec string_of_ts_expr e = match e with
   | TSIden(i, t) -> (match t with

@@ -43,7 +43,13 @@ end
 let model = new Model();
 let client = new Client();
 
+schema Action:
+  name: String
+  args: Array(TypedAttr)
+  body: SlighExpr
+end
 *)
+
 let processes = {|
 entity Account:
   balance: Int
@@ -53,25 +59,25 @@ end
 entity Transaction:
   srcAccount: Account
   dstAccount: Account
-  amount: Real
+  amount: Decimal
 end
 
 process Accounts: 
   accounts: Account
 
-  def OpenAccount(newAct: AccountCreate):
+  def OpenAccount(newAct: Account):
     5
   end
 
-  def UpdateBalance(act: Account, balance: Real):
+  def UpdateBalance(act: Account, balance: Decimal):
     6
   end
 end
 
 process Ledger:
-  transactions: Transactions
+  transactions: Transaction
 
-  def transfer(srcAct: Account, dstAct: Account, amount: Real):
+  def transfer(srcAct: Account, dstAct: Account, amount: Decimal):
     7
   end
 end
@@ -83,7 +89,7 @@ end
 def impl():
   let methods = Model.actions.map(toImplMethod)
 
-  tsClass(idk, methods)
+  tsClass(Transaction.name, methods)
 end
 
 implementation:
@@ -158,7 +164,7 @@ end
   Todos: {
     name: Todos,
     attrs: [
-      { name: "todo", type: Custom(Todo) }
+      { name: "todo", type: Custom(Todo) }j
     ]
   },
   Model: {

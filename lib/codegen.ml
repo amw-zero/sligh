@@ -11,6 +11,7 @@ let string_of_type t = match t with
   | STInt -> "Int"
   | STCustom s -> s
   | STString -> "String"
+  | STDecimal -> "Decimal"
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
