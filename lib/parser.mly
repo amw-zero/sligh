@@ -37,6 +37,7 @@ open Interpreter
 %token FILE
 %token ENTITY
 %token IMPLEMENTATION
+%token <string> STRING
 
 %start prog
 %type <expr list> prog 
@@ -82,6 +83,7 @@ app:
 non_app:
   | n = NUMBER                                    { Num(n) }
   | i = IDEN                                      { Iden(i, None) }
+  | s = STRING                                    { String(s) }
   | LPAREN e = expression RPAREN                  { e }
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | boolexp                                       { BoolExp($1) }

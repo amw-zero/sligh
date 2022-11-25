@@ -57,6 +57,7 @@ let rec string_of_expr e = match e with
   | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
   | Implementation(e) -> Printf.sprintf "impl: %s" (string_of_expr e)
+  | String(s) -> s
 and string_of_proc_def def = match def with
 | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
 | ProcAction(a) -> string_of_proc_action a

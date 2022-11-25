@@ -29,6 +29,7 @@ rule read ctx = parse
   | eof               { EOF }
   | whitespace+       { read ctx lexbuf }
   | "}}"              { ctx#pop_lexer; UNQUOTEEND }
+  | '"'               { read_string (Buffer.create 16) lexbuf}
   | "true"            { TRUE }
   | "false"           { FALSE }
   | "if"              { IF }
@@ -51,6 +52,12 @@ rule read ctx = parse
   | num               { NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
   | iden              { IDEN (Lexing.lexeme lexbuf) }
   | _                 { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
+and read_string buf = parse
+  | '"'               { STRING (Buffer.contents buf) }
+  | [^ '"']+
+    { Buffer.add_string buf (Lexing.lexeme lexbuf);
+      read_string buf lexbuf
+    }
 and read_ts ctx = parse
   | eof               { EOF }
   | whitespace+       { read_ts ctx lexbuf }

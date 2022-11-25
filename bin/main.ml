@@ -62,7 +62,7 @@ entity Transaction:
   amount: Decimal
 end
 
-process Accounts: 
+process Accounts:
   accounts: Account
 
   def OpenAccount(newAct: Account):
@@ -99,7 +99,7 @@ implementation:
 end
 
 file another:
-  typescript: 5 end
+  typescript: let x = {{ "test" }} end
 end
 
 |}
@@ -207,3 +207,18 @@ end *)
 *)
 
 let () = Compiler.compile processes;
+
+(* let str_test = {|
+  typescript:
+    let x = {{ "testing" }}
+  end
+|}
+
+(* let () = print_endline (Interpreter.string_of_value (Compiler.interp str_test)); *)
+
+let result = Compiler.interp str_test
+let str = match result with
+| VTS(tss) -> String.concat "\n\n" (List.map Codegen.string_of_ts_expr tss)
+| _ -> "Unable to generate code for non-TS expr"
+
+let () = print_endline str; *)

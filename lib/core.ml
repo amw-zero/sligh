@@ -21,6 +21,8 @@ type expr =
 
   | File of file
 
+  | String of string
+
   (* Should only be decl, possibly only be class decl *)
   | Implementation of expr
   | FuncDef of func_def
@@ -61,6 +63,7 @@ and tsexpr =
 | TSClass of string * tsclassdef list
 | TSArray of tsexpr list
 | TSString of string
+(* | TSFunc of string * tstyped_attr * tsexpr list *)
 | SLExpr of expr
 
 and tstyped_attr = {

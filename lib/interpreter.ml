@@ -1,6 +1,7 @@
 (* 
   An interpreter for Sligh programs. This is initially intended for compile-time 
-  execution in unquoting within quasi-quoted expressions.
+  execution in unquoting within quasi-quoted expressions, but can also be used as
+  a general interpreter.
 *)
 
 open Core
@@ -196,7 +197,6 @@ let ts_type_of_type_val tv = match tv with
   (* Evaluate a Sligh expression *)
 let rec evaln es env = eval_and_return es env
 and eval (e: expr) (env: interp_env): (value * interp_env) = 
-  let _ = Printf.printf "Evaling expr %s\n" (Util.string_of_expr e) in
   match e with
   | Iden(i, _) -> (Env.find i env, env)
   | Num(n) -> (VNum(n), env)
@@ -231,6 +231,7 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
     let new_env = Env.add var ve next_env in
 
     (ve, new_env)
+  | String(s) -> (VString(s), env)
   | TS(tses) ->
     let evaled_tses = List.map (fun tse -> eval_ts tse env |> fst) tses in
     (VTS(evaled_tses), env)
