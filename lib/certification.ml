@@ -44,9 +44,10 @@ let generate _ _ _ interp_env =
   let cert_props_defs = {|
     def toStr(attr: TypedAttribute):
       case attr.type:
-        | Schema(name): name
-        | String: "String"
-        | _: "default"
+        | Schema(s): s.name
+        | String(): "String"
+        | Int(): "Int"
+        | Decimal(): "Decimal"
       end
     end
 

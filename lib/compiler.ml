@@ -28,10 +28,10 @@ let compile expr =
   (* Macroexpand and output auxiliary files *)
   let file_map = List.fold_left File.build_files init_files stmts in
   File.print file_map;
-  File.output file_map interp_env
+  File.output file_map interp_env;
 
   (* To improve: return generated filenames in previous steps *)
-  (* Certification.generate model_proc "model.ts" "impl.ts" interp_env *)
+  Certification.generate model_proc "model.ts" "impl.ts" interp_env
 
 let interp str =
   let lexbuf = Lexing.from_string str in

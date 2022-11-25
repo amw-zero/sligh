@@ -13,6 +13,7 @@ let model_var_name = "Model"
 type primitive_typ =
   | PTNum
   | PTString
+  | PTDecimal
 
 type value =
   | VNum of int
@@ -130,7 +131,9 @@ let type_val_of_sligh_type st env =
   | STCustom(name) -> 
     let inst = Env.find name env |> as_instance in
     find_attr "type" inst |> Option.get |> as_type_val
-  | _ -> VPrimitive(PTNum)
+  | STInt -> VPrimitive(PTNum)
+  | STString -> VPrimitive(PTString)
+  | STDecimal -> VPrimitive(PTDecimal)
 
 let typed_attr_instance attr env = VInstance([
   { iname="name"; ivalue=VString(attr.name) };
@@ -194,13 +197,18 @@ let ts_type_of_type_val tv = match tv with
   | VSchema(s) -> TSTCustom(s.sname)
   | VPrimitive(pt) -> (match pt with
     | PTNum -> TSTNumber
-    | PTString -> TSTString)
+    | PTString -> TSTString
+    | PTDecimal -> TSTNumber)
   | _ -> failwith (Printf.sprintf "Unable to convert type val to TS Type: %s" (string_of_type_val tv))
 
 let check_branch_match v pattern = 
   match v with
   | VType(tv) -> (match tv with
     | VSchema(_) -> "Schema" = pattern.vname
+    | VPrimitive(pt) -> (match pt with
+      | PTNum -> "Int" = pattern.vname
+      | PTString -> "String" = pattern.vname
+      | PTDecimal -> "Decimal" = pattern.vname)
     | _ -> failwith (Printf.sprintf "Not supporting pattern match for type: %s" (string_of_type_val tv)))
   | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v))
 
@@ -215,7 +223,7 @@ let bind_pattern_values v pattern env =
       (match var_name with 
       | Some(n) -> Env.add n (Env.find s.sname env) env
       | None -> env)
-    | _ -> failwith (Printf.sprintf "Not supporting pattern match for type: %s" (string_of_type_val tv)))
+    | _ -> env)
   | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v))
 
   (* Evaluate a Sligh expression *)

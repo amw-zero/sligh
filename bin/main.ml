@@ -50,7 +50,7 @@ schema Action:
 end
 *)
 
-let _ = {|
+let processes = {|
 entity Account:
   balance: Int
   name: String
@@ -206,9 +206,9 @@ end *)
       - This requires marking Actions in the implementation. Otherwise, how to create test?
 *)
 
-(* let () = Compiler.compile processes; *)
+let () = Compiler.compile processes;
 
-let str_test = {|
+(* let _ = {|
   entity Data:
     val: Int
   end
@@ -222,6 +222,7 @@ let str_test = {|
   def toTypeName(attr: TypedAttribute):
     case attr.type:
       | Schema(schema): schema.name
+      | Int(): "test"
     end
   end
 
@@ -234,9 +235,9 @@ let str_test = {|
       let x = {{ Idk.actions.map(toOutput) }}
     end
   end
-|}
+|} *)
 
-let () = Compiler.compile(str_test);
+(* let () = Compiler.compile(str_test); *)
 
 (* let () = print_endline (Interpreter.string_of_value (Compiler.interp str_test)); *)
 
