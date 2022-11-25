@@ -41,6 +41,10 @@ and string_of_tstype tst = match tst with
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
 
+let string_of_pattern_binding pb = match pb with
+  | PBVar(n) -> n
+  | PBAny -> "_"
+
 let rec string_of_expr e = match e with
   | TS(tse) -> "ts: " ^ String.concat "\n" (List.map string_of_ts_expr tse)
   | Let(name, body) -> "let " ^ name ^ " = " ^ string_of_expr body
@@ -58,9 +62,11 @@ let rec string_of_expr e = match e with
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
   | Implementation(e) -> Printf.sprintf "impl: %s" (string_of_expr e)
   | String(s) -> s
+  | Case(e, branches) -> Printf.sprintf "case %s:\n%s\nend" (string_of_expr e) (String.concat "\n\n" (List.map string_of_case_branch branches))
 and string_of_proc_def def = match def with
 | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
 | ProcAction(a) -> string_of_proc_action a
 and string_of_proc_action { aname; body; args} = Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
 and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)
-
+and string_of_case_branch b = Printf.sprintf "| %s: %s" (string_of_value_pattern b.pattern) (string_of_expr b.value)
+and string_of_value_pattern vp = Printf.sprintf "%s(%s)" vp.vname (String.concat ", " (List.map string_of_pattern_binding vp.var_bindings))

@@ -50,7 +50,7 @@ schema Action:
 end
 *)
 
-let processes = {|
+let _ = {|
 entity Account:
   balance: Int
   name: String
@@ -206,19 +206,43 @@ end *)
       - This requires marking Actions in the implementation. Otherwise, how to create test?
 *)
 
-let () = Compiler.compile processes;
+(* let () = Compiler.compile processes; *)
 
-(* let str_test = {|
-  typescript:
-    let x = {{ "testing" }}
+let str_test = {|
+  entity Data:
+    val: Int
+  end
+
+  process Idk:
+    def func(arg: Data):
+      5
+    end
+  end
+
+  def toTypeName(attr: TypedAttribute):
+    case attr.type:
+      | Schema(schema): schema.name
+    end
+  end
+
+  def toOutput(action: Action):
+    action.args.map(toTypeName)
+  end
+
+  implementation:
+    typescript:
+      let x = {{ Idk.actions.map(toOutput) }}
+    end
   end
 |}
 
+let () = Compiler.compile(str_test);
+
 (* let () = print_endline (Interpreter.string_of_value (Compiler.interp str_test)); *)
 
-let result = Compiler.interp str_test
+(* let result = Compiler.interp str_test
 let str = match result with
 | VTS(tss) -> String.concat "\n\n" (List.map Codegen.string_of_ts_expr tss)
-| _ -> "Unable to generate code for non-TS expr"
+| _ -> "unknown" *)
 
-let () = print_endline str; *)
+(* let () = print_endline str; *)

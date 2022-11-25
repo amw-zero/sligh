@@ -146,13 +146,15 @@ let action_instance action env =
     { iname="body"; ivalue=VType(VPrimitive(PTString))};
   ])
 
-let add_schema_to_env name (attrs: typed_attr list) (env: interp_env) =
+let add_schema_to_env name (attrs: typed_attr list) (actions: proc_action list) (env: interp_env) =
   let schema_attrs = List.map (fun attr -> typed_attr_instance attr env) attrs in
   let schema_types = List.map (fun attr -> {aname=attr.name; typ=type_val_of_sligh_type attr.typ env}) attrs in
+  let action_attrs = List.map (fun action -> action_instance action env) actions in
 
   let instance_attrs = [
     {iname="name"; ivalue=VString(name)};
     {iname="attributes"; ivalue=VArray(schema_attrs)};
+    {iname="actions"; ivalue=VArray(action_attrs)};
     {iname="type"; ivalue=VType(VSchema({ sname=name; attrs=schema_types}))}
   ] in
 
@@ -163,9 +165,10 @@ let build_env env stmt =
   | FuncDef(fd) -> Env.add fd.fdname (VFunc(fd)) env
   | Process(d, defs) -> 
       let attrs: typed_attr list = Process.filter_attrs defs in
-      add_schema_to_env d attrs env
+      let actions: proc_action list = Process.filter_actions defs in
+      add_schema_to_env d attrs actions env
   | Entity(e, attrs) -> 
-      add_schema_to_env e attrs env
+      add_schema_to_env e attrs [] env
   | _ -> env
 
 let add_model_to_env m env =
@@ -193,6 +196,27 @@ let ts_type_of_type_val tv = match tv with
     | PTNum -> TSTNumber
     | PTString -> TSTString)
   | _ -> failwith (Printf.sprintf "Unable to convert type val to TS Type: %s" (string_of_type_val tv))
+
+let check_branch_match v pattern = 
+  match v with
+  | VType(tv) -> (match tv with
+    | VSchema(_) -> "Schema" = pattern.vname
+    | _ -> failwith (Printf.sprintf "Not supporting pattern match for type: %s" (string_of_type_val tv)))
+  | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v))
+
+let bind_pattern_values v pattern env =
+  match v with
+  | VType(tv) -> (match tv with
+    | VSchema(s) ->
+      let var_name = match (List.hd pattern.var_bindings) with
+        | PBVar(n) -> Some(n)
+        | PBAny -> None in
+
+      (match var_name with 
+      | Some(n) -> Env.add n (Env.find s.sname env) env
+      | None -> env)
+    | _ -> failwith (Printf.sprintf "Not supporting pattern match for type: %s" (string_of_type_val tv)))
+  | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v))
 
   (* Evaluate a Sligh expression *)
 let rec evaln es env = eval_and_return es env
@@ -232,6 +256,12 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
 
     (ve, new_env)
   | String(s) -> (VString(s), env)
+  | Case(e, branches) ->
+      let (ve, env') = eval e env in
+
+      let result = List.find (fun branch -> check_branch_match ve branch.pattern) branches in
+
+      eval result.value (bind_pattern_values ve result.pattern env')
   | TS(tses) ->
     let evaled_tses = List.map (fun tse -> eval_ts tse env |> fst) tses in
     (VTS(evaled_tses), env)

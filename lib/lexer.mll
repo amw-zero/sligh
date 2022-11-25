@@ -35,12 +35,15 @@ rule read ctx = parse
   | "if"              { IF }
   | "then"            { THEN }
   | "else"            { ELSE }
+  | "case"            { CASE }
   | '('               { LPAREN }
   | ')'               { RPAREN }
   | ':'               { COLON }
   | ','               { COMMA }
   | '.'               { DOT }
   | "="               { EQUALS }
+  | "|"               { BAR }
+  | "_"               { UNDERSCORE }
   | "let"             { LET }
   | "end"             { END }
   | "def"             { DEF }

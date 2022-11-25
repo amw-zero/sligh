@@ -36,9 +36,9 @@ let compile expr =
 let interp str =
   let lexbuf = Lexing.from_string str in
   let init_interp_env = Interpreter.new_environment_with_builtins () in
-
   let stmts = Parse.parse_with_error lexbuf in
   
   let interp_env = List.fold_left Interpreter.build_env init_interp_env stmts in
-  Interpreter.evaln stmts interp_env
+  let last =  List.rev stmts |> List.hd in
+  Interpreter.eval last interp_env |> fst
   

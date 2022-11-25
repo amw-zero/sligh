@@ -38,6 +38,9 @@ open Interpreter
 %token ENTITY
 %token IMPLEMENTATION
 %token <string> STRING
+%token CASE
+%token BAR
+%token UNDERSCORE
 
 %start prog
 %type <expr list> prog 
@@ -70,8 +73,18 @@ boolexp:
   | IF e1 = boolexp THEN e2 = boolexp ELSE e3 = boolexp 
                                     { BIf(e1, e2, e3) }
 expression:
-  | non_app  { $1 }
-  | app      { $1 }
+  | non_app   { $1 }
+  | app       { $1 }
+  | CASE e = expression COLON branches = list(case_branch) END
+              { Case(e, branches)}
+
+pattern_binding:
+  | i = IDEN      { PBVar(i) }
+  | UNDERSCORE    { PBAny }
+
+case_branch:
+  | BAR i = IDEN LPAREN bindings = separated_list(COMMA, pattern_binding) RPAREN COLON body = expression
+                                                  { {pattern={vname=i; var_bindings=bindings}; value=body} }
 
 app:
   | recv = non_app DOT meth = IDEN LPAREN args = separated_list(COMMA, non_app) RPAREN
@@ -90,7 +103,6 @@ non_app:
 
   (* Shift / reduce warning *)
   | e = non_app DOT i = IDEN                      { Access(e, i) }
-  
 
 proc_def:
   | ta = typed_attr                               { ProcAttr(ta) }

@@ -6,6 +6,15 @@ type sligh_type =
   | STDecimal
   | STCustom of string
 
+type pattern_binding =
+  | PBVar of string
+  | PBAny
+
+type value_pattern = {
+  vname: string;
+  var_bindings: pattern_binding list
+}
+
 type expr = 
   TS of tsexpr list
   (* TargetLang of tlang_expr list - to make target languages extensible*)
@@ -27,6 +36,8 @@ type expr =
   | Implementation of expr
   | FuncDef of func_def
   | Access of expr * string
+
+  | Case of expr * case_branch list
 
 and func_def = {
   fdname: string;
@@ -52,6 +63,11 @@ and proc_def =
 and file = {
   ename: string;
   ebody: expr list;
+}
+
+and case_branch = {
+  pattern: value_pattern;
+  value: expr;
 }
 
 and tsexpr =
