@@ -108,7 +108,8 @@ def impl():
   
   let ctorArgs = Model.variables.map(toCtorArg)
   let ctorBody = Model.variables.map(toCtorBodyStmt)
-  let ctor = tsClassMethod("constructor", ctorArgs, ctorBody)
+  let ctorStatements = tsStatementList(ctorBody)
+  let ctor = tsClassMethod("constructor", ctorArgs, ctorStatements)
 
   let defs = attrs.concat(methods)
   let nextDefs = append(ctor, defs)

@@ -112,3 +112,5 @@ let tsAccess left right = TSAccess(left, right)
 let tsIden n = TSIden(n, None)
 
 let tsAssignment left right = TSAssignment(left, right)
+
+let tsStatementList stmts = TSStmtList(stmts)

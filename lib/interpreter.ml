@@ -90,6 +90,10 @@ let val_as_tsexpr v = match v with
 | VTSExpr(tse) -> tse
 | _ -> failwith (Printf.sprintf "Expected TSExpr val: %s" (string_of_value v))
 
+let val_as_tsexpr_list v = match v with
+| VArray(vs) -> List.map val_as_tsexpr vs
+| _ -> failwith (Printf.sprintf "Expected TSExpr val: %s" (string_of_value v))
+
 let val_as_slexpr v = match v with
 | VSLExpr(e) -> e
 | _ -> failwith (Printf.sprintf "Expected SLExpr val: %s" (string_of_value v))
@@ -171,6 +175,13 @@ let builtin_tsassignment_def = {
   fdbody=[];
 }
 
+let builtin_tsstatement_list_name = "tsStatementList"
+let builtin_tsstatement_list_def = {
+  fdname=builtin_tsstatement_list_name;
+  fdargs=[{name="stmts";typ=STString}];
+  fdbody=[];
+}
+
 let all_builtins = [
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_map_name; bdef=builtin_map_def};
@@ -182,6 +193,7 @@ let all_builtins = [
   {bname=builtin_tsaccess_name; bdef=builtin_tsaccess_def};
   {bname=builtin_tsiden_name; bdef=builtin_tsiden_def};
   {bname=builtin_tsassignment_name; bdef=builtin_tsassignment_def};
+  {bname=builtin_tsstatement_list_name; bdef=builtin_tsstatement_list_def};
 ]
 
 let new_environment_with_builtins () =
@@ -441,7 +453,6 @@ and eval_builtin_func name args env =
   | "tsTypedAttr" -> 
     let name_arg = List.nth args 0 |> val_as_str in
     let type_arg = List.nth args 1 |> val_as_type_val |> tstype_of_type_val in 
-
     (VTSTypedAttr(tsTypedAttr name_arg type_arg), env)
   | "tsAccess" -> 
     let left_arg = List.nth args 0 |> val_as_tsexpr in
@@ -457,6 +468,10 @@ and eval_builtin_func name args env =
     let right_arg = List.nth args 1 |> val_as_tsexpr in
 
     (VTSExpr(tsAssignment left_arg right_arg), env)
+  | "tsStatementList" -> 
+    let stmts = List.nth args 0 |> val_as_tsexpr_list in
+
+    (VTSExpr(tsStatementList stmts), env)
   | _ -> failwith (Printf.sprintf "Attempted to call unimplemented builtin func: %s" name)
 
 and eval_ts ts_expr env = match ts_expr with
