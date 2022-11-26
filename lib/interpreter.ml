@@ -22,8 +22,13 @@ type value =
   | VFunc of func_def
   | VType of type_val
   | VInstance of instance
+
+  (* Syntax values *)
+  | VSLExpr of expr
   | VTS of tsexpr list
+  | VTSExpr of tsexpr
   | VTSClassDef of tsclassdef
+  | VTSTypedAttr of tstyped_attr
 
 and schema = {
   sname: string;
@@ -53,9 +58,12 @@ let rec string_of_value v = match v with
   | VType(tv) -> string_of_type_val tv
   | VArray(vs) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_value vs))
   | VTS(_) -> "VTS"
+  | VTSExpr(tse) -> Util.string_of_ts_expr tse
+  | VTSTypedAttr(ta) -> Util.string_of_ts_typed_attr ta
   | VTSClassDef(_) -> "VTSClassDef"
   | VString(s) -> s
   | VInstance(attrs) -> Printf.sprintf "{%s}" (String.concat ", " (List.map string_of_instance_attr attrs))
+  | VSLExpr(e) -> Util.string_of_expr e
 and string_of_instance_attr attr = Printf.sprintf "%s: %s" attr.iname (string_of_value attr.ivalue)
 and string_of_type_val tv = match tv with
   | VSchema s -> string_of_schema s
@@ -65,6 +73,26 @@ and string_of_schema_attr a =
   Printf.sprintf "%s: %s" a.aname (string_of_type_val a.typ)
 and string_of_schema s =
   Printf.sprintf "schema %s\n\  %s\nend" s.sname (Util.print_list (List.map (fun a -> string_of_schema_attr a) s.attrs))
+
+let val_as_str v = match v with
+| VString(s) -> s
+| _ -> failwith (Printf.sprintf "Expected string: %s" (string_of_value v))
+
+let val_as_type_val v = match v with
+| VType(tv)-> tv
+| _ -> failwith (Printf.sprintf "Expected type val: %s" (string_of_value v))
+
+let val_as_val_list v = match v with
+| VArray(vs) -> vs
+| _ -> failwith (Printf.sprintf "Expected array val: %s" (string_of_value v))
+
+let val_as_tsexpr v = match v with
+| VTSExpr(tse) -> tse
+| _ -> failwith (Printf.sprintf "Expected TSExpr val: %s" (string_of_value v))
+
+let val_as_slexpr v = match v with
+| VSLExpr(e) -> e
+| _ -> failwith (Printf.sprintf "Expected SLExpr val: %s" (string_of_value v))
 
 type interp_env = value Env.t
 
@@ -77,6 +105,20 @@ let builtin_map_name = "map"
 let builtin_map_def = {
   fdname=builtin_map_name;
   fdargs=[{name="list";typ=STString}; {name="func";typ=(STCustom("func"))}];
+  fdbody=[];
+}
+
+let builtin_concat_name = "concat"
+let builtin_concat_def = {
+  fdname=builtin_concat_name;
+  fdargs=[{name="l1";typ=STString}; {name="l2";typ=STString};];
+  fdbody=[];
+}
+
+let builtin_append_name = "append"
+let builtin_append_def = {
+  fdname=builtin_append_name;
+  fdargs=[{name="lst";typ=STString}; {name="element";typ=STString};];
   fdbody=[];
 }
 
@@ -101,11 +143,45 @@ let builtin_tsclassmethod_def = {
   fdbody=[];
 }
 
+let builtin_tstyped_attr_name = "tsTypedAttr"
+let builtin_tstyped_attr_def = {
+  fdname=builtin_tstyped_attr_name;
+  fdargs=[{name="name";typ=STString}; {name="type";typ=STString}];
+  fdbody=[];
+}
+
+let builtin_tsaccess_name = "tsAccess"
+let builtin_tsaccess_def = {
+  fdname=builtin_tsaccess_name;
+  fdargs=[{name="left";typ=STString}; {name="right";typ=STString}];
+  fdbody=[];
+}
+
+let builtin_tsiden_name = "tsIden"
+let builtin_tsiden_def = {
+  fdname=builtin_tsiden_name;
+  fdargs=[{name="str";typ=STString};];
+  fdbody=[];
+}
+
+let builtin_tsassignment_name = "tsAssignment"
+let builtin_tsassignment_def = {
+  fdname=builtin_tsassignment_name;
+  fdargs=[{name="left";typ=STString}; {name="right";typ=STString}];
+  fdbody=[];
+}
+
 let all_builtins = [
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_map_name; bdef=builtin_map_def};
   {bname=builtin_tsclass_name; bdef=builtin_tsclassprop_def};
-  {bname=builtin_tsclassmethod_name; bdef=builtin_tsclassmethod_def}
+  {bname=builtin_tsclassmethod_name; bdef=builtin_tsclassmethod_def};
+  {bname=builtin_concat_name; bdef=builtin_concat_def};
+  {bname=builtin_append_name; bdef=builtin_append_def};
+  {bname=builtin_tstyped_attr_name; bdef=builtin_tstyped_attr_def};
+  {bname=builtin_tsaccess_name; bdef=builtin_tsaccess_def};
+  {bname=builtin_tsiden_name; bdef=builtin_tsiden_def};
+  {bname=builtin_tsassignment_name; bdef=builtin_tsassignment_def};
 ]
 
 let new_environment_with_builtins () =
@@ -114,11 +190,7 @@ let new_environment_with_builtins () =
 
 let builtin_funcs = List.map (fun b -> b.bname) all_builtins
 
-let as_type_val v = match v with
-  | VType(tv) -> tv
-  | _ -> failwith (Printf.sprintf "Expected type val, but %s is not one" (string_of_value v))
-
-let as_instance v = match v with  
+let val_as_instance v = match v with  
   | VInstance(inst) -> inst
   | _ -> failwith (Printf.sprintf "Expected instance, but %s is not one" (string_of_value v))
 
@@ -129,8 +201,8 @@ let find_attr attr_name instance = match List.find_opt (fun attr -> attr.iname =
 let type_val_of_sligh_type st env = 
   match st with
   | STCustom(name) -> 
-    let inst = Env.find name env |> as_instance in
-    find_attr "type" inst |> Option.get |> as_type_val
+    let inst = Env.find name env |> val_as_instance in
+    find_attr "type" inst |> Option.get |> val_as_type_val
   | STInt -> VPrimitive(PTNum)
   | STString -> VPrimitive(PTString)
   | STDecimal -> VPrimitive(PTDecimal)
@@ -146,7 +218,7 @@ let action_instance action env =
     { iname="args"; ivalue=VArray(List.map (fun arg -> typed_attr_instance arg env) action.args)};
 
     (* Need to represent syntax values here, will be important for effects *)
-    { iname="body"; ivalue=VType(VPrimitive(PTString))};
+    { iname="body"; ivalue=VSLExpr(action.body)};
   ])
 
 let add_schema_to_env name (attrs: typed_attr list) (actions: proc_action list) (env: interp_env) =
@@ -174,13 +246,14 @@ let build_env env stmt =
       add_schema_to_env e attrs [] env
   | _ -> env
 
-let add_model_to_env m env =
-  (* Create a type named Schemas whose attributes are all of the existing schema definitions *)
+let add_model_to_env m env = (* Create a type named Schemas whose attributes are all of the existing schema definitions *)
   let schema_instances = List.map (fun schema -> Env.find Process.(schema.name) env) Process.(m.schemas) in
+  let variable_instances = List.map (fun variable -> typed_attr_instance variable env) Process.(m.variables) in
   let action_instances = List.map (fun action -> action_instance action env) Process.(m.actions) in
 
   Env.add model_var_name (VInstance([
     { iname="schemas"; ivalue=VArray(schema_instances) };
+    { iname="variables"; ivalue=VArray(variable_instances) };
     { iname="actions"; ivalue=VArray(action_instances) }
   ])) env
 
@@ -301,6 +374,28 @@ and eval_builtin_func name args env =
     ) lst in
 
     (VArray(result), env)
+  | "concat" ->
+    let lst1_arg = List.nth args 0 in
+    let lst2_arg = List.nth args 1 in 
+
+    let lst1 = match lst1_arg with 
+      | VArray(vs) -> vs
+      | _ -> failwith (Printf.sprintf "Tried calling concat builtin with non-array 1st arg %s" (string_of_value lst1_arg)) in
+
+    let lst2 = match lst2_arg with 
+    | VArray(vs) -> vs
+    | _ -> failwith (Printf.sprintf "Tried calling map builtin with non-array 2nd arg %s" (string_of_value lst2_arg)) in
+    
+    let result = List.concat([lst1; lst2]) in
+
+    (VArray(result), env)
+  | "append" ->
+    let elem_arg = List.nth args 0 in 
+    let lst_arg = List.nth args 1 |> val_as_val_list in
+
+    let result: value list = List.cons elem_arg lst_arg in
+
+    (VArray(result), env)
   | "tsClass" ->
     let name_arg = List.nth args 0 in
     let name_arg = match name_arg with
@@ -325,14 +420,9 @@ and eval_builtin_func name args env =
 
     (VTSClassDef(tsClassProp name_arg typ_arg), env)
   | "tsClassMethod" -> 
-    let name_arg = List.nth args 0 in
-    let name_arg = match name_arg with
-    | VString(s) -> s
-    | _ -> failwith (Printf.sprintf "Calling tsClassMethod on non-string %s" (string_of_value name_arg)) in
-
-    let args_arg = List.nth args 1 in
-    let args_arg = match args_arg with
-    | VArray(is) -> List.map (fun inst -> match inst with
+    let name_arg = List.nth args 0 |> val_as_str in
+    let args_arg = List.nth args 1 |> val_as_val_list in
+    let args_arg = List.map (fun arg -> match arg with
       | VInstance(inst) ->
         let name = match find_attr "name" inst |> Option.get with 
           | VString(n) -> n
@@ -342,28 +432,50 @@ and eval_builtin_func name args env =
           | _ -> failwith "not a type val" in
 
         {tsname=name; tstyp= typ}
-      | _ -> failwith (Printf.sprintf "Calling tsClassMethod on non-string %s" (string_of_value args_arg))) is
-    | _ -> failwith (Printf.sprintf "Calling tsClassMethod on non-string %s" (string_of_value args_arg)) in
+      | VTSTypedAttr(ta) -> ta
+      | _ -> failwith (Printf.sprintf "Calling tsClassMethod, args not array of instances %s" (string_of_value arg))) args_arg in
 
-    (* let body_arg = List.nth arg 2 in *)
+    let body_arg = List.nth args 2 |> tsexpr_of_val in
 
-    (*  Body is currently hardcoded *)
-    (VTSClassDef(tsClassMethod name_arg args_arg [TSNum(4)]), env)
+    (VTSClassDef(tsClassMethod name_arg args_arg [body_arg]), env)
+  | "tsTypedAttr" -> 
+    let name_arg = List.nth args 0 |> val_as_str in
+    let type_arg = List.nth args 1 |> val_as_type_val |> tstype_of_type_val in 
+
+    (VTSTypedAttr(tsTypedAttr name_arg type_arg), env)
+  | "tsAccess" -> 
+    let left_arg = List.nth args 0 |> val_as_tsexpr in
+    let right_arg = List.nth args 1 |> val_as_tsexpr in
+
+    (VTSExpr(tsAccess left_arg right_arg), env)
+  | "tsIden" -> 
+    let name_arg = List.nth args 0 |> val_as_str in
+
+    (VTSExpr(tsIden name_arg), env)
+  | "tsAssignment" -> 
+    let left_arg = List.nth args 0 |> val_as_tsexpr in
+    let right_arg = List.nth args 1 |> val_as_tsexpr in
+
+    (VTSExpr(tsAssignment left_arg right_arg), env)
   | _ -> failwith (Printf.sprintf "Attempted to call unimplemented builtin func: %s" name)
 
 and eval_ts ts_expr env = match ts_expr with
-| SLExpr(e) -> (tsexpr_of_val ((eval e env) |> fst), env)
+| SLExpr(e) -> 
+  let res: value = eval e env |> fst in
+  (tsexpr_of_val res, env)
 | TSLet(var, exp) -> (TSLet(var, eval_ts exp env |> fst), env)
 | TSMethodCall(recv, call, args) ->
     let reduced_args = List.map (fun a -> eval_ts a env |> fst) args in
     (TSMethodCall(recv, call, reduced_args), env)
 | _ -> (ts_expr, env)
 
-and tsexpr_of_val v = match v with
+and tsexpr_of_val (v: value) = match v with
 | VNum(n) -> TSNum(n)
 | VTS(tss) -> TSStmtList(tss)
 | VArray(vs) -> TSArray(List.map tsexpr_of_val vs)
 | VString(s) -> TSString(s)
+| VTSExpr(e) -> e
+| VSLExpr(e) -> SLExpr(e)
 | _ -> failwith (Printf.sprintf "Cannot tseval value %s" (string_of_value v))
 
 and tstype_of_type_val tv = match tv with

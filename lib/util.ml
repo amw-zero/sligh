@@ -24,6 +24,8 @@ let rec string_of_ts_expr e = match e with
   | TSMethodCall(recv, m, args) -> Printf.sprintf "ts-%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
   | TSString(s) -> s
+  | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
+  | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | SLExpr(_) -> "SLExpr"
 
 and string_of_tsclassdef cd = match cd with

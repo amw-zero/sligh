@@ -77,7 +77,7 @@ end
 process Ledger:
   transactions: Transaction
 
-  def transfer(srcAct: Account, dstAct: Account, amount: Decimal):
+  def Transfer(srcAct: Account, dstAct: Account, amount: Decimal):
     7
   end
 end
@@ -86,10 +86,34 @@ def toImplMethod(action: Action):
   tsClassMethod(action.name, action.args, action.body)
 end
 
+def toImplAttr(attr: TypedAttribute):
+  tsClassProp(attr.name, attr.type)
+end
+
+def toCtorArg(attr: TypedAttribute):
+  tsTypedAttr(attr.name, attr.type)
+end
+
+def toCtorBodyStmt(attr: TypedAttribute):
+  let this = tsIden("this")
+  let attrIden = tsIden(attr.name)
+  let target = tsAccess(this, attrIden)
+
+  tsAssignment(target, attrIden)
+end
+
 def impl():
   let methods = Model.actions.map(toImplMethod)
+  let attrs = Model.variables.map(toImplAttr)
+  
+  let ctorArgs = Model.variables.map(toCtorArg)
+  let ctorBody = Model.variables.map(toCtorBodyStmt)
+  let ctor = tsClassMethod("constructor", ctorArgs, ctorBody)
 
-  tsClass(Transaction.name, methods)
+  let defs = attrs.concat(methods)
+  let nextDefs = append(ctor, defs)
+
+  tsClass("Client", nextDefs)
 end
 
 implementation:

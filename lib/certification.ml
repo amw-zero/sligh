@@ -8,39 +8,6 @@ let generate _ _ _ interp_env =
      requirement of being a class is an implicit dependency. This will cause
      the test to fail though. *)
 
-  (* Todo - generate arguments for Actions *)
-  (* let cert_props_defs = {|
-    def toName(attr: Attribute):
-      attr.name
-    end
-
-    def propGen(type: Type):
-      case type:
-        Primitive: 5 end
-        Schema(name): Schemas.get(name).attributes.map(toName) end
-      end  
-    end
-
-    def toRefinementProperty(action: Action):
-      typescript:
-        // Construct Model and Impl
-        let model = new Model();
-        let impl = new Impl();
-
-        await impl.setup();
-
-        // Gen args
-        let newAct = prop.generate({{ propGen(action.args[0].type )}})
-
-        // Call action
-        let modelRes = model.OpenAccount(newAct);
-        let implRes = impl.OpenAccount(newAct);
-
-        await impl.teardown();
-      end
-    end
-  |} in *)
-
   let cert_props_defs = {|
     def toName(attr: Attribute):
       attr.name

@@ -79,6 +79,8 @@ and tsexpr =
 | TSClass of string * tsclassdef list
 | TSArray of tsexpr list
 | TSString of string
+| TSAccess of tsexpr * tsexpr
+| TSAssignment of tsexpr * tsexpr
 (* | TSFunc of string * tstyped_attr * tsexpr list *)
 | SLExpr of expr
 
@@ -102,3 +104,11 @@ let tsClassProp name typ = TSClassProp(name, typ)
 let tsClass name defs = TSClass(name, defs)
 
 let tsClassMethod name args body = TSClassMethod(name, args, body)
+
+let tsTypedAttr name typ = {tsname=name; tstyp=typ}
+
+let tsAccess left right = TSAccess(left, right)
+
+let tsIden n = TSIden(n, None)
+
+let tsAssignment left right = TSAssignment(left, right)
