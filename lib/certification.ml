@@ -42,9 +42,17 @@ let generate _ _ _ interp_env =
   |} in *)
 
   let cert_props_defs = {|
+    def toName(attr: Attribute):
+      attr.name
+    end
+
+    def toSchemaValueGenerator(schema: Schema):
+      s.attributes.map(toName)
+    end
+
     def toStr(attr: TypedAttribute):
       case attr.type:
-        | Schema(s): s.name
+        | Schema(s): toSchemaValueGenerator(s)
         | String(): "String"
         | Int(): "Int"
         | Decimal(): "Decimal"

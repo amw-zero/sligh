@@ -1,4 +1,4 @@
 (executable
- (public_name edsl)
- (name main)
+ (public_name sligh)
+ (name sligh)
  (libraries edsl))

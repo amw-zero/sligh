@@ -75,8 +75,6 @@ boolexp:
 expression:
   | non_app   { $1 }
   | app       { $1 }
-  | CASE e = expression COLON branches = list(case_branch) END
-              { Case(e, branches)}
 
 pattern_binding:
   | i = IDEN      { PBVar(i) }
@@ -98,6 +96,8 @@ non_app:
   | i = IDEN                                      { Iden(i, None) }
   | s = STRING                                    { String(s) }
   | LPAREN e = expression RPAREN                  { e }
+  | CASE e = expression COLON branches = list(case_branch) END
+                                                  { Case(e, branches)}
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
   | boolexp                                       { BoolExp($1) }
 
