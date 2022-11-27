@@ -81,8 +81,10 @@ and tsexpr =
 | TSString of string
 | TSAccess of tsexpr * tsexpr
 | TSAssignment of tsexpr * tsexpr
+| TSInterface of string * tstyped_attr list
 (* | TSFunc of string * tstyped_attr * tsexpr list *)
 | SLExpr of expr
+| SLSpliceExpr of expr
 
 and tstyped_attr = {
   tsname: string;
@@ -114,3 +116,5 @@ let tsIden n = TSIden(n, None)
 let tsAssignment left right = TSAssignment(left, right)
 
 let tsStatementList stmts = TSStmtList(stmts)
+
+let tsInterface name attrs = TSInterface(name, attrs)

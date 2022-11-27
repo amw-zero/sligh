@@ -24,6 +24,7 @@ open Interpreter
 %token END
 %token EQUALS
 %token UNQUOTE
+%token UNQUOTE_SPLICE
 %token UNQUOTEEND
 %token COMMA
 %token CLASS
@@ -135,7 +136,8 @@ tsclassdef:
   | i = IDEN COLON typ = IDEN                   { TSClassProp(i, tstype_of_string typ) }
 
 tsexp:
-  | n = NUMBER                          { TSNum(n) }
+  | n = NUMBER                                  { TSNum(n) }
   | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
-                                        { TSMethodCall(recv, meth, args) }
-  | UNQUOTE e = expression UNQUOTEEND   { SLExpr(e) }
+                                                { TSMethodCall(recv, meth, args) }
+  | UNQUOTE_SPLICE e = expression UNQUOTEEND    { SLSpliceExpr(e) }
+  | UNQUOTE e = expression UNQUOTEEND           { SLExpr(e) }

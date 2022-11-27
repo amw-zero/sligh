@@ -90,9 +90,17 @@ let val_as_tsexpr v = match v with
 | VTSExpr(tse) -> tse
 | _ -> failwith (Printf.sprintf "Expected TSExpr val: %s" (string_of_value v))
 
+let val_as_tstyped_attr v = match v with 
+| VTSTypedAttr(ta) -> ta
+| _ -> failwith (Printf.sprintf "Expected VTSTypedAttr val: %s" (string_of_value v))
+
+let val_as_tstyped_attr_list v = match v with
+| VArray(vs) -> List.map val_as_tstyped_attr vs
+| _ -> failwith (Printf.sprintf "Expected Array of TSTypedAttrs val: %s" (string_of_value v))
+
 let val_as_tsexpr_list v = match v with
 | VArray(vs) -> List.map val_as_tsexpr vs
-| _ -> failwith (Printf.sprintf "Expected TSExpr val: %s" (string_of_value v))
+| _ -> failwith (Printf.sprintf "Expected Array of TSExpr vals: %s" (string_of_value v))
 
 let val_as_slexpr v = match v with
 | VSLExpr(e) -> e
@@ -182,6 +190,13 @@ let builtin_tsstatement_list_def = {
   fdbody=[];
 }
 
+let builtin_tsinterface_name = "tsInterface"
+let builtin_tsinterface_def = {
+  fdname=builtin_tsinterface_name;
+  fdargs=[{name="name";typ=STString}; {name="attrs";typ=STString}];
+  fdbody=[];
+}
+
 let all_builtins = [
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_map_name; bdef=builtin_map_def};
@@ -194,6 +209,8 @@ let all_builtins = [
   {bname=builtin_tsiden_name; bdef=builtin_tsiden_def};
   {bname=builtin_tsassignment_name; bdef=builtin_tsassignment_def};
   {bname=builtin_tsstatement_list_name; bdef=builtin_tsstatement_list_def};
+  {bname=builtin_tsinterface_name; bdef=builtin_tsinterface_def};
+
 ]
 
 let new_environment_with_builtins () =
@@ -228,8 +245,6 @@ let action_instance action env =
   VInstance([
     { iname="name"; ivalue=VString(Core.(action.aname)) };
     { iname="args"; ivalue=VArray(List.map (fun arg -> typed_attr_instance arg env) action.args)};
-
-    (* Need to represent syntax values here, will be important for effects *)
     { iname="body"; ivalue=VSLExpr(action.body)};
   ])
 
@@ -356,7 +371,7 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
 
       eval result.value (bind_pattern_values ve result.pattern env')
   | TS(tses) ->
-    let evaled_tses = List.map (fun tse -> eval_ts tse env |> fst) tses in
+    let evaled_tses = List.concat_map (fun tse -> eval_ts tse env |> fst) tses in
     (VTS(evaled_tses), env)
   | _ -> failwith (Printf.sprintf "Unable to eval expr %s" (Util.string_of_expr e))
 
@@ -472,17 +487,25 @@ and eval_builtin_func name args env =
     let stmts = List.nth args 0 |> val_as_tsexpr_list in
 
     (VTSExpr(tsStatementList stmts), env)
+  | "tsInterface" -> 
+    let name = List.nth args 0 |> val_as_str in
+    let attrs = List.nth args 1 |> val_as_tstyped_attr_list in
+
+    (VTSExpr(tsInterface name attrs), env)    
   | _ -> failwith (Printf.sprintf "Attempted to call unimplemented builtin func: %s" name)
 
 and eval_ts ts_expr env = match ts_expr with
 | SLExpr(e) -> 
   let res: value = eval e env |> fst in
-  (tsexpr_of_val res, env)
-| TSLet(var, exp) -> (TSLet(var, eval_ts exp env |> fst), env)
+  ([tsexpr_of_val res], env)
+| SLSpliceExpr(e) -> 
+  let res: value = eval e env |> fst in
+  (tsexpr_of_val_splice res, env)
+| TSLet(var, exp) -> ([TSLet(var, eval_ts exp env |> fst |> List.hd)], env)
 | TSMethodCall(recv, call, args) ->
-    let reduced_args = List.map (fun a -> eval_ts a env |> fst) args in
-    (TSMethodCall(recv, call, reduced_args), env)
-| _ -> (ts_expr, env)
+    let reduced_args = List.concat_map (fun a -> eval_ts a env |> fst) args in
+    ([TSMethodCall(recv, call, reduced_args)], env)
+| _ -> ([ts_expr], env)
 
 and tsexpr_of_val (v: value) = match v with
 | VNum(n) -> TSNum(n)
@@ -492,6 +515,10 @@ and tsexpr_of_val (v: value) = match v with
 | VTSExpr(e) -> e
 | VSLExpr(e) -> SLExpr(e)
 | _ -> failwith (Printf.sprintf "Cannot tseval value %s" (string_of_value v))
+
+and tsexpr_of_val_splice v = match v with
+| VArray(vs) -> List.map tsexpr_of_val vs
+| _ -> failwith (Printf.sprintf "Can only splice array values: %s" (string_of_value v))
 
 and tstype_of_type_val tv = match tv with
 | VSchema(s) -> TSTCustom(s.sname)

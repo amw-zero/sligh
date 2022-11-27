@@ -90,7 +90,7 @@ def toImplAttr(attr: TypedAttribute):
   tsClassProp(attr.name, attr.type)
 end
 
-def toCtorArg(attr: TypedAttribute):
+def toTsTypedAttr(attr: TypedAttribute):
   tsTypedAttr(attr.name, attr.type)
 end
 
@@ -106,7 +106,7 @@ def impl():
   let methods = Model.actions.map(toImplMethod)
   let attrs = Model.variables.map(toImplAttr)
   
-  let ctorArgs = Model.variables.map(toCtorArg)
+  let ctorArgs = Model.variables.map(toTsTypedAttr)
   let ctorBody = Model.variables.map(toCtorBodyStmt)
   let ctorStatements = tsStatementList(ctorBody)
   let ctor = tsClassMethod("constructor", ctorArgs, ctorStatements)
@@ -117,8 +117,15 @@ def impl():
   tsClass("Client", nextDefs)
 end
 
+def toTsInterface(schema: Schema):
+  let attrs = schema.attributes.map(toTsTypedAttr)
+
+  tsInterface(schema.name, attrs)
+end
+
 implementation:
   typescript:
+    {{* Model.schemas.map(toTsInterface) }}
     {{ impl() }}
   end
 end
@@ -232,43 +239,3 @@ end *)
 *)
 
 let () = Compiler.compile processes;
-
-(* let _ = {|
-  entity Data:
-    val: Int
-  end
-
-  process Idk:
-    def func(arg: Data):
-      5
-    end
-  end
-
-  def toTypeName(attr: TypedAttribute):
-    case attr.type:
-      | Schema(schema): schema.name
-      | Int(): "test"
-    end
-  end
-
-  def toOutput(action: Action):
-    action.args.map(toTypeName)
-  end
-
-  implementation:
-    typescript:
-      let x = {{ Idk.actions.map(toOutput) }}
-    end
-  end
-|} *)
-
-(* let () = Compiler.compile(str_test); *)
-
-(* let () = print_endline (Interpreter.string_of_value (Compiler.interp str_test)); *)
-
-(* let result = Compiler.interp str_test
-let str = match result with
-| VTS(tss) -> String.concat "\n\n" (List.map Codegen.string_of_ts_expr tss)
-| _ -> "unknown" *)
-
-(* let () = print_endline str; *)

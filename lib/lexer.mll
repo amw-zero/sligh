@@ -65,6 +65,7 @@ and read_ts ctx = parse
   | eof               { EOF }
   | whitespace+       { read_ts ctx lexbuf }
   | "{{"              { ctx#push_lexer (read ctx); UNQUOTE }
+  | "{{*"             { ctx#push_lexer (read ctx); UNQUOTE_SPLICE }
   | ':'               { COLON }
   | '.'               { DOT }
   | "="               { EQUALS }

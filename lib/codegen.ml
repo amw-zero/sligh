@@ -29,6 +29,8 @@ let rec string_of_ts_expr e = match e with
   | TSString(s) -> Printf.sprintf "\"%s\"" s
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1) (string_of_ts_expr e2)
+  | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
+  | SLSpliceExpr(_) -> "SLSpliceExpr"
   | SLExpr(_) -> "SLExpr"
 
 and string_of_tstype tst = match tst with
