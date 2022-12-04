@@ -51,6 +51,7 @@ rule read ctx = parse
   | "entity"          { ENTITY }
   | "file"            { FILE }
   | "implementation"  { IMPLEMENTATION }
+  | "effect"          { EFFECT }
   | "typescript"      { ctx#push_lexer (read_ts ctx); TYPESCRIPT }
   | num               { NUMBER (Lexing.lexeme lexbuf |> int_of_string) }
   | iden              { IDEN (Lexing.lexeme lexbuf) }

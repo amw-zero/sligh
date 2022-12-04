@@ -50,7 +50,7 @@ schema Action:
 end
 *)
 
-let processes = {|
+let _ = {|
 entity Account:
   balance: Int
   name: String
@@ -66,7 +66,7 @@ process Accounts:
   accounts: Account
 
   def OpenAccount(newAct: Account):
-    5
+    accounts.createAccount!(newAct)
   end
 
   def UpdateBalance(act: Account, balance: Decimal):
@@ -147,4 +147,6 @@ end
       - This requires marking Actions in the implementation. Otherwise, how to create test?
 *)
 
-let () = Compiler.compile processes;
+(* let () = Compiler.compile_str processes; *)
+
+let () = Compiler.compile_file "effects.sl";

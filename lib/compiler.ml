@@ -1,9 +1,7 @@
-let compile expr =
-  let lexbuf = Lexing.from_string expr in
+let compile lexbuf =
   let init_files = File.new_files () in
   let init_process = Process.new_process () in
   let init_interp_env = Interpreter.new_environment_with_builtins () in
-
   let stmts = Parse.parse_with_error lexbuf in
   
   (* Extract and convert Model to Process *)
@@ -32,6 +30,19 @@ let compile expr =
 
   (* To improve: return generated filenames in previous steps *)
   Certification.generate model_proc "model.ts" "impl.ts" interp_env
+
+let compile_str expr =
+  Lexing.from_string expr |> compile
+  
+let compile_file fn =
+  let fh = open_in fn in
+  let lex = Lexing.from_channel fh in
+  lex.Lexing.lex_curr_p <- {lex.Lexing.lex_curr_p with Lexing.pos_fname = fn};
+
+  let res = compile lex in
+  close_in fh;
+
+  res
 
 let interp str =
   let lexbuf = Lexing.from_string str in

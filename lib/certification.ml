@@ -27,15 +27,13 @@ let generate _ _ _ interp_env =
     end
 
     def toRefinementProperty(action: Action):
-      typescript:
-        {{ action.args.map(toStr) }}
-      end
+      action.args.map(toStr)
     end
   |} in
 
   let cert_props = {|
     typescript:
-      {{ Model.actions.map(toRefinementProperty) }}
+      {{* Model.actions.map(toRefinementProperty) }}
     end
   |} in
 

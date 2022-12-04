@@ -42,6 +42,7 @@ open Interpreter
 %token CASE
 %token BAR
 %token UNDERSCORE
+%token EFFECT
 
 %start prog
 %type <expr list> prog 
@@ -66,6 +67,7 @@ statement:
   | FILE n = IDEN COLON es = statement* END         { File({ename=n;ebody=es;}) }  
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
                                                     { FuncDef({fdname=i; fdargs=args; fdbody=body}) }
+  // | EFFECT i = IDEN                                                  
   | e = expression                                  { e }
 
 boolexp:
