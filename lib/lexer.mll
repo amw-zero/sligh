@@ -38,6 +38,8 @@ rule read ctx = parse
   | "case"            { CASE }
   | '('               { LPAREN }
   | ')'               { RPAREN }
+  | '['               { LSQBRACKET }
+  | ']'               { RSQBRACKET }
   | ':'               { COLON }
   | ','               { COMMA }
   | '.'               { DOT }

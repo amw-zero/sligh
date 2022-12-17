@@ -30,6 +30,8 @@ open Interpreter
 %token CLASS
 %token LBRACE
 %token RBRACE
+%token LSQBRACKET
+%token RSQBRACKET
 
 // Sligh
 %token DEF
@@ -102,6 +104,8 @@ non_app:
   | n = NUMBER                                    { Num(n) }
   | i = IDEN                                      { Iden(i, None) }
   | s = STRING                                    { String(s) }
+  | LSQBRACKET es = separated_list(COMMA, non_app) RSQBRACKET
+                                                  { Array(es) }
   | LPAREN e = expression RPAREN                  { e }
   | CASE e = expression COLON branches = list(case_branch) END
                                                   { Case(e, branches)}

@@ -51,7 +51,7 @@ let analyze_model m stmt =
   | _ -> m
 
 let print_schema s =
-  Printf.printf "Schema: %s,\n\t%s\n" s.name (Util.print_list (List.map Util.string_of_typed_attr s.attrs))
+  Printf.printf "Schema: %s,\n\t%s\n" s.name (Util.print_list "\n" (List.map Util.string_of_typed_attr s.attrs))
 
 let print_variable v =
   Printf.printf "Var: %s\n" (Util.string_of_typed_attr v)

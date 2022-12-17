@@ -72,7 +72,7 @@ and string_of_type_val tv = match tv with
 and string_of_schema_attr a =
   Printf.sprintf "%s: %s" a.aname (string_of_type_val a.typ)
 and string_of_schema s =
-  Printf.sprintf "schema %s\n\  %s\nend" s.sname (Util.print_list (List.map (fun a -> string_of_schema_attr a) s.attrs))
+  Printf.sprintf "schema %s\n\  %s\nend" s.sname (Util.print_list "\n" (List.map (fun a -> string_of_schema_attr a) s.attrs))
 
 let val_as_str v = match v with
 | VString(s) -> s
@@ -201,6 +201,20 @@ let builtin_tsinterface_def = {
   fdbody=[];
 }
 
+let builtin_tsmethod_call_name = "tsMethodCall"
+let builtin_tsmethod_call_def = {
+  fdname=builtin_tsmethod_call_name;
+  fdargs=[{name="receiver";typ=STString}; {name="callName";typ=STString}; {name="args";typ=STString}];
+  fdbody=[];
+}
+
+let builtin_tsclosure_name = "tsClosure"
+let builtin_tsclosure_def = {
+  fdname=builtin_tsclosure_name;
+  fdargs=[{name="args";typ=STString}; {name="body";typ=STString}];
+  fdbody=[];
+}
+
 let all_builtins = [
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_map_name; bdef=builtin_map_def};
@@ -214,7 +228,8 @@ let all_builtins = [
   {bname=builtin_tsassignment_name; bdef=builtin_tsassignment_def};
   {bname=builtin_tsstatement_list_name; bdef=builtin_tsstatement_list_def};
   {bname=builtin_tsinterface_name; bdef=builtin_tsinterface_def};
-
+  {bname=builtin_tsmethod_call_name; bdef=builtin_tsmethod_call_def};
+  {bname=builtin_tsclosure_name; bdef=builtin_tsclosure_def};
 ]
 
 let new_environment_with_builtins () =
@@ -374,6 +389,7 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
       let result = List.find (fun branch -> check_branch_match ve branch.pattern) branches in
 
       eval result.value (bind_pattern_values ve result.pattern env')
+  | Array(es) -> (VArray(List.map (fun e -> eval e env |> fst) es), env)
   | TS(tses) ->
     let evaled_tses = List.concat_map (fun tse -> eval_ts tse env |> fst) tses in
     (VTS(evaled_tses), env)
@@ -496,6 +512,20 @@ and eval_builtin_func name args env =
     let attrs = List.nth args 1 |> val_as_tstyped_attr_list in
 
     (VTSExpr(tsInterface name attrs), env)    
+  | "tsMethodCall" ->
+    let receiver = List.nth args 0 |> val_as_str in
+    let call_name = List.nth args 1 |> val_as_str in
+    let args = List.nth args 2 |> val_as_val_list |> List.map (fun v -> tsexpr_of_val v) in
+
+    (VTSExpr(TSMethodCall(receiver, call_name, args)), env)
+  | "tsClosure" ->
+    let closure_args = List.nth args 0 |> val_as_tsexpr_list |> List.map (fun tse -> match tse with
+      | TSIden(i) -> i
+      | _ -> failwith (Printf.sprintf "Expecting TSIdens, got: %s" (Util.string_of_ts_expr tse))) in
+
+    let body = List.nth args 1 |> tsexpr_of_val  in
+
+    (VTSExpr(TSClosure(closure_args, [body])), env)
   | _ -> failwith (Printf.sprintf "Attempted to call unimplemented builtin func: %s" name)
 
 and eval_ts ts_expr env = match ts_expr with

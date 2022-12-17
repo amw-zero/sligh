@@ -18,6 +18,7 @@ let print_env env =
   Env.iter (fun ename eff -> Printf.printf "%s -> %s\n" ename eff.ename) env;
   print_endline ""
 
+(* Effect application should take place after macro expansion *)
 let rec apply proc_name effect_env expr =
   Printf.printf "Calling apply for: %s\n" proc_name;
   let apply_expr = apply proc_name effect_env in
@@ -58,9 +59,14 @@ and apply_tsexpr proc_name effect_env tse =
   | TSMethodCall(recv, m, args) -> TSMethodCall(recv, m, List.map apply_tsexpr_expr args)
   | TSAccess(e1, e2) -> TSAccess(apply_tsexpr_expr e1, apply_tsexpr_expr e2)
   | TSAssignment(e1, e2) -> TSAssignment(apply_tsexpr_expr e1, apply_tsexpr_expr e2)
+  | TSClosure(args, body) -> TSClosure(args, List.map apply_tsexpr_expr body)
   | SLSpliceExpr(e) -> SLSpliceExpr(apply proc_name effect_env e)
   | SLExpr(e) -> SLExpr(apply proc_name effect_env e)
-  | _ -> tse
+  | TSIden(_) -> tse
+  | TSNum(_) -> tse
+  | TSArray(_) -> tse
+  | TSInterface(_, _) -> tse
+  | TSString(_) -> tse
 and apply_tsclassdef proc_name effect_env cd = match cd with
   | TSClassMethod(nm, args, body) -> TSClassMethod(nm, args, List.map (fun tse -> apply_tsexpr proc_name effect_env tse) body)
   | _ -> cd

@@ -15,12 +15,13 @@ type value_pattern = {
   var_bindings: pattern_binding list
 }
 
-type expr = 
+type expr =
   TS of tsexpr list
   (* TargetLang of tlang_expr list - to make target languages extensible*)
   | Let of string * expr
   | Iden of string * sligh_type option
   | Num of int
+  | Array of expr list
   | BoolExp of boolexp
   | StmtList of expr list
 
@@ -83,7 +84,7 @@ and case_branch = {
 }
 
 and tsexpr =
-| TSIden of string * ts_type option
+| TSIden of tsiden
 | TSNum of int
 | TSLet of string * tsexpr
 | TSStmtList of tsexpr list
@@ -94,9 +95,15 @@ and tsexpr =
 | TSAccess of tsexpr * tsexpr
 | TSAssignment of tsexpr * tsexpr
 | TSInterface of string * tstyped_attr list
+| TSClosure of tsiden list * tsexpr list
 (* | TSFunc of string * tstyped_attr * tsexpr list *)
 | SLExpr of expr
 | SLSpliceExpr of expr
+
+and tsiden = {
+  iname: string;
+  itype: ts_type option;
+}
 
 and tstyped_attr = {
   tsname: string;
@@ -123,7 +130,7 @@ let tsTypedAttr name typ = {tsname=name; tstyp=typ}
 
 let tsAccess left right = TSAccess(left, right)
 
-let tsIden n = TSIden(n, None)
+let tsIden n = TSIden({iname=n; itype=None})
 
 let tsAssignment left right = TSAssignment(left, right)
 

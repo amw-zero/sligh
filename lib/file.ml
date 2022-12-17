@@ -25,12 +25,12 @@ let output_tsexpr file_name (e: Interpreter.value) =
   | VTS(tss) -> output_tsexpr_list file_name tss
   | _ -> print_endline "Unable to generate code for non-TS expr"
 
-let output_file file_name file_body interp_env =
-  let file_expr = Interpreter.evaln file_body interp_env in
+let output_file file_name file_body interp_env effect_env =
+  let file_expr = Interpreter.evaln file_body interp_env |> Interpreter.val_as_tsexprs in
+  let file_expr = Effects.apply file_name effect_env (Core.TS(file_expr)) in
+  let file_str = Codegen.string_of_expr file_expr in
 
-  match file_expr with
-  | VTS(tss) -> output_tsexpr_list file_name tss
-  | _ -> print_endline "Unable to generate code for non-TS expr"
+  output_str file_name file_str
 
-let output fs interp_env =
-  Files.iter (fun file_name file_body -> output_file file_name file_body interp_env) fs
+let output fs interp_env effect_env =
+  Files.iter (fun file_name file_body -> output_file file_name file_body interp_env effect_env) fs

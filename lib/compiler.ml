@@ -40,7 +40,7 @@ let compile lexbuf =
   (* apply effects to files too *)
   let file_map = List.fold_left File.build_files init_files stmts in
   File.print file_map;
-  File.output file_map interp_env;
+  File.output file_map interp_env effect_env;
 
   (* To improve: return generated filenames in previous steps *)
   Certification.generate model_proc "model.ts" "impl.ts" interp_env

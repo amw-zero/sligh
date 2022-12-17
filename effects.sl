@@ -17,6 +17,10 @@ effect create!(accounts: Account, newAct: Account):
   impl:
     typescript: 5 end
   end
+
+  server:
+    "server"
+  end
 end
 
 effect find!(accounts: Account, id: Int):
@@ -26,6 +30,10 @@ effect find!(accounts: Account, id: Int):
 
   impl:
     fetch("accounts/id")
+  end
+
+  server:
+    typescript: 7 end
   end
 end
 
@@ -73,7 +81,7 @@ def toCtorBodyStmt(attr: TypedAttribute):
   tsAssignment(target, attrIden)
 end
 
-def impl():
+def clientClass():
   let methods = Model.actions.map(toImplMethod)
   let attrs = Model.variables.map(toImplAttr)
   
@@ -97,10 +105,21 @@ end
 implementation:
   typescript:
     {{* Model.schemas.map(toTsInterface) }}
-    {{ impl() }}
+    {{ clientClass() }}
   end
 end
 
+def toServerEndpoint(action: Action):
+  let req = tsIden("req")
+  let resp = tsIden("resp")
+  let closureArgs = [req, resp]
+  let endpointBody = tsClosure(closureArgs, action.body)
+
+  tsMethodCall("app", "post", [action.name, endpointBody])
+end     
+
 file server:
-  typescript: let x = {{ "test" }} end
+  typescript:
+    {{* Model.actions.map(toServerEndpoint) }}
+  end
 end
