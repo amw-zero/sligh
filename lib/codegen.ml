@@ -16,35 +16,6 @@ let string_of_type t = match t with
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
 
-let rec string_of_ts_expr e = match e with
-  | TSIden(i, t) -> (match t with
-    | Some(t) -> Printf.sprintf "%s: %s" i (string_of_tstype t)
-    | None -> Printf.sprintf "%s" i)
-  | TSNum(n) -> string_of_int n
-  | TSLet(v, ie) -> Printf.sprintf "let %s = %s" v (string_of_ts_expr ie)
-  | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
-  | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
-  | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
-  | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
-  | TSString(s) -> Printf.sprintf "\"%s\"" s
-  | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
-  | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1) (string_of_ts_expr e2)
-  | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
-  | SLSpliceExpr(_) -> "SLSpliceExpr"
-  | SLExpr(_) -> "SLExpr"
-
-and string_of_tstype tst = match tst with
-  | TSTNumber -> "number"
-  | TSTCustom c -> c
-  | TSTString -> "string"
-
-and string_of_ts_typed_attr ta = Printf.sprintf "%s: %s" ta.tsname (string_of_tstype ta.tstyp)
-
-and string_of_tsclassdef cd = match cd with
-  | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
-  | TSClassMethod(nm, args, body) -> Printf.sprintf "%s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list)
-  | CDSLExpr(_) -> "CDSLExpr remove"
-
   (* Only supporting codegen to TS right now *)
 let rec string_of_expr e = match e with
   | Let(name, body) -> Printf.sprintf "let %s = %s;\n" name (string_of_expr body)
@@ -60,6 +31,7 @@ let rec string_of_expr e = match e with
   | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "function %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
   | String(s) -> Printf.sprintf "\"%s\"" s
+  | TS(tses) -> String.concat "\n\n" (List.map string_of_ts_expr tses)
   | _ -> failwith (Printf.sprintf "Unable to generate code for expr: %s" (Util.string_of_expr e))
 and string_of_proc_def def = match def with
 | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
@@ -73,6 +45,35 @@ and string_of_stmt_list sl =
   let all_strs = ret_str :: rest_strs in
 
   String.concat "\n" (List.rev all_strs)
+
+and string_of_ts_expr e = match e with
+  | TSIden(i, t) -> (match t with
+    | Some(t) -> Printf.sprintf "%s: %s" i (string_of_tstype t)
+    | None -> Printf.sprintf "%s" i)
+  | TSNum(n) -> string_of_int n
+  | TSLet(v, ie) -> Printf.sprintf "let %s = %s" v (string_of_ts_expr ie)
+  | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
+  | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
+  | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list)
+  | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
+  | TSString(s) -> Printf.sprintf "\"%s\"" s
+  | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
+  | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1) (string_of_ts_expr e2)
+  | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
+  | SLSpliceExpr(_) -> "SLSpliceExpr"
+  | SLExpr(e) -> string_of_expr e
+
+and string_of_tstype tst = match tst with
+  | TSTNumber -> "number"
+  | TSTCustom c -> c
+  | TSTString -> "string"
+
+and string_of_ts_typed_attr ta = Printf.sprintf "%s: %s" ta.tsname (string_of_tstype ta.tstyp)
+
+and string_of_tsclassdef cd = match cd with
+  | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
+  | TSClassMethod(nm, args, body) -> Printf.sprintf "%s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list)
+  | CDSLExpr(_) -> "CDSLExpr remove"  
 and process_constructor defs = 
   let attrs = Process.filter_attrs defs in
   let ctor_args = String.concat ", " (List.map string_of_typed_attr attrs) in

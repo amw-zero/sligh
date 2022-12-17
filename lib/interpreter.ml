@@ -98,6 +98,10 @@ let val_as_tstyped_attr_list v = match v with
 | VArray(vs) -> List.map val_as_tstyped_attr vs
 | _ -> failwith (Printf.sprintf "Expected Array of TSTypedAttrs val: %s" (string_of_value v))
 
+let val_as_tsexprs v = match v with
+| VTS(tses) -> tses
+| _ -> failwith (Printf.sprintf "Expected TS val: %s" (string_of_value v))
+
 let val_as_tsexpr_list v = match v with
 | VArray(vs) -> List.map val_as_tsexpr vs
 | _ -> failwith (Printf.sprintf "Expected Array of TSExpr vals: %s" (string_of_value v))

@@ -64,11 +64,15 @@ statement:
   | PROCESS i = IDEN COLON p = proc_def* END        { Process(i, p) }
   | ENTITY i = IDEN COLON ta = typed_attr* END      { Entity(i, ta) }
   | IMPLEMENTATION COLON e = expression END         { Implementation(e) }
-  | FILE n = IDEN COLON es = statement* END         { File({ename=n;ebody=es;}) }  
+  | FILE n = IDEN COLON es = statement* END         { File({fname=n;fbody=es;}) }  
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
                                                     { FuncDef({fdname=i; fdargs=args; fdbody=body}) }
-  // | EFFECT i = IDEN                                                  
+  | EFFECT i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON ecs = proc_effect* END
+                                                    { Effect({ename=i; eargs=args; procs=ecs}) }
   | e = expression                                  { e }
+
+proc_effect:
+  | i = IDEN COLON ss = statement* END              { { ecname=i; ebody=ss }}
 
 boolexp:
   | TRUE                            { BTrue }

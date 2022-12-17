@@ -5,7 +5,7 @@ module Files = Map.Make(String)
 let new_files () = Files.empty
 
 let build_files ps stmt = match stmt with
-  | File(e) -> Files.add e.ename e.ebody ps
+  | File(e) -> Files.add e.fname e.fbody ps
   | _ -> ps
 
 let print ps =

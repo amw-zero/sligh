@@ -38,6 +38,18 @@ type expr =
   | Access of expr * string
 
   | Case of expr * case_branch list
+  | Effect of effect
+
+and effect = {
+  ename: string;
+  eargs: typed_attr list;
+  procs: proc_effect list
+}
+
+and proc_effect = {
+  ecname: string;
+  ebody: expr list;
+}
 
 and func_def = {
   fdname: string;
@@ -61,8 +73,8 @@ and proc_def =
 | ProcAction of proc_action
 
 and file = {
-  ename: string;
-  ebody: expr list;
+  fname: string;
+  fbody: expr list;
 }
 
 and case_branch = {
