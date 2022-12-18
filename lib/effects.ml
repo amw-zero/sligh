@@ -20,7 +20,6 @@ let print_env env =
 
 (* Effect application should take place after macro expansion *)
 let rec apply proc_name effect_env expr =
-  Printf.printf "Calling apply for: %s\n" proc_name;
   let apply_expr = apply proc_name effect_env in
 
   match expr with
@@ -28,7 +27,6 @@ let rec apply proc_name effect_env expr =
   | Call(effect_name, _) -> 
     if Env.mem effect_name effect_env then
       let proc_effect = Env.find effect_name effect_env in
-      Printf.printf "Found effect: %s\n" proc_effect.ename;
       
       StmtList(effect_body_for_proc proc_name proc_effect)
     else
@@ -49,7 +47,6 @@ and apply_proc_def proc_name effect_env def = match def with
   | ProcAction({ aname; args; body; }) -> ProcAction({aname; args; body= apply proc_name effect_env body})
 
 and apply_tsexpr proc_name effect_env tse =
-  Printf.printf "Applying ts_expr for name: %s\n" proc_name;
   let apply_tsexpr_expr = apply_tsexpr proc_name effect_env in
 
   match tse with
