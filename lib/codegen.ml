@@ -18,7 +18,7 @@ let string_of_typed_attr ta =
 
   (* Only supporting codegen to TS right now *)
 let rec string_of_expr e = match e with
-  | Let(name, body) -> Printf.sprintf "let %s = %s;\n" name (string_of_expr body)
+  | Let(name, body) -> Printf.sprintf "let %s = %s;" name (string_of_expr body)
   | Iden(i, too) -> (match too with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)
@@ -35,8 +35,10 @@ let rec string_of_expr e = match e with
   | _ -> failwith (Printf.sprintf "Unable to generate code for expr: %s" (Util.string_of_expr e))
 and string_of_proc_def def = match def with
 | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
-| ProcAction({ aname; body; args}) -> Printf.sprintf "%s(%s) {\n\t%s\n}" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
+| ProcAction({ aname; body; args}) -> Printf.sprintf "%s(%s) {\n\t%s\n}" aname (String.concat ", " (List.map string_of_typed_attr args)) (String.concat "\n" (List.map string_of_expr body))
 and string_of_stmt_list sl =
+  Printf.printf "Compiling statement list 2: %s\n%s\n" (String.concat "\n" (List.rev_map string_of_expr sl)) ((List.length sl) |> string_of_int);
+
   let rev_list = List.rev sl in
   let ret_stmt = List.hd rev_list in 
   let rest = List.tl rev_list in
@@ -53,14 +55,24 @@ and string_of_ts_expr e = match e with
   | TSNum(n) -> string_of_int n
   | TSLet(v, ie) -> Printf.sprintf "let %s = %s" v (string_of_ts_expr ie)
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
+    (* let rev_list = List.rev ss in
+    let ret_stmt = List.hd rev_list in 
+    let rest = List.tl rev_list in
+    let ret_str = Printf.sprintf "return %s;" (string_of_ts_expr ret_stmt) in
+    let rest_strs = List.map string_of_ts_expr rest in
+    let all_strs = ret_str :: rest_strs in
+
+    String.concat "\n" (List.rev all_strs) *)
   | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list ", ")
+  | TSFuncCall(f, args) -> Printf.sprintf "%s(%s)" f (List.map string_of_ts_expr args |> print_list "\n")
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
   | TSString(s) -> Printf.sprintf "\"%s\"" s
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
   | TSClosure(args, body) -> Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+  | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | SLSpliceExpr(_) -> "SLSpliceExpr"
   | SLExpr(e) -> string_of_expr e
 
@@ -88,3 +100,41 @@ and process_constructor defs =
   Printf.sprintf "constructor(%s) {\n  %s\n}" ctor_args ctor_body  
 
 let string_of_model model_ast = String.concat "\n\n" (List.map string_of_expr model_ast)
+
+let tstype_of_sltype typ = match typ with
+  | Some(t) -> (match t with
+    | STInt -> Some(TSTNumber)
+    | STString -> Some(TSTString)
+    | STDecimal -> Some(TSTNumber)
+    | STCustom(c) -> Some(TSTCustom(c)))
+  | None -> None
+
+(* Currently unused, but convertes a Sligh expression to a TS one *)
+let rec tsexpr_of_expr e = match e with
+  | Let(var, e) -> TSLet(var, tsexpr_of_expr e)
+  | StmtList(es) -> TSStmtList(List.map tsexpr_of_expr es)
+  | Iden(name, typ) -> TSIden({iname=name; itype=tstype_of_sltype typ})
+  | Num(i) -> TSNum(i)
+  | Array(es) -> TSArray(List.map tsexpr_of_expr es)
+  | String(s) -> TSString(s)
+
+  (* Unsure about this - why doesn't Access have an expr on the right hand side? *)
+  | Access(e, accessor) -> TSAccess(tsexpr_of_expr e, TSIden({iname=accessor; itype=None}))
+
+  (* Unsure if this should be StmtList *)
+  | TS(tses) -> TSStmtList(tses)
+
+  (* Let the Codegen engine handle calls for now, because of UCS hard to tell if func or method call*)
+  | Call(name, args) -> TSFuncCall(name, List.map tsexpr_of_expr args)
+
+  (* Not handling these, but should *)
+  | FuncDef(_) -> failwith "Not handling FuncDef to TS"
+  | Case(_, _) -> failwith "Not handling Case to TS"
+  
+  (* Not handling these, and probably should never *)
+  | Effect(_) -> failwith "Not handling Effect to TS"
+  | Implementation(_) -> failwith "Not handling Implementation to TS"
+  | File(_) -> failwith "Not handling File to TS"
+  | Process(_, _) -> failwith "Not handling Process to TS - maybe convert to class"
+  | Entity(_, _) -> failwith "Not handling Entity to TS"
+  | BoolExp(_) -> failwith "Not handling boolexp to TS"

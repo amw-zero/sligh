@@ -15,7 +15,11 @@ effect create!(accounts: Account, newAct: Account):
   end
 
   impl:
-    typescript: 5 end
+    typescript:
+      let test = await fetch({{"somethin"}})
+
+      5
+    end
   end
 
   server:
@@ -43,21 +47,13 @@ process Accounts:
   def OpenAccount(newAct: Account):
     accounts.create!(newAct)
   end
-
-  def UpdateBalance(act: Account, balance: Decimal):
-    6
-  end
-
-  def ViewAccount(id: Int):
-    accounts.find!(id)
-  end
 end
 
 process Ledger:
   transactions: Transaction
 
   def Transfer(srcAct: Account, dstAct: Account, amount: Decimal):
-    7
+    8
   end
 end
 
@@ -105,7 +101,7 @@ end
 implementation:
   typescript:
     {{* Model.schemas.map(toTsInterface) }}
-    {{ clientClass() }}
+    {{ clientClass() }}    
   end
 end
 

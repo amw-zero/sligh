@@ -264,7 +264,7 @@ let action_instance action env =
   VInstance([
     { iname="name"; ivalue=VString(Core.(action.aname)) };
     { iname="args"; ivalue=VArray(List.map (fun arg -> typed_attr_instance arg env) action.args)};
-    { iname="body"; ivalue=VSLExpr(action.body)};
+    { iname="body"; ivalue=VSLExpr(StmtList(action.body))};
   ])
 
 let add_schema_to_env name (attrs: typed_attr list) (actions: proc_action list) (env: interp_env) =

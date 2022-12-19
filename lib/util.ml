@@ -29,7 +29,7 @@ let rec string_of_expr e = match e with
     | None -> i)
   | Num(n) -> string_of_int n
   | BoolExp(_) -> "boolexp"
-  | StmtList(ss) -> string_of_stmt_list ss
+  | StmtList(ss) -> Printf.sprintf "Stmtlist: %s\nendlist" (string_of_stmt_list ss)
   | Process(n, defs) -> "process " ^ n ^ String.concat "\n" (List.map string_of_proc_def defs) ^ "\nend\n"
   | Entity(n, attrs) -> Printf.sprintf "entity %s\n\t%s" n (print_list "\n" (List.map string_of_typed_attr attrs))
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
@@ -44,7 +44,7 @@ let rec string_of_expr e = match e with
 and string_of_proc_def def = match def with
 | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
 | ProcAction(a) -> string_of_proc_action a
-and string_of_proc_action { aname; body; args} = Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (string_of_expr body)
+and string_of_proc_action { aname; body; args} = Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (String.concat "\n" (List.map string_of_expr body))
 and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)
 and string_of_case_branch b = Printf.sprintf "| %s: %s" (string_of_value_pattern b.pattern) (string_of_expr b.value)
 and string_of_value_pattern vp = Printf.sprintf "%s(%s)" vp.vname (String.concat ", " (List.map string_of_pattern_binding vp.var_bindings))
@@ -55,12 +55,14 @@ and string_of_ts_expr e = match e with
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
   | TSClass(n, ds) -> Printf.sprintf "ts-class %s\n\t%s" n (String.concat "\n" (List.map string_of_tsclassdef ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "ts-%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list "\n")
+  | TSFuncCall(f, args) -> Printf.sprintf "%s(%s)" f (List.map string_of_ts_expr args |> print_list "\n")
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
   | TSString(s) -> s
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSInterface(n, attrs) -> Printf.sprintf "ts-interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
   | TSClosure(args, body) -> Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+  | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | SLSpliceExpr(_) -> "SLSpliceExpr"
   | SLExpr(e) -> string_of_expr e
 

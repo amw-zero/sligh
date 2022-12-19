@@ -30,8 +30,8 @@ open Interpreter
 %token CLASS
 %token LBRACE
 %token RBRACE
-%token LSQBRACKET
-%token RSQBRACKET
+%token AWAIT
+%token ASYNC
 
 // Sligh
 %token DEF
@@ -45,6 +45,8 @@ open Interpreter
 %token BAR
 %token UNDERSCORE
 %token EFFECT
+%token LSQBRACKET
+%token RSQBRACKET
 
 %start prog
 %type <expr list> prog 
@@ -117,11 +119,11 @@ non_app:
 
 proc_def:
   | ta = typed_attr                               { ProcAttr(ta) }
-  | DEF act = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON e = expression END
+  | DEF act = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON es = expression* END
                                                   { ProcAction({
                                                       aname=act;
                                                       args;
-                                                      body=e
+                                                      body=es
                                                     }) }
 typed_attr:
   | attr = IDEN COLON typ = IDEN                  { {name=attr; typ=type_of_string typ} }
@@ -147,7 +149,11 @@ tsclassdef:
 
 tsexp:
   | n = NUMBER                                  { TSNum(n) }
+  | i = IDEN                                    { TSIden({iname=i; itype=None})}
+  | AWAIT e = tsexp                             { TSAwait(e) }
   | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
                                                 { TSMethodCall(recv, meth, args) }
+  | func = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
+                                                { TSFuncCall(func, args) }
   | UNQUOTE_SPLICE e = expression UNQUOTEEND    { SLSpliceExpr(e) }
   | UNQUOTE e = expression UNQUOTEEND           { SLExpr(e) }

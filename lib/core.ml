@@ -66,7 +66,7 @@ and typed_attr =
 and proc_action =
   { aname: string;
     args: typed_attr list; 
-    body: expr;
+    body: expr list;
   }
 
 and proc_def =
@@ -89,6 +89,7 @@ and tsexpr =
 | TSLet of string * tsexpr
 | TSStmtList of tsexpr list
 | TSMethodCall of string * string * tsexpr list
+| TSFuncCall of string * tsexpr list
 | TSClass of string * tsclassdef list
 | TSArray of tsexpr list
 | TSString of string
@@ -96,6 +97,8 @@ and tsexpr =
 | TSAssignment of tsexpr * tsexpr
 | TSInterface of string * tstyped_attr list
 | TSClosure of tsiden list * tsexpr list
+| TSAwait of tsexpr
+
 (* | TSFunc of string * tstyped_attr * tsexpr list *)
 | SLExpr of expr
 | SLSpliceExpr of expr

@@ -1,4 +1,14 @@
 (* let generate model_proc model_file impl_file = *)
+
+(* Todo:
+   
+   * Generate test body for each action
+   * Each test body generates all of the model and state data,
+     then passes that data into the model and the impl, and checks that
+     the refinement property holds
+
+*)
+
 let generate _ _ _ interp_env =
   (* Definitions are separated because they can't be macro-expanded *)
 

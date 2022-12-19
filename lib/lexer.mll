@@ -74,6 +74,8 @@ and read_ts ctx = parse
   | "="               { EQUALS }
   | "let"             { LET }
   | "class"           { CLASS }
+  | "await"           { AWAIT }
+  | "async"           { ASYNC }
   | '{'               { LBRACE }
   | '}'               { RBRACE }
   | '('               { LPAREN }
