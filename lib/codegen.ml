@@ -37,8 +37,6 @@ and string_of_proc_def def = match def with
 | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
 | ProcAction({ aname; body; args}) -> Printf.sprintf "%s(%s) {\n\t%s\n}" aname (String.concat ", " (List.map string_of_typed_attr args)) (String.concat "\n" (List.map string_of_expr body))
 and string_of_stmt_list sl =
-  Printf.printf "Compiling statement list 2: %s\n%s\n" (String.concat "\n" (List.rev_map string_of_expr sl)) ((List.length sl) |> string_of_int);
-
   let rev_list = List.rev sl in
   let ret_stmt = List.hd rev_list in 
   let rest = List.tl rev_list in

@@ -28,10 +28,10 @@ let compile lexbuf =
 
   (* Macroexpand and output Impl *)
   let evaled_impl = Interpreter.evaln impl_expr interp_env |> Interpreter.val_as_tsexprs in
-  Printf.printf "|--- Impl AST before ME ---|: %s\n|--- end impl ---|\n\n" (String.concat "\n" (List.map Util.string_of_ts_expr evaled_impl));
+  (* Printf.printf "|--- Impl AST before ME ---|: %s\n|--- end impl ---|\n\n" (String.concat "\n" (List.map Util.string_of_ts_expr evaled_impl)); *)
 
   let evaled_impl = Effects.apply "impl" effect_env (Core.TS(evaled_impl)) in
-  Printf.printf "|--- Impl AST after ME ---|: %s\n|--- end impl ---|\n\n" (Util.string_of_expr evaled_impl);
+  (* Printf.printf "|--- Impl AST after ME ---|: %s\n|--- end impl ---|\n\n" (Util.string_of_expr evaled_impl); *)
 
   let impl_str = Codegen.string_of_expr evaled_impl in
   File.output_str "impl" impl_str;

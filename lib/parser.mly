@@ -142,7 +142,7 @@ tsclassdef:
   | i = IDEN COLON typ = IDEN                   { TSClassProp(i, tstype_of_string typ) }
 
 tsexp:
-  | n = NUMBER                                  { Printf.printf "Got TSNum %s\n" (string_of_int n); TSNum(n) }
+  | n = NUMBER                                  { TSNum(n) }
   | i = IDEN                                    { TSIden({iname=i; itype=None})}
   | s = STRING                                  { TSString(s) }
   | LBRACE props = separated_list(COMMA, obj_prop) RBRACE
