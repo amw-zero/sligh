@@ -28,7 +28,7 @@ let num = ['0'-'9']
 rule read ctx = parse
   | eof               { EOF }
   | whitespace+       { read ctx lexbuf }
-  | "}}"              { ctx#pop_lexer; UNQUOTEEND }
+  | "]]"              { ctx#pop_lexer; UNQUOTEEND }
   | '"'               { read_string (Buffer.create 16) lexbuf}
   | "true"            { TRUE }
   | "false"           { FALSE }
@@ -67,8 +67,8 @@ and read_string buf = parse
 and read_ts ctx = parse
   | eof               { EOF }
   | whitespace+       { read_ts ctx lexbuf }
-  | "{{"              { ctx#push_lexer (read ctx); UNQUOTE }
-  | "{{*"             { ctx#push_lexer (read ctx); UNQUOTE_SPLICE }
+  | "[["              { ctx#push_lexer (read ctx); UNQUOTE }
+  | "[[*"             { ctx#push_lexer (read ctx); UNQUOTE_SPLICE }
   | ':'               { COLON }
   | '.'               { DOT }
   | "="               { EQUALS }

@@ -43,7 +43,7 @@ let generate _ _ _ interp_env =
 
   let cert_props = {|
     typescript:
-      {{* Model.actions.map(toRefinementProperty) }}
+      [[* Model.actions.map(toRefinementProperty) ]]
     end
   |} in
 

@@ -16,7 +16,7 @@ effect create!(accounts: Account, newAct: Account):
 
   impl:
     typescript:
-      let test = await fetch({{"somethin"}})
+      let test = await fetch([[ "somethin" ]])
       test
     end
   end
@@ -100,8 +100,8 @@ end
 
 implementation:
   typescript:
-    {{* Model.schemas.map(toTsInterface) }}
-    {{ clientClass() }}    
+    [[* Model.schemas.map(toTsInterface) ]]
+    [[ clientClass() ]]    
   end
 end
 
@@ -113,6 +113,6 @@ end
 
 file server:
   typescript:
-    {{* Model.actions.map(toServerEndpoint) }}
+    [[* Model.actions.map(toServerEndpoint) ]]
   end
 end
