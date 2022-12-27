@@ -9,6 +9,26 @@ entity Transaction:
   amount: Decimal
 end
 
+process Accounts:
+  accounts: Account
+
+  def OpenAccount(newAct: Account):
+    accounts.create!(newAct)
+  end
+
+  def FindAccount(id: Int):
+    accounts.find!(id)
+  end
+end
+
+process Ledger:
+  transactions: Transaction
+
+  def Transfer(srcAct: Account, dstAct: Account, amount: Decimal):
+    8
+  end
+end
+
 effect create!(accounts: Account, newAct: Account):
   model:
     accounts.append(newAct)
@@ -41,29 +61,9 @@ effect find!(accounts: Account, id: Int):
   end
 end
 
-process Accounts:
-  accounts: Account
-
-  def OpenAccount(newAct: Account):
-    accounts.create!(newAct)
-  end
-
-  def FindAccount(id: Int):
-    accounts.find!(id)
-  end
-end
-
-process Ledger:
-  transactions: Transaction
-
-  def Transfer(srcAct: Account, dstAct: Account, amount: Decimal):
-    8
-  end
-end
-
 def toImplMethod(action: Action):
   let actionBody = typescript:
-    let x = fetch("testing", { method: "POST", body: JSON.stringify(5) })
+    let x = fetch([[ action.name ]], { method: "POST", body: JSON.stringify(5) })
     let json = await resp.json()
 
     [[ action.body ]]
