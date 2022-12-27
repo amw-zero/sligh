@@ -84,29 +84,15 @@ boolexp:
   | IF e1 = boolexp THEN e2 = boolexp ELSE e3 = boolexp 
                                     { BIf(e1, e2, e3) }
 expression:
-  | non_app   { $1 }
-  | app       { $1 }
-
-pattern_binding:
-  | i = IDEN      { PBVar(i) }
-  | UNDERSCORE    { PBAny }
-
-case_branch:
-  | BAR i = IDEN LPAREN bindings = separated_list(COMMA, pattern_binding) RPAREN COLON body = expression
-                                                  { {pattern={vname=i; var_bindings=bindings}; value=body} }
-
-app:
-  | recv = non_app DOT meth = IDEN LPAREN args = separated_list(COMMA, non_app) RPAREN
+  | recv = expression DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
                                                   { Call(meth, [recv] @ args) }
   (* This causes a shift/reduce warning currently *)
-  | func = IDEN LPAREN args = separated_list(COMMA, non_app) RPAREN
+  | func = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
                                                   { Call(func, args) }
-
-non_app:
-  | n = NUMBER                                    { Num(n) }
+                                                    | n = NUMBER                                    { Num(n) }
   | i = IDEN                                      { Iden(i, None) }
   | s = STRING                                    { String(s) }
-  | LSQBRACKET es = separated_list(COMMA, non_app) RSQBRACKET
+  | LSQBRACKET es = separated_list(COMMA, expression) RSQBRACKET
                                                   { Array(es) }
   | LPAREN e = expression RPAREN                  { e }
   | CASE e = expression COLON branches = list(case_branch) END
@@ -115,7 +101,15 @@ non_app:
   | boolexp                                       { BoolExp($1) }
 
   (* Shift / reduce warning *)
-  | e = non_app DOT i = IDEN                      { Access(e, i) }
+  | e = expression DOT i = IDEN                      { Access(e, i) }
+
+pattern_binding:
+  | i = IDEN      { PBVar(i) }
+  | UNDERSCORE    { PBAny }
+
+case_branch:
+  | BAR i = IDEN LPAREN bindings = separated_list(COMMA, pattern_binding) RPAREN COLON body = expression
+                                                  { {pattern={vname=i; var_bindings=bindings}; value=body} }
 
 proc_def:
   | ta = typed_attr                               { ProcAttr(ta) }

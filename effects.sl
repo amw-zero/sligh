@@ -17,8 +17,7 @@ effect create!(accounts: Account, newAct: Account):
   impl:
     typescript:
       let test = await fetch({{"somethin"}})
-
-      5
+      test
     end
   end
 
@@ -37,7 +36,7 @@ effect find!(accounts: Account, id: Int):
   end
 
   server:
-    typescript: 7 end
+    "server"
   end
 end
 
@@ -46,6 +45,10 @@ process Accounts:
 
   def OpenAccount(newAct: Account):
     accounts.create!(newAct)
+  end
+
+  def FindAccount(id: Int):
+    accounts.find!(id)
   end
 end
 
@@ -70,26 +73,23 @@ def toTsTypedAttr(attr: TypedAttribute):
 end
 
 def toCtorBodyStmt(attr: TypedAttribute):
-  let this = tsIden("this")
   let attrIden = tsIden(attr.name)
-  let target = tsAccess(this, attrIden)
+  let target = tsAccess(tsIden("this"), attrIden)
 
   tsAssignment(target, attrIden)
 end
 
 def clientClass():
-  let methods = Model.actions.map(toImplMethod)
-  let attrs = Model.variables.map(toImplAttr)
-  
-  let ctorArgs = Model.variables.map(toTsTypedAttr)
-  let ctorBody = Model.variables.map(toCtorBodyStmt)
-  let ctorStatements = tsStatementList(ctorBody)
-  let ctor = tsClassMethod("constructor", ctorArgs, ctorStatements)
+  let classBody = tsClassMethod(
+    "constructor", 
+    Model.variables.map(toTsTypedAttr), 
+    tsStatementList(Model.variables.map(toCtorBodyStmt))
+  ).append(
+    Model.variables.map(toImplAttr)
+      .concat(Model.actions.map(toImplMethod))
+  )
 
-  let defs = attrs.concat(methods)
-  let nextDefs = append(ctor, defs)
-
-  tsClass("Client", nextDefs)
+  tsClass("Client", classBody)
 end
 
 def toTsInterface(schema: Schema):
@@ -106,10 +106,7 @@ implementation:
 end
 
 def toServerEndpoint(action: Action):
-  let req = tsIden("req")
-  let resp = tsIden("resp")
-  let closureArgs = [req, resp]
-  let endpointBody = tsClosure(closureArgs, action.body)
+  let endpointBody = tsClosure([tsIden("req"), tsIden("resp")], action.body)
 
   tsMethodCall("app", "post", [action.name, endpointBody])
 end     
