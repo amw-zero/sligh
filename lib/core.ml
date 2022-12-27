@@ -97,11 +97,17 @@ and tsexpr =
 | TSAssignment of tsexpr * tsexpr
 | TSInterface of string * tstyped_attr list
 | TSClosure of tsiden list * tsexpr list
+| TSObject of obj_prop list
 | TSAwait of tsexpr
 
 (* | TSFunc of string * tstyped_attr * tsexpr list *)
 | SLExpr of expr
 | SLSpliceExpr of expr
+
+and obj_prop = {
+  oname: string;
+  oval: tsexpr;
+}
 
 and tsiden = {
   iname: string;

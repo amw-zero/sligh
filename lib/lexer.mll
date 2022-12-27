@@ -70,10 +70,10 @@ and read_ts ctx = parse
   | "[["              { ctx#push_lexer (read ctx); UNQUOTE }
   | "[[*"             { ctx#push_lexer (read ctx); UNQUOTE_SPLICE }
   | '"'               { read_string (Buffer.create 16) lexbuf}
-
   | ':'               { COLON }
   | '.'               { DOT }
   | "="               { EQUALS }
+  | ','               { COMMA }
   | "let"             { LET }
   | "class"           { CLASS }
   | "await"           { AWAIT }

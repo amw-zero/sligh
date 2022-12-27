@@ -65,7 +65,7 @@ and string_of_ts_expr e = match e with
     String.concat "\n" (List.rev all_strs) *)
   | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map string_of_tsclassdef ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list ", ")
-  | TSFuncCall(f, args) -> Printf.sprintf "%s(%s)" f (List.map string_of_ts_expr args |> print_list "\n")
+  | TSFuncCall(f, args) -> Printf.sprintf "%s(%s)" f (List.map string_of_ts_expr args |> print_list ", ")
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
   | TSString(s) -> Printf.sprintf "\"%s\"" s
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
@@ -73,8 +73,12 @@ and string_of_ts_expr e = match e with
   | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
   | TSClosure(args, body) -> Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
+  | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | SLSpliceExpr(_) -> "SLSpliceExpr"
   | SLExpr(e) -> string_of_expr e
+
+and string_of_obj_prop p = Printf.sprintf "%s: %s" p.oname (string_of_ts_expr p.oval)
+
 
 and string_of_tsiden {iname; itype} = match itype with
   | Some(t) -> Printf.sprintf "%s: %s" iname (string_of_tstype t)

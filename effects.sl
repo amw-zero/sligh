@@ -63,8 +63,9 @@ end
 
 def toImplMethod(action: Action):
   let actionBody = typescript:
-    let resp = await fetch("accounts")
+    let x = fetch("testing", { method: "POST", body: JSON.stringify(5) })
     let json = await resp.json()
+
     [[ action.body ]]
   end
 
@@ -108,7 +109,7 @@ end
 implementation:
   typescript:
     [[* Model.schemas.map(toTsInterface) ]]
-    [[ clientClass() ]]    
+    [[ clientClass() ]]
   end
 end
 

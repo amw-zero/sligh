@@ -142,9 +142,11 @@ tsclassdef:
   | i = IDEN COLON typ = IDEN                   { TSClassProp(i, tstype_of_string typ) }
 
 tsexp:
-  | n = NUMBER                                  { TSNum(n) }
+  | n = NUMBER                                  { Printf.printf "Got TSNum %s\n" (string_of_int n); TSNum(n) }
   | i = IDEN                                    { TSIden({iname=i; itype=None})}
   | s = STRING                                  { TSString(s) }
+  | LBRACE props = separated_list(COMMA, obj_prop) RBRACE
+                                                { TSObject(props) }
   | AWAIT e = tsexp                             { TSAwait(e) }
   | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
                                                 { TSMethodCall(recv, meth, args) }
@@ -152,3 +154,6 @@ tsexp:
                                                 { TSFuncCall(func, args) }
   | UNQUOTE_SPLICE e = expression UNQUOTEEND    { SLSpliceExpr(e) }
   | UNQUOTE e = expression UNQUOTEEND           { SLExpr(e) }
+
+obj_prop:
+  n = IDEN COLON v = tsexp                      { {oname=n; oval=v} }

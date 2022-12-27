@@ -65,6 +65,10 @@ and apply_tsexpr proc_name effect_env tse =
   | TSAccess(e1, e2) -> TSAccess(apply_tsexpr_expr e1, apply_tsexpr_expr e2)
   | TSAssignment(e1, e2) -> TSAssignment(apply_tsexpr_expr e1, apply_tsexpr_expr e2)
   | TSClosure(args, body) -> TSClosure(args, List.map apply_tsexpr_expr body)
+  | TSObject(props) -> 
+    let new_props: obj_prop list = List.map (fun p -> {oname=p.oname; oval=apply_tsexpr_expr p.oval} ) props in
+
+    TSObject(new_props)
   | SLSpliceExpr(e) -> SLSpliceExpr(apply proc_name effect_env e)
   | SLExpr(e) -> SLExpr(apply proc_name effect_env e)
   | TSIden(_) -> tse
