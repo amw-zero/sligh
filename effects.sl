@@ -80,14 +80,14 @@ def toCtorBodyStmt(attr: TypedAttribute):
 end
 
 def clientClass():
-  let classBody = tsClassMethod(
+  let constructor = tsClassMethod(
     "constructor", 
     Model.variables.map(toTsTypedAttr), 
     tsStatementList(Model.variables.map(toCtorBodyStmt))
-  ).append(
-    Model.variables.map(toImplAttr)
-      .concat(Model.actions.map(toImplMethod))
   )
+  let classDefs = Model.variables.map(toImplAttr)
+      .concat(Model.actions.map(toImplMethod))
+  let classBody = constructor.append(classDefs)
 
   tsClass("Client", classBody)
 end
