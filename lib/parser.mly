@@ -144,6 +144,7 @@ tsclassdef:
 tsexp:
   | n = NUMBER                                  { TSNum(n) }
   | i = IDEN                                    { TSIden({iname=i; itype=None})}
+  | s = STRING                                  { TSString(s) }
   | AWAIT e = tsexp                             { TSAwait(e) }
   | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
                                                 { TSMethodCall(recv, meth, args) }

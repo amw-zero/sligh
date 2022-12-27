@@ -16,13 +16,14 @@ effect create!(accounts: Account, newAct: Account):
 
   impl:
     typescript:
-      let test = await fetch([[ "somethin" ]])
-      test
+      accounts.push(json)
     end
   end
 
   server:
-    "server"
+    typescript:
+      db.exec(5)
+    end
   end
 end
 
@@ -61,7 +62,13 @@ process Ledger:
 end
 
 def toImplMethod(action: Action):
-  tsClassMethod(action.name, action.args, action.body)
+  let actionBody = typescript:
+    let resp = await fetch("accounts")
+    let json = await resp.json()
+    [[ action.body ]]
+  end
+
+  tsClassMethod(action.name, action.args, actionBody)
 end
 
 def toImplAttr(attr: TypedAttribute):

@@ -69,6 +69,8 @@ and read_ts ctx = parse
   | whitespace+       { read_ts ctx lexbuf }
   | "[["              { ctx#push_lexer (read ctx); UNQUOTE }
   | "[[*"             { ctx#push_lexer (read ctx); UNQUOTE_SPLICE }
+  | '"'               { read_string (Buffer.create 16) lexbuf}
+
   | ':'               { COLON }
   | '.'               { DOT }
   | "="               { EQUALS }
