@@ -78,6 +78,10 @@ let val_as_str v = match v with
 | VString(s) -> s
 | _ -> failwith (Printf.sprintf "Expected string: %s" (string_of_value v))
 
+let val_as_int v = match v with
+| VNum(i) -> i
+| _ -> failwith (Printf.sprintf "Expected string: %s" (string_of_value v))
+
 let val_as_type_val v = match v with
 | VType(tv)-> tv
 | _ -> failwith (Printf.sprintf "Expected type val: %s" (string_of_value v))
@@ -135,6 +139,13 @@ let builtin_append_name = "append"
 let builtin_append_def = {
   fdname=builtin_append_name;
   fdargs=[{name="lst";typ=STString}; {name="element";typ=STString};];
+  fdbody=[];
+}
+
+let builtin_index_name = "index"
+let builtin_index_def = {
+  fdname=builtin_index_name;
+  fdargs=[{name="arr";typ=STString}; {name="i";typ=STString};];
   fdbody=[];
 }
 
@@ -222,6 +233,7 @@ let all_builtins = [
   {bname=builtin_tsclassmethod_name; bdef=builtin_tsclassmethod_def};
   {bname=builtin_concat_name; bdef=builtin_concat_def};
   {bname=builtin_append_name; bdef=builtin_append_def};
+  {bname=builtin_index_name; bdef=builtin_index_def};
   {bname=builtin_tstyped_attr_name; bdef=builtin_tstyped_attr_def};
   {bname=builtin_tsaccess_name; bdef=builtin_tsaccess_def};
   {bname=builtin_tsiden_name; bdef=builtin_tsiden_def};
@@ -443,6 +455,11 @@ and eval_builtin_func name args env =
     let result: value list = List.cons elem_arg lst_arg in
 
     (VArray(result), env)
+  | "index" ->
+    let arr_arg = List.nth args 0 |> val_as_val_list in
+    let idx_arg = List.nth args 1 |> val_as_int in 
+
+    (List.nth arr_arg idx_arg, env)
   | "tsClass" ->
     let name_arg = List.nth args 0 in
     let name_arg = match name_arg with
@@ -542,7 +559,23 @@ and eval_ts ts_expr env = match ts_expr with
 | TSFuncCall(f, args) ->
     let reduced_args = List.concat_map (fun a -> eval_ts a env |> fst) args in
     ([TSFuncCall(f, reduced_args)], env)
-| _ -> ([ts_expr], env)
+| TSStmtList(tses) -> ([TSStmtList(List.concat_map (fun tse -> eval_ts tse env |> fst) tses)], env)
+| TSObject props -> 
+  let reduced_props = List.map (fun prop -> {oname=prop.oname; oval=eval_ts prop.oval env |> fst |> List.hd}) props in
+  ([TSObject(reduced_props)], env)
+
+(* These evalulate to themselves because they have no recursive nodes, i.e. are terminal *)
+| TSIden _ -> ([ts_expr], env)
+| TSNum _ ->  ([ts_expr], env)
+| TSClass (_, _) -> ([ts_expr], env) 
+| TSArray _ -> ([ts_expr], env) 
+| TSString _ -> ([ts_expr], env)
+| TSAccess (_, _) -> ([ts_expr], env)
+| TSAssignment (_, _) -> ([ts_expr], env)
+| TSInterface (_, _) -> ([ts_expr], env)
+| TSClosure (_, _) -> ([ts_expr], env)
+| TSAwait _ -> ([ts_expr], env)
+(* | _ -> ([ts_expr], env) *)
 
 and tsexpr_of_val (v: value) = match v with
 | VNum(n) -> TSNum(n)

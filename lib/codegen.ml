@@ -118,7 +118,7 @@ let rec tsexpr_of_expr e = match e with
   | Iden(name, typ) -> TSIden({iname=name; itype=tstype_of_sltype typ})
   | Num(i) -> TSNum(i)
   | Array(es) -> TSArray(List.map tsexpr_of_expr es)
-  | String(s) -> TSString(s)
+  | String(s) -> TSString(s)  
 
   (* Unsure about this - why doesn't Access have an expr on the right hand side? *)
   | Access(e, accessor) -> TSAccess(tsexpr_of_expr e, TSIden({iname=accessor; itype=None}))

@@ -63,13 +63,13 @@ end
 
 def toImplMethod(action: Action):
   let actionBody = typescript:
-    let resp = fetch([[ action.name ]], { 
+    let resp = fetch({{ action.name }}, { 
       method: "POST", 
-      body: JSON.stringify(5) 
+      body: JSON.stringify({{ tsIden(action.args.index(0).name) }}) 
     })
     let json = await resp.json()
 
-    [[ action.body ]]
+    {{ action.body }}
   end
 
   tsClassMethod(action.name, action.args, actionBody)
@@ -111,8 +111,8 @@ end
 
 implementation:
   typescript:
-    [[* Model.schemas.map(toTsInterface) ]]
-    [[ clientClass() ]]
+    {{* Model.schemas.map(toTsInterface) }}
+    {{ clientClass() }}
   end
 end
 
@@ -124,6 +124,6 @@ end
 
 file server:
   typescript:
-    [[* Model.actions.map(toServerEndpoint) ]]
+    {{* Model.actions.map(toServerEndpoint) }}
   end
 end
