@@ -12,9 +12,9 @@ let compile lexbuf =
   let model_ast = Process.filter_model stmts in
 
   let model_proc = List.fold_left Process.analyze_model init_process model_ast in
-  (* print_endline "Model process:"; *)
-  (* Process.print_process model_proc; *)
-  (* print_endline ""; *)
+  (* print_endline "Model process:";
+  Process.print_process model_proc;
+  print_endline ""; *)
 
   let model_ast = List.map (fun mstmt -> Effects.apply "model" effect_env mstmt) model_ast in
   (* Consider converting to TS via tsexpr_of_expr here first *)

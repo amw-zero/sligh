@@ -63,7 +63,10 @@ end
 
 def toImplMethod(action: Action):
   let actionBody = typescript:
-    let x = fetch([[ action.name ]], { method: "POST", body: JSON.stringify(5) })
+    let resp = fetch([[ action.name ]], { 
+      method: "POST", 
+      body: JSON.stringify(5) 
+    })
     let json = await resp.json()
 
     [[ action.body ]]

@@ -539,6 +539,9 @@ and eval_ts ts_expr env = match ts_expr with
 | TSMethodCall(recv, call, args) ->
     let reduced_args = List.concat_map (fun a -> eval_ts a env |> fst) args in
     ([TSMethodCall(recv, call, reduced_args)], env)
+| TSFuncCall(f, args) ->
+    let reduced_args = List.concat_map (fun a -> eval_ts a env |> fst) args in
+    ([TSFuncCall(f, reduced_args)], env)
 | _ -> ([ts_expr], env)
 
 and tsexpr_of_val (v: value) = match v with
