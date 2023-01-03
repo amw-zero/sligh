@@ -22,7 +22,7 @@ type expr =
   | Iden of string * sligh_type option
   | Num of int
   | Array of expr list
-  | BoolExp of boolexp
+  | If of expr * expr * expr option
   | StmtList of expr list
 
   | Process of string * proc_def list
@@ -42,13 +42,13 @@ type expr =
   | Effect of effect
 
 and effect = {
-  ename: string;
-  eargs: typed_attr list;
+  ename: string;  
   procs: proc_effect list
 }
 
 and proc_effect = {
   ecname: string;
+  eargs: typed_attr list;
   ebody: expr list;
 }
 
@@ -91,6 +91,7 @@ and tsexpr =
 | TSMethodCall of string * string * tsexpr list
 | TSFuncCall of string * tsexpr list
 | TSClass of string * tsclassdef list
+| TSIf of tsexpr * tsexpr * tsexpr option
 | TSArray of tsexpr list
 | TSString of string
 | TSAccess of tsexpr * tsexpr

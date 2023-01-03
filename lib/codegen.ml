@@ -23,7 +23,9 @@ let rec string_of_expr e = match e with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)
   | Num(n) -> string_of_int n
-  | BoolExp(_) -> "boolexp"
+  | If(e1, e2, e3) -> (match e3 with
+    | Some(elseE) -> Printf.sprintf "if  %s:\n %s\nelse:\n  %send" (string_of_expr e1) (string_of_expr e2) (string_of_expr elseE)
+    | None -> Printf.sprintf "if %s:\n %s\nend" (string_of_expr e1) (string_of_expr e2))
   | StmtList(ss) -> string_of_stmt_list ss
   | Process(n, defs) -> Printf.sprintf "export class %s {\n %s\n  %s\n}" n (process_constructor defs) (String.concat "\n" (List.map string_of_proc_def defs))
   | Entity(n, attrs) ->  Printf.sprintf "export interface %s {\n\t%s\n}" n (print_list "\n" (List.map string_of_typed_attr attrs))
@@ -51,6 +53,9 @@ and string_of_ts_expr e = match e with
     | Some(t) -> Printf.sprintf "%s: %s" iname (string_of_tstype t)
     | None -> Printf.sprintf "%s" iname)
   | TSNum(n) -> string_of_int n
+  | TSIf(e1, e2, e3) -> (match e3 with
+    | Some(elseE) -> Printf.sprintf "if (%s) {\n %s}\nelse {\n%s\n}" (string_of_ts_expr e1) (string_of_ts_expr e2) (string_of_ts_expr elseE)
+    | None -> Printf.sprintf "if (%s) {\n %s\n}" (string_of_ts_expr e1) (string_of_ts_expr e2))
   | TSLet(v, ie) -> Printf.sprintf "let %s = %s" v (string_of_ts_expr ie)
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
     (* let rev_list = List.rev ss in
@@ -117,6 +122,9 @@ let rec tsexpr_of_expr e = match e with
   | StmtList(es) -> TSStmtList(List.map tsexpr_of_expr es)
   | Iden(name, typ) -> TSIden({iname=name; itype=tstype_of_sltype typ})
   | Num(i) -> TSNum(i)
+  | If(e1, e2, e3) -> (match e3 with
+    | Some(elseE) -> TSIf(tsexpr_of_expr e1, tsexpr_of_expr e2, Some(tsexpr_of_expr elseE))
+    | None -> TSIf(tsexpr_of_expr e1, tsexpr_of_expr e2, None))
   | Array(es) -> TSArray(List.map tsexpr_of_expr es)
   | String(s) -> TSString(s)  
 
@@ -139,4 +147,3 @@ let rec tsexpr_of_expr e = match e with
   | File(_) -> failwith "Not handling File to TS"
   | Process(_, _) -> failwith "Not handling Process to TS - maybe convert to class"
   | Entity(_, _) -> failwith "Not handling Entity to TS"
-  | BoolExp(_) -> failwith "Not handling boolexp to TS"

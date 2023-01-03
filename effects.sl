@@ -25,39 +25,55 @@ process Ledger:
   transactions: Transaction
 
   def Transfer(srcAct: Account, dstAct: Account, amount: Decimal):
-    8
+    srcAct.guardBalance!(amount)
+
+    srcAct.update!(srcAct.balance)
+    dstAct.update!(dstAct.balance)
+    transactions.create!(Transaction("transfer", srcAct, dstAct, amount))
   end
 end
 
-effect create!(accounts: Account, newAct: Account):
-  model:
+rewrite guardBalance!:
+  model(arg: Int):
+    if srcAct.balance.lessThan(amount):
+      6
+    else:
+      5
+    end
+  end
+end
+
+rewrite create!:
+  model(accounts: Account, newAct: Account):
     accounts.append(newAct)
   end
 
-  impl:
-    typescript:
-      accounts.push(json)
-    end
+  impl(accounts: Identifier, newAct: Identifier):
+    typescript: 5 end
   end
 
-  server:
+  server(accounts: Account, newAct: Account):
     typescript:
       db.exec(5)
     end
   end
 end
 
-effect find!(accounts: Account, id: Int):
-  model:
+rewrite find!:
+  model(accounts: Account, id: Int):
     accounts.find(id)
   end
 
-  impl:
-    fetch("accounts/id")
+  impl(accounts: Account, id: Int):
+    typescript: 
+      fetch("accounts/id")
+    end
   end
 
-  server:
-    "server"
+  server(accounts: Account, id: Int):
+    typescript:
+      "server"
+    end
   end
 end
 

@@ -16,21 +16,22 @@ let compile lexbuf =
   Process.print_process model_proc;
   print_endline ""; *)
 
-  let model_ast = List.map (fun mstmt -> Effects.apply "model" effect_env mstmt) model_ast in
+  let interp_env = List.fold_left Interpreter.build_env init_interp_env stmts in
+
+  let model_ast = List.map (fun mstmt -> Effects.apply "model" effect_env interp_env mstmt) model_ast in
   (* Consider converting to TS via tsexpr_of_expr here first *)
   File.output_str "model" (Codegen.string_of_model model_ast);
 
   (* Extract Impl *)
   let impl_expr = Implementation.filter stmts in
 
-  let interp_env = List.fold_left Interpreter.build_env init_interp_env stmts in
   let interp_env = Interpreter.add_model_to_env model_proc interp_env in
 
   (* Macroexpand and output Impl *)
   let evaled_impl = Interpreter.evaln impl_expr interp_env |> Interpreter.val_as_tsexprs in
   (* Printf.printf "|--- Impl AST before ME ---|: %s\n|--- end impl ---|\n\n" (String.concat "\n" (List.map Util.string_of_ts_expr evaled_impl)); *)
 
-  let evaled_impl = Effects.apply "impl" effect_env (Core.TS(evaled_impl)) in
+  let evaled_impl = Effects.apply "impl" effect_env interp_env (Core.TS(evaled_impl)) in
   (* Printf.printf "|--- Impl AST after ME ---|: %s\n|--- end impl ---|\n\n" (Util.string_of_expr evaled_impl); *)
 
   let impl_str = Codegen.string_of_expr evaled_impl in

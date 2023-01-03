@@ -563,6 +563,18 @@ and eval_ts ts_expr env = match ts_expr with
 | TSObject props -> 
   let reduced_props = List.map (fun prop -> {oname=prop.oname; oval=eval_ts prop.oval env |> fst |> List.hd}) props in
   ([TSObject(reduced_props)], env)
+| TSIf(e1, e2, e3) -> (match e3 with
+  | Some(else_e) -> 
+    let e1' = eval_ts e1 env |> fst |> List.hd in
+    let e2' = eval_ts e2 env |> fst |> List.hd in
+    let e3' = eval_ts else_e env |> fst |> List.hd in
+
+    ([TSIf(e1', e2', Some(e3'))], env)
+  | None ->
+    let e1' = eval_ts e1 env |> fst |> List.hd in
+    let e2' = eval_ts e2 env |> fst |> List.hd in
+
+    ([TSIf(e1', e2', None)], env))
 
 (* These evalulate to themselves because they have no recursive nodes, i.e. are terminal *)
 | TSIden _ -> ([ts_expr], env)

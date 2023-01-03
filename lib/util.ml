@@ -28,7 +28,9 @@ let rec string_of_expr e = match e with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)
   | Num(n) -> string_of_int n
-  | BoolExp(_) -> "boolexp"
+  | If(e1, e2, e3) -> (match e3 with
+    | Some(elseE) -> Printf.sprintf "if  %s:\n %s\nelse:\n  %send" (string_of_expr e1) (string_of_expr e2) (string_of_expr elseE)
+    | None -> Printf.sprintf "if %s:\n %s\nend" (string_of_expr e1) (string_of_expr e2))
   | StmtList(ss) -> Printf.sprintf "Stmtlist: %s\nendlist" (string_of_stmt_list ss)
   | Process(n, defs) -> "process " ^ n ^ String.concat "\n" (List.map string_of_proc_def defs) ^ "\nend\n"
   | Entity(n, attrs) -> Printf.sprintf "entity %s\n\t%s" n (print_list "\n" (List.map string_of_typed_attr attrs))
@@ -58,6 +60,9 @@ and string_of_ts_expr e = match e with
   | TSFuncCall(f, args) -> Printf.sprintf "%s(%s)" f (List.map string_of_ts_expr args |> print_list "\n")
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
   | TSString(s) -> s
+  | TSIf(e1, e2, e3) -> (match e3 with
+    | Some(elseE) -> Printf.sprintf "if (%s) {\n %s}\nelse {\n%s\n}" (string_of_ts_expr e1) (string_of_ts_expr e2) (string_of_ts_expr elseE)
+    | None -> Printf.sprintf "if (%s) {\n %s\n}" (string_of_ts_expr e1) (string_of_ts_expr e2))
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSInterface(n, attrs) -> Printf.sprintf "ts-interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))

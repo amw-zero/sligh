@@ -50,7 +50,6 @@ open Interpreter
 
 %start prog
 %type <expr list> prog 
-%type <boolexp> boolexp
 %type <tsexpr> tsexp
 
 %%
@@ -71,18 +70,14 @@ statement:
   | FILE n = IDEN COLON es = statement* END         { File({fname=n;fbody=es;}) }  
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
                                                     { FuncDef({fdname=i; fdargs=args; fdbody=body}) }
-  | EFFECT i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON ecs = proc_effect* END
-                                                    { Effect({ename=i; eargs=args; procs=ecs}) }
+  | EFFECT i = IDEN COLON ecs = proc_effect* END
+                                                    { Effect({ename=i; procs=ecs}) }
   | e = expression                                  { e }
 
 proc_effect:
-  | i = IDEN COLON ss = statement* END              { { ecname=i; ebody=ss }}
+  | i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON ss = statement* END
+                                                    { { ecname=i; eargs=args; ebody=ss }}
 
-boolexp:
-  | TRUE                            { BTrue }
-  | FALSE                           { BFalse }
-  | IF e1 = boolexp THEN e2 = boolexp ELSE e3 = boolexp 
-                                    { BIf(e1, e2, e3) }
 expression:
   | recv = expression DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
                                                   { Call(meth, [recv] @ args) }
@@ -98,8 +93,8 @@ expression:
   | CASE e = expression COLON branches = list(case_branch) END
                                                   { Case(e, branches)}
   | TYPESCRIPT COLON tse = tsstatements END       { TS(tse) }
-  | boolexp                                       { BoolExp($1) }
-
+  | IF e1 = expression COLON e2 = expression ELSE? COLON? e3 = expression? END
+                                                  { If(e1, e2, e3) }
   (* Shift / reduce warning *)
   | e = expression DOT i = IDEN                      { Access(e, i) }
 
