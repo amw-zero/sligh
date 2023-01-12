@@ -20,6 +20,7 @@ type value =
   | VString of string
   | VArray of value list
   | VFunc of func_def
+  | VMacro of proc_effect list
   | VType of type_val
   | VInstance of instance
 
@@ -64,6 +65,7 @@ let rec string_of_value v = match v with
   | VString(s) -> s
   | VInstance(attrs) -> Printf.sprintf "{%s}" (String.concat ", " (List.map string_of_instance_attr attrs))
   | VSLExpr(e) -> Util.string_of_expr e
+  | VMacro(_) -> "Macro"
 and string_of_instance_attr attr = Printf.sprintf "%s: %s" attr.iname (string_of_value attr.ivalue)
 and string_of_type_val tv = match tv with
   | VSchema s -> string_of_schema s
@@ -302,6 +304,7 @@ let build_env env stmt =
       add_schema_to_env d attrs actions env
   | Entity(e, attrs) -> 
       add_schema_to_env e attrs [] env
+  | Effect(efct) -> Env.add efct.ename (VMacro efct.procs) env
   | _ -> env
 
 let add_model_to_env m env = (* Create a type named Schemas whose attributes are all of the existing schema definitions *)
@@ -323,6 +326,10 @@ let print_env env =
 let build_call_env (env: interp_env) (pair: (typed_attr * value)) =
   let (arg_sig, arg) = pair in
   Env.add arg_sig.name arg env
+
+let build_macro_env (env: interp_env) (pair: (typed_attr * expr)) =
+  let (arg_sig, arg) = pair in
+  Env.add arg_sig.name (VSLExpr(arg)) env
 
 let ts_type_of_type_val tv = match tv with
   | VSchema(s) -> TSTCustom(s.sname)

@@ -27,7 +27,7 @@ let output_tsexpr file_name (e: Interpreter.value) =
 
 let output_file file_name file_body interp_env effect_env =
   let file_expr = Interpreter.evaln file_body interp_env |> Interpreter.val_as_tsexprs in
-  let file_expr = Effects.apply file_name effect_env interp_env (Core.TS(file_expr)) in
+  let file_expr = Effects.apply file_name effect_env interp_env (Core.TS(file_expr)) |> Option.get in
   let file_str = Codegen.string_of_expr file_expr in
 
   output_str file_name file_str

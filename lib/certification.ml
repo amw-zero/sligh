@@ -9,7 +9,7 @@
 
 *)
 
-let generate _ _ _ interp_env =
+let generate _ _ _ cert_out interp_env =
   (* Definitions are separated because they can't be macro-expanded *)
 
   (* The structure of this test creates implicit dependencies that the 
@@ -56,6 +56,49 @@ let generate _ _ _ interp_env =
 
   let ts = Interpreter.evaln props_stmts interp_env in
   match ts with
-  | VTS(tss) -> File.output_tsexpr_list "refine_cert" tss
+  | VTS(tss) -> File.output_tsexpr_list cert_out tss
   | _ -> print_endline "Not TS"
 
+
+let generate_spec _ _ cert_out interp_env =
+  (* Definitions are separated because they can't be macro-expanded *)
+  let cert_props_defs = {|
+    def toName(attr: Attribute):
+      attr.name
+    end
+
+    def toSchemaValueGenerator(schema: Schema):
+      s.attributes.map(toName)
+    end
+
+    def toStr(attr: TypedAttribute):
+      case attr.type:
+        | Schema(s): toSchemaValueGenerator(s)
+        | String(): "String"
+        | Int(): "Int"
+        | Decimal(): "Decimal"
+      end
+    end
+
+    def toRefinementProperty(action: Action):
+      action.args.map(toStr)
+    end
+  |} in
+
+  let cert_props = {|
+    typescript:
+      {{* Model.actions.map(toRefinementProperty) }}
+    end
+  |} in
+
+  let lexbuf_defs = Lexing.from_string cert_props_defs in
+  let lexbuf_props = Lexing.from_string cert_props in
+
+  let defs_stmts = Parse.parse_with_error lexbuf_defs in
+  let props_stmts = Parse.parse_with_error lexbuf_props in
+  let interp_env = List.fold_left Interpreter.build_env interp_env defs_stmts in
+
+  let ts = Interpreter.evaln props_stmts interp_env in
+  match ts with
+  | VTS(tss) -> File.output_tsexpr_list cert_out tss
+  | _ -> print_endline "Not TS"
