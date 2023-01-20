@@ -127,7 +127,7 @@ let generate_spec _ model_proc _ cert_out _ =
   end
 end *)
 
-  let test_ts = List.map action_test model_proc.actions in
+  let test_ts = List.map action_test (List.map (fun a -> a.action_ast) model_proc.actions) in
 
   (* 
     For each action:

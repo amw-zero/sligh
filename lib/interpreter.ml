@@ -310,7 +310,7 @@ let build_env env stmt =
 let add_model_to_env m env = (* Create a type named Schemas whose attributes are all of the existing schema definitions *)
   let schema_instances = List.map (fun schema -> Env.find Process.(schema.name) env) Process.(m.schemas) in
   let variable_instances = List.map (fun variable -> typed_attr_instance variable env) Process.(m.variables) in
-  let action_instances = List.map (fun action -> action_instance action env) Process.(m.actions) in
+  let action_instances = List.map (fun action -> action_instance action env) Process.(m.actions |> List.map (fun a -> a.action_ast)) in
 
   Env.add model_var_name (VInstance([
     { iname="schemas"; ivalue=VArray(schema_instances) };

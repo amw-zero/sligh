@@ -7,12 +7,13 @@ type schema = {
 
 type action = {
   action_ast: Core.proc_action;
+  state_vars: Core.typed_attr list;
 }
 
 type process = {
   schemas: schema list;
   variables: Core.typed_attr list;
-  actions: Core.proc_action list;
+  actions: action list;
 }
 
 let new_process () = {
@@ -38,6 +39,17 @@ let collect_attrs attrs def = match def with
 
 let filter_attrs (defs: proc_def list): typed_attr list  = List.fold_left collect_attrs [] defs
 
+let state_vars_of_action _action = [{name="state_var"; typ=Core.STInt}]
+
+let analyze_action actions action = 
+  {
+    state_vars=state_vars_of_action action;
+    action_ast=action;
+  } :: actions
+  
+
+let analyze_actions actions = List.fold_left analyze_action [] actions
+
 let analyze_model m stmt =
   match stmt with
   | Core.Process(name, defs) ->
@@ -46,7 +58,7 @@ let analyze_model m stmt =
     {
       schemas = {name; attrs;} :: m.schemas;
       variables = attrs @ m.variables;
-      actions = actions @ m.actions;
+      actions = m.actions @ (analyze_actions actions);
     }
   | Core.Entity(e, attrs) -> 
     { m with
@@ -61,7 +73,7 @@ let print_variable v =
   Printf.printf "Var: %s\n" (Util.string_of_typed_attr v)
 
 let print_action a =
-  Printf.printf "Action: %s\n" (Util.string_of_proc_action a)
+  Printf.printf "Action: %s\n" (Util.string_of_proc_action a.action_ast)
 
 let print_process m =
   print_endline "Process.schemas";
