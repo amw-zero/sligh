@@ -594,6 +594,7 @@ and eval_ts ts_expr env = match ts_expr with
 | TSInterface (_, _) -> ([ts_expr], env)
 | TSClosure (_, _) -> ([ts_expr], env)
 | TSAwait _ -> ([ts_expr], env)
+| TSAsync _ -> ([ts_expr], env)
 (* | _ -> ([ts_expr], env) *)
 
 and tsexpr_of_val (v: value) = match v with

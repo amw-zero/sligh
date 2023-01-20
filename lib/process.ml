@@ -5,6 +5,10 @@ type schema = {
   attrs: typed_attr list;
 }
 
+type action = {
+  action_ast: Core.proc_action;
+}
+
 type process = {
   schemas: schema list;
   variables: Core.typed_attr list;

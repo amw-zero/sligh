@@ -110,6 +110,7 @@ and apply_tsexpr proc_name effect_env interp_env tse =
   | TSInterface(_, _) -> Some(tse)
   | TSString(_) -> Some(tse)
   | TSAwait(_) -> Some(tse)
+  | TSAsync(_) -> Some(tse)
 and apply_tsclassdef proc_name effect_env interp_env cd = match cd with
   | TSClassMethod(nm, args, body) -> TSClassMethod(nm, args, List.filter_map (fun tse -> apply_tsexpr proc_name effect_env interp_env tse) body)
   | _ -> cd

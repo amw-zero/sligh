@@ -100,6 +100,7 @@ and tsexpr =
 | TSClosure of tsiden list * tsexpr list
 | TSObject of obj_prop list
 | TSAwait of tsexpr
+| TSAsync of tsexpr
 
 (* | TSFunc of string * tstyped_attr * tsexpr list *)
 | SLExpr of expr

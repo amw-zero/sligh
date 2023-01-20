@@ -69,6 +69,7 @@ and string_of_ts_expr e = match e with
   | TSClosure(args, body) -> Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
+  | TSAsync(e) -> Printf.sprintf "async %s" (string_of_ts_expr e)
   | SLSpliceExpr(_) -> "SLSpliceExpr"
   | SLExpr(e) -> string_of_expr e
 

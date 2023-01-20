@@ -143,6 +143,7 @@ tsexp:
   | LBRACE props = separated_list(COMMA, obj_prop) RBRACE
                                                 { TSObject(props) }
   | AWAIT e = tsexp                             { TSAwait(e) }
+  | ASYNC e = tsexp                             { TSAsync(e) }
   | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
                                                 { TSMethodCall(recv, meth, args) }
   | func = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN

@@ -64,7 +64,7 @@ let compile_spec input_file impl_in cert_out =
   File.output_str "model" (Codegen.string_of_model model_ast);
 
   close_in fh;
-  Certification.generate_spec "model.ts" impl_in cert_out interp_env
+  Certification.generate_spec "model.ts" model_proc impl_in cert_out interp_env
 
 let compile_str expr =
   compile (Lexing.from_string expr) "impl.ts" "refine_cert.ts"
