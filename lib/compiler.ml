@@ -125,6 +125,15 @@ let compile_model_transform input_file transform_script out_file =
   close_in fh;
   close_in transform_fh
 
+let compile_model input_file out_file = 
+  let fh = open_in input_file in
+  let lex = Lexing.from_channel fh in
+  lex.Lexing.lex_curr_p <- {lex.Lexing.lex_curr_p with Lexing.pos_fname = input_file};
+  let model_ast = Parse.parse_with_error lex in
+  let compiled = Codegen.string_of_model model_ast in
+
+  File.output_str out_file compiled
+
 let interp str =
   let lexbuf = Lexing.from_string str in
   let init_interp_env = Interpreter.new_environment_with_builtins () in

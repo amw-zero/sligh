@@ -189,8 +189,11 @@ let main = begin
     Compiler.compile_model_transform !input_file !transform_script !out_file
   else if !impl_out <> "" then
     Compiler.compile_cert_model_transform !input_file !impl_out !cert_out
-  else
+  else if !impl_in <> "" then
     Compiler.compile_spec !input_file !impl_in !cert_out
+  else
+    let out_file_name = if !out_file = "" then "model" else !out_file in
+    Compiler.compile_model !input_file out_file_name
 end
 
 let () = main
