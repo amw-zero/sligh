@@ -32,6 +32,7 @@ type value =
   | VTSClassDef of tsclassdef
   | VTSTypedAttr of tstyped_attr
   | VTSObjectProp of obj_prop
+  | VTSType of ts_type
 
 and schema = {
   sname: string;
@@ -70,6 +71,7 @@ let rec string_of_value v = match v with
   | VMacro(_) -> "Macro"
   | VVoid -> "Void"
   | VTSObjectProp({oname; oval}) -> Printf.sprintf "%s: %s" oname (Util.string_of_ts_expr oval)
+  | VTSType(t) -> Util.string_of_tstype(t)
 and string_of_instance_attr attr = Printf.sprintf "%s: %s" attr.iname (string_of_value attr.ivalue)
 and string_of_type_val tv = match tv with
   | VSchema s -> string_of_schema s
@@ -261,14 +263,22 @@ let builtin_tsobjectprop_def = {
   fdbody=[];
 }
 
+let builtin_tstype_name = "tsType"
+let builtin_tstype_def = {
+  fdname=builtin_tstype_name;
+  fdargs=[{name="name";typ=STString};];
+  fdbody=[];
+}
+
 let all_builtins = [
-  {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_map_name; bdef=builtin_map_def};
-  {bname=builtin_tsclass_name; bdef=builtin_tsclassprop_def};
-  {bname=builtin_tsclassmethod_name; bdef=builtin_tsclassmethod_def};
   {bname=builtin_concat_name; bdef=builtin_concat_def};
   {bname=builtin_append_name; bdef=builtin_append_def};
   {bname=builtin_index_name; bdef=builtin_index_def};
+  (* TS Syntax Methods *)
+  {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
+  {bname=builtin_tsclass_name; bdef=builtin_tsclassprop_def};
+  {bname=builtin_tsclassmethod_name; bdef=builtin_tsclassmethod_def};
   {bname=builtin_tstyped_attr_name; bdef=builtin_tstyped_attr_def};
   {bname=builtin_tsaccess_name; bdef=builtin_tsaccess_def};
   {bname=builtin_tsiden_name; bdef=builtin_tsiden_def};
@@ -280,7 +290,7 @@ let all_builtins = [
   {bname=builtin_tslet_name; bdef=builtin_tslet_def};
   {bname=builtin_tsobject_name; bdef=builtin_tsobject_def};
   {bname=builtin_tsobjectprop_name; bdef=builtin_tsobjectprop_def};
-
+  {bname=builtin_tstype_name; bdef=builtin_tstype_def};
 ]
 
 let new_environment_with_builtins () =
@@ -345,9 +355,7 @@ let build_env env stmt =
   | _ -> env
 
 let add_model_to_env m env =
-  let schema_instances = List.map (fun schema ->
-    Printf.printf "Looking for schema %s\n" Process.(schema.name);
-     Env.find Process.(schema.name) env) Process.(m.schemas) in
+  let schema_instances = List.map (fun schema -> Env.find Process.(schema.name) env) Process.(m.schemas) in
   let variable_instances = List.map (fun variable -> typed_attr_instance variable env) Process.(m.variables) in
   let action_instances = List.map (fun action -> action_instance action env) Process.(m.actions |> List.map (fun a -> a.action_ast)) in
 
@@ -414,7 +422,7 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
       | VFunc({fdargs;fdbody;_}) -> (fdargs, fdbody)
       | _ -> failwith "Attempted to call non function definition")
       with Not_found -> failwith (Printf.sprintf "Couldn't find function def to call: %s" name) in
-    if List.length args != List.length arg_sigs then failwith "Bad arity at func call" else ();
+    if List.length args != List.length arg_sigs then failwith (Printf.sprintf "Bad arity at func call: %s" name) else ();
     
     let reduced_args = List.map 
       (fun a -> try eval a env |> fst with Not_found -> failwith (Printf.sprintf "Unable to eval expr: %s" (Util.string_of_expr a)))
@@ -561,8 +569,13 @@ and eval_builtin_func name args env =
     (VTSClassDef(tsClassMethod name_arg args_arg [body_arg]), env)
   | "tsTypedAttr" -> 
     let name_arg = List.nth args 0 |> val_as_str in
-    let type_arg = List.nth args 1 |> val_as_type_val |> tstype_of_type_val in 
-    (VTSTypedAttr(tsTypedAttr name_arg type_arg), env)
+    let type_arg = List.nth args 1 in
+    let ts_type = match type_arg with
+    | VType(tv) -> tstype_of_type_val tv
+    | VTSType(t) -> t
+    | _ -> failwith (Printf.sprintf "Expected Sligh or TS Type value, but got: %s" (string_of_value type_arg)) in
+
+    (VTSTypedAttr(tsTypedAttr name_arg ts_type), env)
   | "tsAccess" -> 
     let left_arg = List.nth args 0 |> val_as_tsexpr in
     let right_arg = List.nth args 1 |> val_as_tsexpr in
@@ -577,6 +590,11 @@ and eval_builtin_func name args env =
     let name_arg = List.nth args 0 |> val_as_str in
 
     (VTSExpr(tsIden name_arg), env)
+  | "tsType" ->
+    let typ = List.nth args 0 |> val_as_str in
+    let typ_val = TSTCustom(typ) in
+
+    (VTSType(typ_val), env)
   | "tsAssignment" -> 
     let left_arg = List.nth args 0 |> val_as_tsexpr in
     let right_arg = List.nth args 1 |> val_as_tsexpr in
@@ -598,13 +616,12 @@ and eval_builtin_func name args env =
 
     (VTSExpr(TSMethodCall(receiver, call_name, args)), env)
   | "tsClosure" ->
-    let closure_args = List.nth args 0 |> val_as_tsexpr_list |> List.map (fun tse -> match tse with
-      | TSIden(i) -> i
-      | _ -> failwith (Printf.sprintf "Expecting TSIdens, got: %s" (Util.string_of_ts_expr tse))) in
+    let closure_args = List.nth args 0 |> val_as_tstyped_attr_list
+      |> List.map (fun ta -> {iname=ta.tsname; itype=Some(ta.tstyp)}) in
 
-    let body = List.nth args 1 |> tsexpr_of_val  in
+    let body = List.nth args 1 |> val_as_tsexpr_list  in
 
-    (VTSExpr(TSClosure(closure_args, [body])), env)
+    (VTSExpr(TSClosure(closure_args, body)), env)
   | "tsObject" ->
     let props = List.nth args 0 |> val_as_tsobj_props in
 

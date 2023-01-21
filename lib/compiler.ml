@@ -93,20 +93,12 @@ let compile_model_transform input_file transform_script out_file =
   let (_, interp_env) = List.fold_left (fun (_, env) s -> Interpreter.eval s env) (VVoid, init_interp_env) model_ast in
   let model_proc = List.fold_left Process.analyze_model init_process model_ast in
 
-  print_endline "Model:";
-  Process.print_process model_proc;
-
   let interp_env = Interpreter.add_model_to_env model_proc interp_env in
 
   let transform_fh = open_in transform_script in
   let trans_lex = Lexing.from_channel transform_fh in
   trans_lex.Lexing.lex_curr_p <- {trans_lex.Lexing.lex_curr_p with Lexing.pos_fname = transform_script};
   let trans_ast = Parse.parse_with_error trans_lex in
-
-  print_endline "Transform AST";
-  List.iter (fun e -> Printf.printf "%s\n" (Util.string_of_expr e)) trans_ast;
-
-  (* Need env to persist, so prob need a fold, however then the filter map pattern doesn't work *)
 
   let (code, _) = List.fold_left
     (fun (code_vals, env) stmt ->
@@ -118,8 +110,6 @@ let compile_model_transform input_file transform_script out_file =
     ([], interp_env)
     trans_ast in
 
-  List.iter (fun tses -> Printf.printf "%s\n"
-    (String.concat "\n" (List.map Util.string_of_ts_expr tses))) code;
   let _ = List.iter (fun tss -> File.output_tsexpr_list out_file tss) code in
 
   close_in fh;

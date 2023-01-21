@@ -1,9 +1,21 @@
+def genString():
+  tsMethodCall("fc", "string", [])
+end
+
+def genInt():
+  tsMethodCall("fc", "integer", [])
+end
+
+def genFloat():
+  tsMethodCall("fc", "float", [])
+end
+
 def genType(type: Type):
   case type:
     | Schema(s): genSchemaValue(s)
-    | String(): tsMethodCall("fc", "string", [])
-    | Int(): tsMethodCall("fc", "integer", [])
-    | Decimal(): tsMethodCall("fc", "float", [])
+    | String(): genString()
+    | Int(): genInt()
+    | Decimal(): genFloat()
   end
 end
 
@@ -24,16 +36,19 @@ end
 def toTestValue(attr: TypedAttribute):
   case attr.type:
     | Schema(s): genSchemaValue(s)
-    | String(): "String"
-    | Int(): "Int"
-    | Decimal(): "Decimal"
+    | String(): genString()
+    | Int(): genInt()
+    | Decimal(): genFloat()
   end
 end
 
 def toActionTest(action: Action):
-  typescript:
-    {{* action.args.map(toTestValue) }}
-  end
+  let dataSetup = action.args.map(toTestValue)
+  let testBody = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], dataSetup)
+  
+  tsMethodCall("Deno", "test", [testBody])
 end
 
-Model.actions.map(toActionTest)
+typescript:
+  {{* Model.actions.map(toActionTest) }}
+end
