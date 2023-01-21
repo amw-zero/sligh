@@ -46,7 +46,7 @@ def toActionTest(action: Action):
   let dataSetup = action.args.map(toTestValue)
   let testBody = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], dataSetup)
   
-  tsMethodCall("Deno", "test", [testBody])
+  tsMethodCall("Deno", "test", [action.name, testBody])
 end
 
 typescript:
