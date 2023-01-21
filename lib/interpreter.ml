@@ -31,6 +31,7 @@ type value =
   | VTSExpr of tsexpr
   | VTSClassDef of tsclassdef
   | VTSTypedAttr of tstyped_attr
+  | VTSObjectProp of obj_prop
 
 and schema = {
   sname: string;
@@ -68,6 +69,7 @@ let rec string_of_value v = match v with
   | VSLExpr(e) -> Util.string_of_expr e
   | VMacro(_) -> "Macro"
   | VVoid -> "Void"
+  | VTSObjectProp({oname; oval}) -> Printf.sprintf "%s: %s" oname (Util.string_of_ts_expr oval)
 and string_of_instance_attr attr = Printf.sprintf "%s: %s" attr.iname (string_of_value attr.ivalue)
 and string_of_type_val tv = match tv with
   | VSchema s -> string_of_schema s
@@ -117,6 +119,14 @@ let val_as_tsexpr_list v = match v with
 let val_as_slexpr v = match v with
 | VSLExpr(e) -> e
 | _ -> failwith (Printf.sprintf "Expected SLExpr val: %s" (string_of_value v))
+
+let val_as_tsobj_prop v = match v with
+| VTSObjectProp(op) -> op
+| _ -> failwith (Printf.sprintf "Expected TSObjectProp val: %s" (string_of_value v))
+
+let val_as_tsobj_props v = match v with
+| VArray(vs) -> List.map val_as_tsobj_prop vs
+| _ -> failwith (Printf.sprintf "Expected Array of TSObjectProp vals: %s" (string_of_value v))
 
 type interp_env = value Env.t
 
@@ -230,6 +240,27 @@ let builtin_tsclosure_def = {
   fdbody=[];
 }
 
+let builtin_tslet_name = "tsLet"
+let builtin_tslet_def = {
+  fdname=builtin_tslet_name;
+  fdargs=[{name="left";typ=STString}; {name="right";typ=STString}];
+  fdbody=[];
+}
+
+let builtin_tsobject_name = "tsObject"
+let builtin_tsobject_def = {
+  fdname=builtin_tsobject_name;
+  fdargs=[{name="props";typ=STString};];
+  fdbody=[];
+}
+
+let builtin_tsobjectprop_name = "tsObjectProp"
+let builtin_tsobjectprop_def = {
+  fdname=builtin_tsobjectprop_name;
+  fdargs=[{name="name";typ=STString}; {name="value";typ=STString};];
+  fdbody=[];
+}
+
 let all_builtins = [
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_map_name; bdef=builtin_map_def};
@@ -246,6 +277,10 @@ let all_builtins = [
   {bname=builtin_tsinterface_name; bdef=builtin_tsinterface_def};
   {bname=builtin_tsmethod_call_name; bdef=builtin_tsmethod_call_def};
   {bname=builtin_tsclosure_name; bdef=builtin_tsclosure_def};
+  {bname=builtin_tslet_name; bdef=builtin_tslet_def};
+  {bname=builtin_tsobject_name; bdef=builtin_tsobject_def};
+  {bname=builtin_tsobjectprop_name; bdef=builtin_tsobjectprop_def};
+
 ]
 
 let new_environment_with_builtins () =
@@ -533,6 +568,11 @@ and eval_builtin_func name args env =
     let right_arg = List.nth args 1 |> val_as_tsexpr in
 
     (VTSExpr(tsAccess left_arg right_arg), env)
+  | "tsLet" ->
+    let name = List.nth args 0 |> val_as_str in
+    let value = List.nth args 1 |> val_as_tsexpr in
+
+    (VTSExpr(TSLet(name, value)), env)
   | "tsIden" -> 
     let name_arg = List.nth args 0 |> val_as_str in
 
@@ -565,6 +605,15 @@ and eval_builtin_func name args env =
     let body = List.nth args 1 |> tsexpr_of_val  in
 
     (VTSExpr(TSClosure(closure_args, [body])), env)
+  | "tsObject" ->
+    let props = List.nth args 0 |> val_as_tsobj_props in
+
+    (VTSExpr(TSObject(props)), env)
+  | "tsObjectProp" ->
+    let name = List.nth args 0 |> val_as_str in
+    let value = List.nth args 1 |> val_as_tsexpr in
+
+    (VTSObjectProp({oname=name; oval=value}), env)
   | _ -> failwith (Printf.sprintf "Attempted to call unimplemented builtin func: %s" name)
 
 and eval_ts ts_expr env = match ts_expr with
