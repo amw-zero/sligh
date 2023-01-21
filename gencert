@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+dune exec sligh cert-spec.sl -- -cert cert.ts -include Model
+
+
+# sligh cert-spec.sl -transform impl.sl
+# sligh cert-spec.sl -transform simulation.sl
+# sligh cert-spec.sl

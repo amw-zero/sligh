@@ -79,7 +79,51 @@ let compile_file fn impl_out cert_out =
 
   res
 
-let compile_model_transform = compile_file
+let compile_cert_model_transform = compile_file
+
+(* Model transformation can probably replace the other more structured approaches *)
+let compile_model_transform input_file transform_script out_file =
+  let fh = open_in input_file in
+  let lex = Lexing.from_channel fh in
+  lex.Lexing.lex_curr_p <- {lex.Lexing.lex_curr_p with Lexing.pos_fname = input_file};
+
+  let init_process = Process.new_process () in
+  let init_interp_env = Interpreter.new_environment_with_builtins () in
+  let model_ast = Parse.parse_with_error lex in
+  let (_, interp_env) = List.fold_left (fun (_, env) s -> Interpreter.eval s env) (VVoid, init_interp_env) model_ast in
+  let model_proc = List.fold_left Process.analyze_model init_process model_ast in
+
+  print_endline "Model:";
+  Process.print_process model_proc;
+
+  let interp_env = Interpreter.add_model_to_env model_proc interp_env in
+
+  let transform_fh = open_in transform_script in
+  let trans_lex = Lexing.from_channel transform_fh in
+  trans_lex.Lexing.lex_curr_p <- {trans_lex.Lexing.lex_curr_p with Lexing.pos_fname = transform_script};
+  let trans_ast = Parse.parse_with_error trans_lex in
+
+  print_endline "Transform AST";
+  List.iter (fun e -> Printf.printf "%s\n" (Util.string_of_expr e)) trans_ast;
+
+  (* Need env to persist, so prob need a fold, however then the filter map pattern doesn't work *)
+
+  let (code, _) = List.fold_left
+    (fun (code_vals, env) stmt ->
+      let (value, next_env) = Interpreter.eval stmt env in
+      match value with
+      | Interpreter.VTS(tss) -> (tss :: code_vals, next_env)
+      | _ -> (code_vals, next_env)
+    )
+    ([], interp_env)
+    trans_ast in
+
+  List.iter (fun tses -> Printf.printf "%s\n"
+    (String.concat "\n" (List.map Util.string_of_ts_expr tses))) code;
+  let _ = List.iter (fun tss -> File.output_tsexpr_list out_file tss) code in
+
+  close_in fh;
+  close_in transform_fh
 
 let interp str =
   let lexbuf = Lexing.from_string str in

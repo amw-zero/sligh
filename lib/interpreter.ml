@@ -23,6 +23,7 @@ type value =
   | VMacro of proc_effect list
   | VType of type_val
   | VInstance of instance
+  | VVoid
 
   (* Syntax values *)
   | VSLExpr of expr
@@ -66,6 +67,7 @@ let rec string_of_value v = match v with
   | VInstance(attrs) -> Printf.sprintf "{%s}" (String.concat ", " (List.map string_of_instance_attr attrs))
   | VSLExpr(e) -> Util.string_of_expr e
   | VMacro(_) -> "Macro"
+  | VVoid -> "Void"
 and string_of_instance_attr attr = Printf.sprintf "%s: %s" attr.iname (string_of_value attr.ivalue)
 and string_of_type_val tv = match tv with
   | VSchema s -> string_of_schema s
@@ -307,8 +309,10 @@ let build_env env stmt =
   | Effect(efct) -> Env.add efct.ename (VMacro efct.procs) env
   | _ -> env
 
-let add_model_to_env m env = (* Create a type named Schemas whose attributes are all of the existing schema definitions *)
-  let schema_instances = List.map (fun schema -> Env.find Process.(schema.name) env) Process.(m.schemas) in
+let add_model_to_env m env =
+  let schema_instances = List.map (fun schema ->
+    Printf.printf "Looking for schema %s\n" Process.(schema.name);
+     Env.find Process.(schema.name) env) Process.(m.schemas) in
   let variable_instances = List.map (fun variable -> typed_attr_instance variable env) Process.(m.variables) in
   let action_instances = List.map (fun action -> action_instance action env) Process.(m.actions |> List.map (fun a -> a.action_ast)) in
 
@@ -378,7 +382,7 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
     if List.length args != List.length arg_sigs then failwith "Bad arity at func call" else ();
     
     let reduced_args = List.map 
-      (fun a -> try eval a env |> fst with Not_found -> failwith (Printf.sprintf "Unable to eval expr: %s" (Util.string_of_expr e))) 
+      (fun a -> try eval a env |> fst with Not_found -> failwith (Printf.sprintf "Unable to eval expr: %s" (Util.string_of_expr a)))
       args in
     if List.exists (fun n -> n = name) builtin_funcs then
       eval_builtin_func name reduced_args env
@@ -412,6 +416,17 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
   | TS(tses) ->
     let evaled_tses = List.concat_map (fun tse -> eval_ts tse env |> fst) tses in
     (VTS(evaled_tses), env)
+  | FuncDef(fd) ->
+    (VVoid, Env.add fd.fdname (VFunc(fd)) env)
+  | Process(d, defs) ->
+      let attrs: typed_attr list = Process.filter_attrs defs in
+      let actions: proc_action list = Process.filter_actions defs in
+
+      (VVoid, add_schema_to_env d attrs actions env)
+  | Entity(e, attrs) ->
+      (VVoid, add_schema_to_env e attrs [] env)
+  | Effect(efct) ->
+      (VVoid, Env.add efct.ename (VMacro efct.procs) env)
   | _ -> failwith (Printf.sprintf "Unable to eval expr %s" (Util.string_of_expr e))
 
 and eval_and_return expr_list env =
