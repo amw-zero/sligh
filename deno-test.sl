@@ -24,21 +24,19 @@ def genTypeValueObjProp(attr: TypedAttribute):
 end
 
 def genSchemaValue(s: Schema):
-  let genRecord = tsMethodCall(
+  tsMethodCall(
     "fc",
     "record",
     [tsObject(s.attributes.map(genTypeValueObjProp))]
   )
-
-  tsLet(s.name, genRecord)
 end
 
 def toTestValue(attr: TypedAttribute):
   case attr.type:
-    | Schema(s): genSchemaValue(s)
-    | String(): genString()
-    | Int(): genInt()
-    | Decimal(): genFloat()
+    | Schema(s): tsLet(attr.name, genSchemaValue(s))
+    | String(): tsLet(attr.name, genString())
+    | Int(): tsLet(attr.name, genInt())
+    | Decimal(): tsLet(attr.name, genFloat())
   end
 end
 

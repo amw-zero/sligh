@@ -619,7 +619,7 @@ and eval_builtin_func name args env =
     let closure_args = List.nth args 0 |> val_as_tstyped_attr_list
       |> List.map (fun ta -> {iname=ta.tsname; itype=Some(ta.tstyp)}) in
 
-    let body = List.nth args 1 |> val_as_tsexpr_list  in
+    let body = List.nth args 1 |> val_as_val_list |> List.map tsexpr_of_val in
 
     (VTSExpr(TSClosure(closure_args, body)), env)
   | "tsObject" ->
