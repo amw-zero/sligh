@@ -40,11 +40,30 @@ def toTestValue(attr: TypedAttribute):
   end
 end
 
+def toCallValue(arg: TypedAttribute):
+  tsIden(arg.name)
+end
+
 def toActionTest(action: Action):
+  let clientName = "client"
   let dataSetup = action.args.map(toTestValue)
-  let testBody = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], dataSetup)
+  let property = [tsAwait(
+    tsMethodCall("fc", "assert", [
+      tsMethodCall("fc", "asyncProperty", [tsAsync(
+        tsClosure([tsTypedAttr("state", tsType("State"))], [
+          typescript: let client = 5 end,
+          tsLet("cresp", tsAwait(tsMethodCall(clientName, "setup", [tsIden("state.db")]))),
+          tsAwait(tsMethodCall("cresp", "arrayBuffer", [])),
+          tsAwait(tsMethodCall(clientName, action.name, action.args.map(toCallValue)))
+        ])
+      )])
+    ])
+  )]
+
+  let testBody = dataSetup.concat(property)
+  let testWrapper = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], testBody).tsAsync()
   
-  tsMethodCall("Deno", "test", [action.name, testBody])
+  tsMethodCall("Deno", "test", [action.name, testWrapper])
 end
 
 typescript:
