@@ -51,10 +51,12 @@ def toActionTest(action: Action):
     tsMethodCall("fc", "assert", [
       tsMethodCall("fc", "asyncProperty", [tsAsync(
         tsClosure([tsTypedAttr("state", tsType("State"))], [
-          typescript: let client = 5 end,
+          tsLet("client", tsNew("Client", [])),
+          tsLet("model", tsNew("Budget", [])),
           tsLet("cresp", tsAwait(tsMethodCall(clientName, "setup", [tsIden("state.db")]))),
           tsAwait(tsMethodCall("cresp", "arrayBuffer", [])),
-          tsAwait(tsMethodCall(clientName, action.name, action.args.map(toCallValue)))
+          tsAwait(tsMethodCall(clientName, action.name, action.args.map(toCallValue))),
+          tsAwait(tsMethodCall("client", "teardown", []))
         ])
       )])
     ])

@@ -78,6 +78,7 @@ and string_of_ts_expr e = match e with
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | TSAsync(e) -> Printf.sprintf "async %s" (string_of_ts_expr e)
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
+  | TSNew(c, args) -> Printf.sprintf "new %s(%s)" c (String.concat ", " (List.map string_of_ts_expr args))
   | SLSpliceExpr(_) -> "SLSpliceExpr"
   | SLExpr(e) -> string_of_expr e
 

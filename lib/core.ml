@@ -99,6 +99,7 @@ and tsexpr =
 | TSInterface of string * tstyped_attr list
 | TSClosure of tsiden list * tsexpr list
 | TSObject of obj_prop list
+| TSNew of string * tsexpr list
 | TSAwait of tsexpr
 | TSAsync of tsexpr
 
