@@ -5,6 +5,17 @@ type sligh_type =
   | STString
   | STDecimal
   | STCustom of string
+  | STVariant of string * variant_tag list
+
+and typed_attr = {
+  name: string;
+  typ: sligh_type;
+}
+
+and variant_tag = {
+  tname: string;
+  tattrs: typed_attr list;
+}
 
 type pattern_binding =
   | PBVar of string
@@ -27,6 +38,7 @@ type expr =
 
   | Process of string * proc_def list
   | Entity of string * typed_attr list
+  | Variant of string * variant_tag list
   | Call of string * expr list
 
   | File of file
@@ -57,11 +69,6 @@ and func_def = {
   fdargs: typed_attr list;
   fdbody: expr list;
 }
-
-and typed_attr =
-  { name: string;
-    typ: sligh_type;
-  }
 
 and proc_action =
   { aname: string;

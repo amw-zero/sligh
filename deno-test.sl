@@ -10,9 +10,22 @@ def genFloat():
   tsMethodCall("fc", "float", [])
 end
 
+def genVariantCaseAttr(attr: TypedAttribute):
+  tsObjectProp(attr.name, genType(attr.type))
+end
+
+def genVariantCase(vc: VariantCase):
+  tsMethodCall("fc", "record", [tsObject(vc.attrs.map(genVariantCaseAttr))])
+end
+
+def genVariant(name: String, cases: VariantCaseList):
+  tsMethodCall("fc", "oneOf", cases.map(genVariantCase))
+end
+
 def genType(type: Type):
   case type:
     | Schema(s): genSchemaValue(s)
+    | Variant(name, cases): genVariant(name, cases)
     | String(): genString()
     | Int(): genInt()
     | Decimal(): genFloat()

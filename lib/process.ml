@@ -10,14 +10,21 @@ type action = {
   state_vars: Core.typed_attr list;
 }
 
+type variant = {
+  vname: string;
+  variants: variant_tag list
+}
+
 type process = {
   schemas: schema list;
+  variants: variant list;
   variables: Core.typed_attr list;
   actions: action list;
 }
 
 let new_process () = {
   schemas=[];
+  variants=[];
   variables=[];
   actions=[];
 }
@@ -47,7 +54,6 @@ let analyze_action actions action =
     action_ast=action;
   } :: actions
   
-
 let analyze_actions actions = List.fold_left analyze_action [] actions
 
 let analyze_model m stmt =
@@ -55,7 +61,7 @@ let analyze_model m stmt =
   | Core.Process(name, defs) ->
     let actions = filter_actions defs in
     let attrs = filter_attrs defs in
-    {
+    { m with
       schemas = {name; attrs;} :: m.schemas;
       variables = attrs @ m.variables;
       actions = m.actions @ (analyze_actions actions);
@@ -64,6 +70,9 @@ let analyze_model m stmt =
     { m with
       schemas = {name=e; attrs;} :: m.schemas;
     }
+  | Core.Variant(n, vs) ->
+    { m with
+      variants = {vname=n; variants=vs} :: m.variants}
   | _ -> m
 
 let print_schema s =

@@ -39,6 +39,7 @@ open Interpreter
 %token PROCESS
 %token FILE
 %token ENTITY
+%token DATA
 %token IMPLEMENTATION
 %token <string> STRING
 %token CASE
@@ -62,9 +63,14 @@ statements:
   | ss = statements s = statement   { ss @ [s] }
   | s = statement                   { [s] }
 
+variant_tag:
+  | BAR n = IDEN LPAREN tas = separated_list(COMMA, typed_attr) RPAREN
+                                                    { {tname=n; tattrs=tas} }
+
 statement:
   | LET i = IDEN EQUALS e = expression              { Let(i, e) }
   | PROCESS i = IDEN COLON p = proc_def* END        { Process(i, p) }
+  | DATA i = IDEN COLON vts = variant_tag* END         { Variant(i, vts) }
   | ENTITY i = IDEN COLON ta = typed_attr* END      { Entity(i, ta) }
   | IMPLEMENTATION COLON e = expression END         { Implementation(e) }
   | FILE n = IDEN COLON es = statement* END         { File({fname=n;fbody=es;}) }  

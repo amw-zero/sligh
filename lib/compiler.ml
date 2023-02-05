@@ -91,6 +91,7 @@ let compile_model_transform input_file transform_script out_file =
   let init_interp_env = Interpreter.new_environment_with_builtins () in
   let model_ast = Parse.parse_with_error lex in
   let (_, interp_env) = List.fold_left (fun (_, env) s -> Interpreter.eval s env) (VVoid, init_interp_env) model_ast in
+
   let model_proc = List.fold_left Process.analyze_model init_process model_ast in
 
   let interp_env = Interpreter.add_model_to_env model_proc interp_env in
@@ -107,7 +108,7 @@ let compile_model_transform input_file transform_script out_file =
       | Interpreter.VTS(tss) -> (tss :: code_vals, next_env)
       | _ -> (code_vals, next_env)
     )
-    ([], interp_env)
+    ([] , interp_env)
     trans_ast in
 
   let _ = List.iter (fun tss -> File.output_tsexpr_list out_file tss) code in

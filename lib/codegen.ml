@@ -12,9 +12,15 @@ let string_of_type t = match t with
   | STCustom s -> s
   | STString -> "string"
   | STDecimal -> "number"
+  | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
+
+let string_of_variant_tag vt =
+  Printf.sprintf "export type %s = {\n%s\n}"
+    vt.tname
+    (String.concat "\n" (List.map string_of_typed_attr vt.tattrs))
 
   (* Only supporting codegen to TS right now *)
 let rec string_of_expr e = match e with
@@ -29,6 +35,11 @@ let rec string_of_expr e = match e with
   | StmtList(ss) -> string_of_stmt_list ss
   | Process(n, defs) -> Printf.sprintf "export class %s {\n %s\n  %s\n}" n (process_constructor defs) (String.concat "\n" (List.map string_of_proc_def defs))
   | Entity(n, attrs) ->  Printf.sprintf "export interface %s {\n\t%s\n}" n (print_list "\n" (List.map string_of_typed_attr attrs))
+  | Variant(n, vs) ->
+    Printf.sprintf "export type %s = %s\n\n%s"
+      n
+      (String.concat " | " (List.map (fun vt -> vt.tname) vs))
+      (String.concat "\n" (List.map string_of_variant_tag vs))
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
   | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "function %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
@@ -115,7 +126,8 @@ let tstype_of_sltype typ = match typ with
     | STInt -> Some(TSTNumber)
     | STString -> Some(TSTString)
     | STDecimal -> Some(TSTNumber)
-    | STCustom(c) -> Some(TSTCustom(c)))
+    | STCustom(c) -> Some(TSTCustom(c))
+    | STVariant(n, _) -> Some(TSTCustom(n)))
   | None -> None
 
 (* Currently unused, but convertes a Sligh expression to a TS one *)
@@ -149,3 +161,4 @@ let rec tsexpr_of_expr e = match e with
   | File(_) -> failwith "Not handling File to TS"
   | Process(_, _) -> failwith "Not handling Process to TS - maybe convert to class"
   | Entity(_, _) -> failwith "Not handling Entity to TS"
+  | Variant(_, _) -> failwith "Not handling Variant to TS"

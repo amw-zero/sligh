@@ -36,6 +36,7 @@ rule read ctx = parse
   | "then"            { THEN }
   | "else"            { ELSE }
   | "case"            { CASE }
+  | "data"            { DATA }
   | '('               { LPAREN }
   | ')'               { RPAREN }
   | '['               { LSQBRACKET }

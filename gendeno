@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
 
-dune exec sligh cert-spec.sl -- -transform deno-test.sl -out deno-test
+dune exec sligh budget2.sl -- -transform deno-test.sl -out deno-test

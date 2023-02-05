@@ -12,6 +12,7 @@ let string_of_type t = match t with
   | STCustom s -> s
   | STString -> "String"
   | STDecimal -> "Decimal"
+  | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
@@ -19,6 +20,8 @@ let string_of_typed_attr ta =
 let string_of_pattern_binding pb = match pb with
   | PBVar(n) -> n
   | PBAny -> "_"
+
+let string_of_variant_tag vt = Printf.sprintf "| %s(%s)" vt.tname (String.concat ", " (List.map string_of_typed_attr vt.tattrs))
 
 (* Debug representation of expressions *)
 let rec string_of_expr e = match e with
@@ -34,6 +37,7 @@ let rec string_of_expr e = match e with
   | StmtList(ss) -> Printf.sprintf "Stmtlist: %s\nendlist" (string_of_stmt_list ss)
   | Process(n, defs) -> "process " ^ n ^ String.concat "\n" (List.map string_of_proc_def defs) ^ "\nend\n"
   | Entity(n, attrs) -> Printf.sprintf "entity %s\n\t%s" n (print_list "\n" (List.map string_of_typed_attr attrs))
+  | Variant(n, vs) -> Printf.sprintf "data %s:\n%s\nend" n (String.concat "\n" (List.map string_of_variant_tag vs))
   | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
   | File(e) -> "file:\n\t" ^ Printf.sprintf "%s: %s\n" e.fname (string_of_stmt_list e.fbody) ^ "\nend"
   | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "def %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
