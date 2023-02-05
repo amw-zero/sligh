@@ -22,7 +22,7 @@ exception SyntaxError of string
 }
 
 let whitespace = [' ' '\t' '\r' '\n']
-let iden = ['_' 'a'-'z' 'A'-'Z'] ['_' 'a'-'z' 'A'-'Z' '0'-'9' '!']*
+let iden = ['_' 'a'-'z' 'A'-'Z'] ['_' 'a'-'z' 'A'-'Z' '0'-'9' '!' '-']*
 let num = ['0'-'9']
 
 rule read ctx = parse
