@@ -25,6 +25,8 @@ let string_of_variant_tag vt =
   (* Only supporting codegen to TS right now *)
 let rec string_of_expr e = match e with
   | Let(name, body) -> Printf.sprintf "let %s = %s;" name (string_of_expr body)
+  | Assignment(name, value) ->
+    Printf.sprintf "this.%s = %s" name (string_of_expr value)
   | Iden(i, too) -> (match too with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)
@@ -130,7 +132,7 @@ let tstype_of_sltype typ = match typ with
     | STVariant(n, _) -> Some(TSTCustom(n)))
   | None -> None
 
-(* Currently unused, but convertes a Sligh expression to a TS one *)
+(* Currently unused, but converts a Sligh expression to a TS one *)
 let rec tsexpr_of_expr e = match e with
   | Let(var, e) -> TSLet(var, tsexpr_of_expr e)
   | StmtList(es) -> TSStmtList(List.map tsexpr_of_expr es)
@@ -140,7 +142,8 @@ let rec tsexpr_of_expr e = match e with
     | Some(elseE) -> TSIf(tsexpr_of_expr e1, tsexpr_of_expr e2, Some(tsexpr_of_expr elseE))
     | None -> TSIf(tsexpr_of_expr e1, tsexpr_of_expr e2, None))
   | Array(es) -> TSArray(List.map tsexpr_of_expr es)
-  | String(s) -> TSString(s)  
+  | String(s) -> TSString(s)
+  | Assignment(v, e) -> TSAssignment(TSIden({iname=Printf.sprintf "this.%s" v;itype=None}), tsexpr_of_expr e)
 
   (* Unsure about this - why doesn't Access have an expr on the right hand side? *)
   | Access(e, accessor) -> TSAccess(tsexpr_of_expr e, TSIden({iname=accessor; itype=None}))

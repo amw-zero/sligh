@@ -1,0 +1,62 @@
+
+** Conflict (shift/reduce) in state 17.
+** Token involved: LPAREN
+** This state is reached from prog after reading:
+
+expression DOT IDEN
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+prog 
+statements EOF 
+(?)
+
+** In state 17, looking ahead at LPAREN, shifting is permitted
+** because of the following sub-derivation:
+
+statement 
+expression 
+expression DOT IDEN . LPAREN loption(separated_nonempty_list(COMMA,expression)) RPAREN 
+
+** In state 17, looking ahead at LPAREN, reducing production
+** expression -> expression DOT IDEN
+** is permitted because of the following sub-derivation:
+
+statements statement // lookahead token appears because statement can begin with LPAREN
+statement // lookahead token is inherited
+expression // lookahead token is inherited
+expression DOT IDEN . 
+
+** Conflict (shift/reduce) in state 9.
+** Token involved: LPAREN
+** This state is reached from prog after reading:
+
+IDEN
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+prog 
+statements EOF 
+(?)
+
+** In state 9, looking ahead at LPAREN, shifting is permitted
+** because of the following sub-derivation:
+
+statement 
+expression 
+func_call 
+IDEN argument_list 
+     . LPAREN loption(separated_nonempty_list(COMMA,expression)) RPAREN 
+
+** In state 9, looking ahead at LPAREN, reducing production
+** identifier -> IDEN
+** is permitted because of the following sub-derivation:
+
+statements statement // lookahead token appears because statement can begin with LPAREN
+statement // lookahead token is inherited
+expression // lookahead token is inherited
+variable // lookahead token is inherited
+identifier // lookahead token is inherited
+IDEN . 

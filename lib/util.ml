@@ -27,6 +27,7 @@ let string_of_variant_tag vt = Printf.sprintf "| %s(%s)" vt.tname (String.concat
 let rec string_of_expr e = match e with
   | TS(tse) -> "ts: " ^ String.concat "\n" (List.map string_of_ts_expr tse)
   | Let(name, body) -> "let " ^ name ^ " = " ^ string_of_expr body
+  | Assignment(name, value) -> Printf.sprintf "%s := %s" name (string_of_expr value)
   | Iden(i, too) -> (match too with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)

@@ -48,6 +48,13 @@ open Interpreter
 %token EFFECT
 %token LSQBRACKET
 %token RSQBRACKET
+%token ASSIGNMENT
+%token SEMICOLON
+
+// %left ASSIGNMENT
+// %right LPAREN
+// %right IDEN
+// %right DOT
 
 %start prog
 %type <expr list> prog 
@@ -66,6 +73,8 @@ statements:
 variant_tag:
   | BAR n = IDEN LPAREN tas = separated_list(COMMA, typed_attr) RPAREN
                                                     { {tname=n; tattrs=tas} }
+assignment:
+  | i = IDEN ASSIGNMENT e = expression   { Assignment(i, e) }  
 
 statement:
   | LET i = IDEN EQUALS e = expression              { Let(i, e) }
@@ -77,21 +86,32 @@ statement:
   | DEF i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON body = statements END
                                                     { FuncDef({fdname=i; fdargs=args; fdbody=body}) }
   | EFFECT i = IDEN COLON ecs = proc_effect* END
-                                                    { Effect({ename=i; procs=ecs}) }
+                                                    { Effect({ename=i; procs=ecs}) }                                                    
   | e = expression                                  { e }
 
 proc_effect:
   | i = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON ss = statement* END
                                                     { { ecname=i; eargs=args; ebody=ss }}
 
+identifier:
+  | i = IDEN                                      { Iden(i, None) }
+
+variable:
+  | identifier                                   { $1 }
+
+argument_list:
+  | LPAREN args = separated_list(COMMA, expression) RPAREN { args }
+
+func_call:
+  | func = IDEN args = argument_list
+                                                  { Call(func, args) }
 expression:
   | recv = expression DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
                                                   { Call(meth, [recv] @ args) }
-  (* This causes a shift/reduce warning currently *)
-  | func = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
-                                                  { Call(func, args) }
-                                                    | n = NUMBER                                    { Num(n) }
-  | i = IDEN                                      { Iden(i, None) }
+  | assignment                                    { $1 }
+  | n = NUMBER                                    { Num(n) }
+  | variable                                      { $1 }
+  | func_call                                     { $1 }
   | s = STRING                                    { String(s) }
   | LSQBRACKET es = separated_list(COMMA, expression) RSQBRACKET
                                                   { Array(es) }

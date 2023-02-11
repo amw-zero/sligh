@@ -13,10 +13,10 @@ process Budget:
   recurringTransactions: RecurringTransaction
 
   def AddRecurringTransaction(rt: RecurringTransaction):
-    recurringTransactions.create!(rt)
+    recurringTransactions := recurringTransactions.append(rt)
   end
 
-  def DeleteRecurringTransaction(id: Int):
-    recurringTransactions.delete!(id)
+  def DeleteRecurringTransaction(id: Int): 
+    recurringTransactsions := recurringTransactons.delete(id)
   end
 end

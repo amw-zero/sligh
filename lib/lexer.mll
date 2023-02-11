@@ -41,6 +41,8 @@ rule read ctx = parse
   | ')'               { RPAREN }
   | '['               { LSQBRACKET }
   | ']'               { RSQBRACKET }
+  | ';'               { SEMICOLON }
+  | ":="              { ASSIGNMENT }
   | ':'               { COLON }
   | ','               { COMMA }
   | '.'               { DOT }

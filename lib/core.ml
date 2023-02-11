@@ -29,7 +29,11 @@ type value_pattern = {
 type expr =
   TS of tsexpr list
   (* TargetLang of tlang_expr list - to make target languages extensible*)
+
+  (* Statements, move to separate type *)
   | Let of string * expr
+  | Assignment of string * expr
+
   | Iden of string * sligh_type option
   | Num of int
   | Array of expr list
