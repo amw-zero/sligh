@@ -54,7 +54,7 @@ def toTestValue(attr: TypedAttribute):
 end
 
 def toCallValue(arg: TypedAttribute):
-  tsIden(arg.name)
+  tsIden("state.".appendStr(arg.name))
 end
 
 def actionStateTypeName(actionName: String):
@@ -65,30 +65,43 @@ def toTsTypedAttr(attr: TypedAttr):
   tsTypedAttr(attr.name, attr.type)
 end
 
+def actionState(action: Action):
+  action.args.concat(action.stateVars)
+end
+
 def actionStateType(action: Action):
   tsInterface(actionStateTypeName(action.name),
-    action.args.map(toTsTypedAttr).concat(action.stateVars.map(toTsTypedAttr)))
+    actionState(action).map(toTsTypedAttr))
 end
+
+def toStateProp(attr: TypedAttribute):
+  tsObjectProp(attr.name, tsIden(attr.name))
+end
+
 
 def toActionTest(action: Action):
   let clientName = "client"
-  let dataSetup = action.args.map(toTestValue)
+  let dataSetup = actionState(action).map(toTestValue)
+  let stateSetup = tsLet("state", tsObject(actionState(action).map(toStateProp)))
+
   let property = [tsAwait(
     tsMethodCall("fc", "assert", [
-      tsMethodCall("fc", "asyncProperty", [tsAsync(
-        tsClosure([tsTypedAttr("state", tsType("State"))], [
+      tsMethodCall("fc", "asyncProperty", [tsIden("state"), tsAsync(
+        tsClosure([tsTypedAttr("state", tsType(actionStateTypeName(action.name)))], [
           tsLet("client", tsNew("Client", [])),
           tsLet("model", tsNew("Budget", [])),
           tsLet("cresp", tsAwait(tsMethodCall(clientName, "setup", [tsIden("state.db")]))),
           tsAwait(tsMethodCall("cresp", "arrayBuffer", [])),
           tsAwait(tsMethodCall(clientName, action.name, action.args.map(toCallValue))),
+          tsMethodCall("model", action.name, action.args.map(toCallValue)),
+
           tsAwait(tsMethodCall("client", "teardown", []))
         ])
       )])
     ])
   )]
 
-  let testBody = dataSetup.concat(property)
+  let testBody = [dataSetup, [stateSetup], property].flatten()
   let testWrapper = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], testBody).tsAsync()
   
   [
