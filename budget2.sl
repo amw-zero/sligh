@@ -17,6 +17,6 @@ process Budget:
   end
 
   def DeleteRecurringTransaction(id: Int): 
-    recurringTransactsions := recurringTransactons.delete(id)
+    recurringTransactions := recurringTransactons.delete(id)
   end
 end

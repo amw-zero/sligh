@@ -1,3 +1,4 @@
 #!/usr/bin/env sh
 
+dune exec sligh budget2.sl
 dune exec sligh budget2.sl -- -transform deno-test.sl -out deno-test

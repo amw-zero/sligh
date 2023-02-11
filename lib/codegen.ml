@@ -20,7 +20,7 @@ let string_of_typed_attr ta =
 let string_of_variant_tag vt =
   Printf.sprintf "export type %s = {\n%s\n}"
     vt.tname
-    (String.concat "\n" (List.map string_of_typed_attr vt.tattrs))
+    (String.concat "\n" ((Printf.sprintf "type: \"%s\";" vt.tname) :: (List.map string_of_typed_attr vt.tattrs)))
 
   (* Only supporting codegen to TS right now *)
 let rec string_of_expr e = match e with
@@ -42,7 +42,11 @@ let rec string_of_expr e = match e with
       n
       (String.concat " | " (List.map (fun vt -> vt.tname) vs))
       (String.concat "\n" (List.map string_of_variant_tag vs))
-  | Call(n, args) -> n ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
+  | Call(name, args) ->
+    if List.exists (fun n -> n = name) Interpreter.builtin_funcs then
+      string_of_builtin name args
+    else 
+      name ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
   | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "function %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
   | String(s) -> Printf.sprintf "\"%s\"" s
@@ -60,6 +64,22 @@ and string_of_stmt_list sl =
   let all_strs = ret_str :: rest_strs in
 
   String.concat "\n" (List.rev all_strs)
+
+and string_of_builtin n args =
+  match n with
+  | "append" -> 
+    let arr = List.nth args 0 |> string_of_expr in
+    let elem = List.nth args 1 |> string_of_expr in
+
+    Printf.sprintf {|
+    (() => {
+    let a = [...%s];
+    a.push(%s);
+
+    return a;
+    })();
+    |} arr elem
+  | _ -> failwith (Printf.sprintf "Attempted to compile unknown builtin func: %s" n)  
 
 and string_of_ts_expr e = match e with
   | TSIden({iname; itype}) -> (match itype with
