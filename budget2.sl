@@ -9,14 +9,16 @@ entity RecurringTransaction:
   rule: RecurrenceRule
 end
 
+entity ScheduledTransaction:
+  name: String
+  date: Int
+end
+
 process Budget:
   recurringTransactions: RecurringTransaction
+  scheduledTransactions: ScheduledTransaction
 
   def AddRecurringTransaction(rt: RecurringTransaction):
     recurringTransactions := recurringTransactions.append(rt)
-  end
-
-  def DeleteRecurringTransaction(id: Int): 
-    recurringTransactions := recurringTransactons.delete(id)
   end
 end

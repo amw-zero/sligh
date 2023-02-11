@@ -57,6 +57,18 @@ def toCallValue(arg: TypedAttribute):
   tsIden(arg.name)
 end
 
+def actionStateTypeName(actionName: String):
+  actionName.appendStr("State")
+end
+
+def toTsTypedAttr(attr: TypedAttr):
+  tsTypedAttr(attr.name, attr.type)
+end
+
+def actionStateType(action: Action):
+  tsInterface(actionStateTypeName(action.name), action.args.map(toTsTypedAttr))
+end
+
 def toActionTest(action: Action):
   let clientName = "client"
   let dataSetup = action.args.map(toTestValue)
@@ -78,9 +90,12 @@ def toActionTest(action: Action):
   let testBody = dataSetup.concat(property)
   let testWrapper = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], testBody).tsAsync()
   
-  tsMethodCall("Deno", "test", [action.name, testWrapper])
+  [
+    actionStateType(action),
+    tsMethodCall("Deno", "test", [action.name, testWrapper])
+  ]
 end
 
 typescript:
-  {{* Model.actions.map(toActionTest) }}
+  {{* Model.actions.map(toActionTest).flatten() }}
 end

@@ -170,6 +170,20 @@ let builtin_append_def = {
   fdbody=[];
 }
 
+let builtin_appendstr_name = "appendStr"
+let builtin_appendstr_def = {
+  fdname=builtin_appendstr_name;
+  fdargs=[{name="str";typ=STString}; {name="newStr";typ=STString};];
+  fdbody=[];
+}
+
+let builtin_flatten_name = "flatten"
+let builtin_flatten_def = {
+  fdname=builtin_append_name;
+  fdargs=[{name="lsts";typ=STString};];
+  fdbody=[];
+}
+
 let builtin_index_name = "index"
 let builtin_index_def = {
   fdname=builtin_index_name;
@@ -307,6 +321,8 @@ let all_builtins = [
   {bname=builtin_map_name; bdef=builtin_map_def};
   {bname=builtin_concat_name; bdef=builtin_concat_def};
   {bname=builtin_append_name; bdef=builtin_append_def};
+  {bname=builtin_appendstr_name; bdef=builtin_appendstr_def};
+  {bname=builtin_flatten_name; bdef=builtin_flatten_def};
   {bname=builtin_index_name; bdef=builtin_index_def};
   (* TS Syntax Methods *)
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
@@ -604,6 +620,20 @@ and eval_builtin_func name args env =
     let result: value list = List.cons elem_arg lst_arg in
 
     (VArray(result), env)
+
+  | "appendStr" ->
+    let str = List.nth args 0 |> val_as_str in 
+    let newStr = List.nth args 1 |> val_as_str in
+
+    let result: string = str ^ newStr in
+
+    (VString(result), env)
+  | "flatten" ->
+    let lists = List.nth args 0 |> val_as_val_list |> List.map val_as_val_list in
+
+    let result: value list = List.concat lists in
+
+    (VArray(result), env)    
   | "index" ->
     let arr_arg = List.nth args 0 |> val_as_val_list in
     let idx_arg = List.nth args 1 |> val_as_int in 

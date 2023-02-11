@@ -182,8 +182,6 @@ let args = [
 
 let main = begin
   Arg.parse args set_input usage_msg;  
-  print_endline !cert_out;  
-  print_endline !impl_out;
 
   if !transform_script <> "" then
     Compiler.compile_model_transform !input_file !transform_script !out_file
