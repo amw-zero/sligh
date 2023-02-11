@@ -46,7 +46,35 @@ let collect_attrs attrs def = match def with
 
 let filter_attrs (defs: proc_def list): typed_attr list  = List.fold_left collect_attrs [] defs
 
-let state_vars_of_action _action = [{name="state_var"; typ=Core.STInt}]
+(* Have to return state var as a typed attribute, which requires figuring out the type
+   of certain exprs. Will likely need a type environment and name resolution *)
+(* let collect_state_vars state_vars e = match e with
+  | Let(v, value) -> state_vars @ collect_state_vars state_vars value
+  | Assignment(var, e) -> [{name=var; typ= ???}]
+  | Iden of string * sligh_type option
+  | Num(_) -> state_vars
+  | Array of expr list
+  | If of expr * expr * expr option
+  | StmtList of expr list
+  | Call of string * expr list
+  | String of string
+  | Access of expr * string
+  | Case of expr * case_branch list
+
+   (* Should only be decl, possibly only be class decl *)
+  | Implementation of expr
+  | FuncDef of func_def
+  | File of file
+  | Effect of effect
+  | Process of string * proc_def list
+  | Entity of string * typed_attr list
+  | TS of tsexpr list
+  | Variant of string * variant_tag list *)
+
+let state_vars_of_action (_action: Core.proc_action) =
+  (* List.fold_left collect_state_vars [] action.action_ast.body *)
+  [{name="var1"; typ=Core.STInt};
+   {name="var2"; typ=Core.STString}]
 
 let analyze_action actions action = 
   {
@@ -54,7 +82,7 @@ let analyze_action actions action =
     action_ast=action;
   } :: actions
   
-let analyze_actions actions = List.fold_left analyze_action [] actions
+let analyze_actions (actions: Core.proc_action list) = List.fold_left analyze_action [] actions
 
 let analyze_model m stmt =
   match stmt with
@@ -82,7 +110,9 @@ let print_variable v =
   Printf.printf "Var: %s\n" (Util.string_of_typed_attr v)
 
 let print_action a =
-  Printf.printf "Action: %s\n" (Util.string_of_proc_action a.action_ast)
+  Printf.printf "Action: \n  ast: %s\n\n  state_vars: %s\n"
+    (Util.string_of_proc_action a.action_ast)
+    (String.concat "\n" (List.map Util.string_of_typed_attr a.state_vars))
 
 let print_process m =
   print_endline "Process.schemas";

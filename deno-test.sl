@@ -66,7 +66,8 @@ def toTsTypedAttr(attr: TypedAttr):
 end
 
 def actionStateType(action: Action):
-  tsInterface(actionStateTypeName(action.name), action.args.map(toTsTypedAttr))
+  tsInterface(actionStateTypeName(action.name),
+    action.args.map(toTsTypedAttr).concat(action.stateVars.map(toTsTypedAttr)))
 end
 
 def toActionTest(action: Action):

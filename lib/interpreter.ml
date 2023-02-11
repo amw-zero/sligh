@@ -374,16 +374,21 @@ let type_val_of_sligh_type st env =
 let typed_attr_instance attr env = VInstance([
   { iname="name"; ivalue=VString(attr.name) };
   { iname="type"; ivalue=VType(type_val_of_sligh_type attr.typ env) }
-])  
+])
 
-let action_instance action env =
+let action_instance (action: Process.action) env =
+  print_endline "Adding action instance:";
+  Process.print_action action;
+
+
   VInstance([
-    { iname="name"; ivalue=VString(Core.(action.aname)) };
-    { iname="args"; ivalue=VArray(List.map (fun arg -> typed_attr_instance arg env) action.args)};
-    { iname="body"; ivalue=VSLExpr(StmtList(action.body))};
+    { iname="name"; ivalue=VString(Core.(action.action_ast.aname)) };
+    { iname="args"; ivalue=VArray(List.map (fun arg -> typed_attr_instance arg env) action.action_ast.args)};
+    { iname="stateVars"; ivalue=VArray(List.map (fun sv -> typed_attr_instance sv env) action.state_vars) };
+    { iname="body"; ivalue=VSLExpr(StmtList(action.action_ast.body))};
   ])
 
-let add_schema_to_env name (attrs: typed_attr list) (actions: proc_action list) (env: interp_env) =
+let add_process_to_env name (attrs: typed_attr list) (actions: Process.action list) (env: interp_env) =
   let schema_attrs = List.map (fun attr -> typed_attr_instance attr env) attrs in
   let schema_types = List.map (fun attr -> {aname=attr.name; typ=type_val_of_sligh_type attr.typ env}) attrs in
   let action_attrs = List.map (fun action -> action_instance action env) actions in
@@ -392,6 +397,18 @@ let add_schema_to_env name (attrs: typed_attr list) (actions: proc_action list) 
     {iname="name"; ivalue=VString(name)};
     {iname="attributes"; ivalue=VArray(schema_attrs)};
     {iname="actions"; ivalue=VArray(action_attrs)};
+    {iname="type"; ivalue=VType(VSchema({ sname=name; attrs=schema_types}))}
+  ] in
+
+  Env.add name (VInstance(instance_attrs)) env
+
+let add_schema_to_env name (attrs: typed_attr list) (env: interp_env) =
+  let schema_attrs = List.map (fun attr -> typed_attr_instance attr env) attrs in
+  let schema_types = List.map (fun attr -> {aname=attr.name; typ=type_val_of_sligh_type attr.typ env}) attrs in
+
+  let instance_attrs = [
+    {iname="name"; ivalue=VString(name)};
+    {iname="attributes"; ivalue=VArray(schema_attrs)};
     {iname="type"; ivalue=VType(VSchema({ sname=name; attrs=schema_types}))}
   ] in
 
@@ -424,10 +441,10 @@ let build_env env stmt =
   | FuncDef(fd) -> Env.add fd.fdname (VFunc(fd)) env
   | Process(d, defs) -> 
       let attrs: typed_attr list = Process.filter_attrs defs in
-      let actions: proc_action list = Process.filter_actions defs in
-      add_schema_to_env d attrs actions env
+      let actions: Process.action list = Process.filter_actions defs |> Process.analyze_actions in
+      add_process_to_env d attrs actions env
   | Entity(e, attrs) -> 
-      add_schema_to_env e attrs [] env
+      add_schema_to_env e attrs env
   | Effect(efct) -> Env.add efct.ename (VMacro efct.procs) env
   | _ -> env
 
@@ -435,7 +452,7 @@ let add_model_to_env m env =
   let schema_instances = List.map (fun schema -> Env.find Process.(schema.name) env) Process.(m.schemas) in
   let variant_instances = List.map (fun v -> Env.find Process.(v.vname) env) Process.(m.variants) in
   let variable_instances = List.map (fun variable -> typed_attr_instance variable env) Process.(m.variables) in
-  let action_instances = List.map (fun action -> action_instance action env) Process.(m.actions |> List.map (fun a -> a.action_ast)) in
+  let action_instances = List.map (fun action -> action_instance action env) Process.(m.actions) in
 
   Env.add model_var_name (VInstance([
     { iname="schemas"; ivalue=VArray(schema_instances) };
@@ -561,11 +578,11 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
     (VVoid, Env.add fd.fdname (VFunc(fd)) env)
   | Process(d, defs) ->
       let attrs: typed_attr list = Process.filter_attrs defs in
-      let actions: proc_action list = Process.filter_actions defs in
+      let actions: Process.action list = Process.filter_actions defs |> Process.analyze_actions in
 
-      (VVoid, add_schema_to_env d attrs actions env)
+      (VVoid, add_process_to_env d attrs actions env)
   | Entity(e, attrs) ->
-      (VVoid, add_schema_to_env e attrs [] env)
+      (VVoid, add_schema_to_env e attrs env)
   | Variant(n, vs) ->
       (VVoid, add_variant_to_env n vs env)
   | Effect(efct) ->
@@ -620,9 +637,8 @@ and eval_builtin_func name args env =
     let result: value list = List.cons elem_arg lst_arg in
 
     (VArray(result), env)
-
   | "appendStr" ->
-    let str = List.nth args 0 |> val_as_str in 
+    let str = List.nth args 0 |> val_as_str in
     let newStr = List.nth args 1 |> val_as_str in
 
     let result: string = str ^ newStr in
@@ -633,7 +649,7 @@ and eval_builtin_func name args env =
 
     let result: value list = List.concat lists in
 
-    (VArray(result), env)    
+    (VArray(result), env)
   | "index" ->
     let arr_arg = List.nth args 0 |> val_as_val_list in
     let idx_arg = List.nth args 1 |> val_as_int in 
