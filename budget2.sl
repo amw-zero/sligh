@@ -15,10 +15,14 @@ entity ScheduledTransaction:
 end
 
 process Budget:
-  recurringTransactions: RecurringTransaction
-  scheduledTransactions: ScheduledTransaction
+  recurringTransactions: Set(RecurringTransaction)
+  scheduledTransactions: Set(ScheduledTransaction)
 
   def AddRecurringTransaction(rt: RecurringTransaction):
     recurringTransactions := recurringTransactions.append(rt)
+  end
+
+  def DeleteRecurringTransaction(id: Int):
+    recurringTransactions := recurringTransactions.delete(id)
   end
 end

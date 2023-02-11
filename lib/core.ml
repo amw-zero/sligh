@@ -5,6 +5,7 @@ type sligh_type =
   | STString
   | STDecimal
   | STCustom of string
+  | STGeneric of string * string list
   | STVariant of string * variant_tag list
 
 and typed_attr = {

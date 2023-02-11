@@ -13,6 +13,7 @@ let string_of_type t = match t with
   | STString -> "String"
   | STDecimal -> "Decimal"
   | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
+  | STGeneric(g, ts) -> Printf.sprintf "%s(%s)" g (String.concat ", " ts)
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)

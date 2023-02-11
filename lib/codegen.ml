@@ -13,6 +13,7 @@ let string_of_type t = match t with
   | STString -> "string"
   | STDecimal -> "number"
   | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
+  | STGeneric(_, _) -> "string"
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
@@ -149,7 +150,8 @@ let tstype_of_sltype typ = match typ with
     | STString -> Some(TSTString)
     | STDecimal -> Some(TSTNumber)
     | STCustom(c) -> Some(TSTCustom(c))
-    | STVariant(n, _) -> Some(TSTCustom(n)))
+    | STVariant(n, _) -> Some(TSTCustom(n))
+    | STGeneric(_, _) -> Some(TSTString))
   | None -> None
 
 (* Currently unused, but converts a Sligh expression to a TS one *)

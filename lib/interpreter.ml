@@ -371,6 +371,9 @@ let type_val_of_sligh_type st env =
   | STString -> VPrimitive(PTString)
   | STDecimal -> VPrimitive(PTDecimal)
 
+  (* Obviously needs to be fixed *)
+  | STGeneric(_, _) -> VPrimitive(PTString)
+
 let typed_attr_instance attr env = VInstance([
   { iname="name"; ivalue=VString(attr.name) };
   { iname="type"; ivalue=VType(type_val_of_sligh_type attr.typ env) }
@@ -379,7 +382,6 @@ let typed_attr_instance attr env = VInstance([
 let action_instance (action: Process.action) env =
   print_endline "Adding action instance:";
   Process.print_action action;
-
 
   VInstance([
     { iname="name"; ivalue=VString(Core.(action.action_ast.aname)) };

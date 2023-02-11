@@ -142,6 +142,8 @@ proc_def:
                                                     }) }
 typed_attr:
   | attr = IDEN COLON typ = IDEN                  { {name=attr; typ=type_of_string typ} }
+  | attr = IDEN COLON gen_typ = IDEN LPAREN typ = separated_list(COMMA, IDEN) RPAREN
+                                                  { {name=attr; typ=STGeneric(gen_typ, typ)} }
 
 (* TypeScript Lang *)
 tsstatements:
