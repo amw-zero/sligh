@@ -66,6 +66,7 @@ and type_val =
 | VTVariant of variant_v
 | VTArray of type_val list
 | VPrimitive of primitive_typ
+| VTGeneric of string * type_val list
 
 let rec string_of_value v = match v with
   | VNum(n) -> string_of_int n
@@ -89,6 +90,7 @@ and string_of_type_val tv = match tv with
   | VTArray(_) -> "VTArray"
   | VPrimitive(_) -> "PrimitiveType"
   | VTVariant(_) -> "VTVariant"
+  | VTGeneric(_) -> "VTGeneric"
 and string_of_schema_attr a =
   Printf.sprintf "%s: %s" a.aname (string_of_type_val a.typ)
 and string_of_schema s =
@@ -359,7 +361,7 @@ let find_attr attr_name instance = match List.find_opt (fun attr -> attr.iname =
   | Some(attr) -> Some(attr.ivalue)
   | None -> None  
 
-let type_val_of_sligh_type st env = 
+let rec type_val_of_sligh_type st env =
   match st with
   | STCustom(name) -> 
     let inst = Env.find name env |> val_as_instance in
@@ -370,9 +372,7 @@ let type_val_of_sligh_type st env =
   | STInt -> VPrimitive(PTNum)
   | STString -> VPrimitive(PTString)
   | STDecimal -> VPrimitive(PTDecimal)
-
-  (* Obviously needs to be fixed *)
-  | STGeneric(_, _) -> VPrimitive(PTString)
+  | STGeneric(n, types) -> VTGeneric(n, List.map (fun t -> type_val_of_sligh_type t env) types)
 
 let typed_attr_instance attr env = VInstance([
   { iname="name"; ivalue=VString(attr.name) };
@@ -443,8 +443,9 @@ let build_env env stmt =
   | FuncDef(fd) -> Env.add fd.fdname (VFunc(fd)) env
   | Process(d, defs) -> 
       let attrs: typed_attr list = Process.filter_attrs defs in
-      let actions: Process.action list = Process.filter_actions defs |> Process.analyze_actions in
-      add_process_to_env d attrs actions env
+      let actions = Process.filter_actions defs in
+      let analyzed_actions =  Process.analyze_actions actions attrs in
+      add_process_to_env d attrs analyzed_actions env
   | Entity(e, attrs) -> 
       add_schema_to_env e attrs env
   | Effect(efct) -> Env.add efct.ename (VMacro efct.procs) env
@@ -484,49 +485,66 @@ let ts_type_of_type_val tv = match tv with
     | PTDecimal -> TSTNumber)
   | _ -> failwith (Printf.sprintf "Unable to convert type val to TS Type: %s" (string_of_type_val tv))
 
-let check_branch_match v pattern = 
-  match v with
-  | VType(tv) -> (match tv with
-    | VSchema(_) -> "Schema" = pattern.vname
-    | VPrimitive(pt) -> (match pt with
-      | PTNum -> "Int" = pattern.vname
-      | PTString -> "String" = pattern.vname
-      | PTDecimal -> "Decimal" = pattern.vname)
-    | VTVariant(_) -> "Variant" = pattern.vname
-    | _ -> failwith (Printf.sprintf "Not supporting pattern match for type: %s" (string_of_type_val tv)))
-  | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v))
+let check_branch_match v pattern = match pattern with
+  | StringPattern(s) -> (match v with
+    | VString(vs) -> vs = s
+    | _ -> failwith (Printf.sprintf "Attempting to match a non-string value with a string pattern: %s" (string_of_value v)))
+  | VariantPattern(vp) -> (match v with
+    | VType(tv) -> (match tv with
+      | VSchema(_) -> "Schema" = vp.vname
+      | VPrimitive(pt) -> (match pt with
+        | PTNum -> "Int" = vp.vname
+        | PTString -> "String" = vp.vname
+        | PTDecimal -> "Decimal" = vp.vname)
+      | VTVariant(_) -> "Variant" = vp.vname
+      | VTGeneric(_, _) -> "Generic" = vp.vname
+      | _ -> failwith (Printf.sprintf "Not supporting pattern match for type: %s" (string_of_type_val tv)))
+    | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v)))
 
-let bind_pattern_values v pattern env =
-  match v with
-  | VType(tv) -> (match tv with
-    | VSchema(s) ->
-      let var_name = match (List.hd pattern.var_bindings) with
-        | PBVar(n) -> Some(n)
-        | PBAny -> None in
+let bind_pattern_values v pattern env = match pattern with
+  | StringPattern(_) -> env
+  | VariantPattern(vp) -> (match v with
+    | VType(tv) -> (match tv with
+      | VSchema(s) ->
+        let var_name = match (List.hd vp.var_bindings) with
+          | PBVar(n) -> Some(n)
+          | PBAny -> None in
 
-      (match var_name with 
-      | Some(n) -> Env.add n (Env.find s.sname env) env
-      | None -> env)
-    | VTVariant({vvname; _}) ->
-      let variant = Env.find vvname env |> val_as_instance in
+        (match var_name with
+        | Some(n) -> Env.add n (Env.find s.sname env) env
+        | None -> env)
+      | VTVariant({vvname; _}) ->
+        let variant = Env.find vvname env |> val_as_instance in
 
-      let env_with_name = match (List.hd pattern.var_bindings) with
-        | PBVar(var_name) -> Env.add var_name (VString(vvname)) env
-        | PBAny -> env in
+        let env_with_name = match (List.hd vp.var_bindings) with
+          | PBVar(var_name) -> Env.add var_name (VString(vvname)) env
+          | PBAny -> env in
 
-      let env_with_cases = (match (List.nth pattern.var_bindings 1) with
+        let env_with_cases = (match (List.nth vp.var_bindings 1) with
+          | PBVar(cas_name) ->
+            Env.add cas_name ((find_attr "cases" variant) |> Option.get) env_with_name
+          | PBAny -> env) in
+
+        env_with_cases
+      | VTGeneric(name, types) ->
+        let env_with_name = match (List.hd vp.var_bindings) with
+          | PBVar(var_name) -> Env.add var_name (VString(name)) env
+          | PBAny -> env in
+
+        let env_with_types = (match (List.nth vp.var_bindings 1) with
         | PBVar(cas_name) ->
-          Env.add cas_name ((find_attr "cases" variant) |> Option.get) env_with_name
+          Env.add cas_name (VArray(List.map (fun t -> VType(t)) types)) env_with_name
         | PBAny -> env) in
 
-      env_with_cases
-    | VPrimitive(pt) -> (match pt with
-      | PTNum -> env
-      | PTString -> env
-      | PTDecimal -> env
-    )
-    | VTArray(_) -> env)
-  | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v))
+        env_with_types
+
+      | VPrimitive(pt) -> (match pt with
+        | PTNum -> env
+        | PTString -> env
+        | PTDecimal -> env
+      )
+      | VTArray(_) -> env)
+    | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v)))
 
   (* Evaluate a Sligh expression *)
 let rec evaln es env = eval_and_return es env
@@ -541,8 +559,8 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
       with Not_found -> failwith (Printf.sprintf "Couldn't find function def to call: %s" name) in
     if List.length args != List.length arg_sigs then failwith (Printf.sprintf "Bad arity at func call: %s" name) else ();
     
-    let reduced_args = List.map 
-      (fun a -> try eval a env |> fst with Not_found -> failwith (Printf.sprintf "Call: Unable to eval expr: %s" (Util.string_of_expr a)))
+    let reduced_args = List.map
+      (fun a ->  eval a env |> fst)
       args in
     if List.exists (fun n -> n = name) builtin_funcs then
       eval_builtin_func name reduced_args env
@@ -580,9 +598,10 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
     (VVoid, Env.add fd.fdname (VFunc(fd)) env)
   | Process(d, defs) ->
       let attrs: typed_attr list = Process.filter_attrs defs in
-      let actions: Process.action list = Process.filter_actions defs |> Process.analyze_actions in
+      let actions = Process.filter_actions defs in
+      let analyzed_actions =  Process.analyze_actions actions attrs in
 
-      (VVoid, add_process_to_env d attrs actions env)
+      (VVoid, add_process_to_env d attrs analyzed_actions env)
   | Entity(e, attrs) ->
       (VVoid, add_schema_to_env e attrs env)
   | Variant(n, vs) ->
@@ -841,6 +860,7 @@ and tstype_of_type_val tv = match tv with
 | VTArray(_) -> TSTCustom("RandomArray")
 | VPrimitive(_)  -> TSTNumber
 | VTVariant({vvname; _}) -> TSTCustom(vvname)
+| VTGeneric(name, types) -> TSTGeneric(name, List.map tstype_of_type_val types)
 
 let type_of_string s = match s with
   | "Int" -> STInt

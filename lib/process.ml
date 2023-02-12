@@ -46,43 +46,82 @@ let collect_attrs attrs def = match def with
 
 let filter_attrs (defs: proc_def list): typed_attr list  = List.fold_left collect_attrs [] defs
 
-(* Have to return state var as a typed attribute, which requires figuring out the type
-   of certain exprs. Will likely need a type environment and name resolution *)
-(* let collect_state_vars state_vars e = match e with
-  | Let(v, value) -> state_vars @ collect_state_vars state_vars value
-  | Assignment(var, e) -> [{name=var; typ= ???}]
-  | Iden of string * sligh_type option
+let rec collect_state_vars state_vars e (proc_attrs: typed_attr list): typed_attr list = match e with
+  | Let(_, value) -> state_vars @ collect_state_vars [] value proc_attrs
+  | Assignment(var, e) ->
+    (* Failure to find attr here means assignment is on a non-state variable *)
+    let proc_attr = List.find (fun attr -> Core.(attr.name = var)) proc_attrs in
+
+    {name=var; typ=proc_attr.typ} :: state_vars @ collect_state_vars [] e proc_attrs
+  | Iden(i, _) ->
+    let proc_attr = List.find_opt (fun attr -> Core.(attr.name = i)) proc_attrs in
+
+    (match proc_attr with
+    | Some(pa) -> {name=i; typ=pa.typ} :: state_vars
+    | None -> state_vars)
+  | Array(es) ->
+      List.concat_map
+        (fun e -> collect_state_vars [] e proc_attrs)
+        es @ state_vars
+  | If(cond, then_e, else_e) ->
+    let else_state_vars: typed_attr list = match else_e with
+      | Some(ee) -> collect_state_vars [] ee proc_attrs
+      | None -> [] in
+
+    collect_state_vars [] cond proc_attrs @
+    collect_state_vars [] then_e proc_attrs @ else_state_vars
+  | StmtList(es) ->
+    List.concat_map
+      (fun e -> collect_state_vars [] e proc_attrs)
+      es @ state_vars
+  | Call(_, args) ->
+    List.concat_map
+      (fun e -> collect_state_vars [] e proc_attrs)
+      args @ state_vars
+
+  | Access(l, r) ->
+    let proc_attr = List.find (fun attr -> Core.(attr.name = r)) proc_attrs in
+    let l_state_vars = collect_state_vars [] l proc_attrs in
+
+    {name=r; typ=proc_attr.typ} :: state_vars @ l_state_vars
+  | Case(e, cases) ->
+    collect_state_vars [] e proc_attrs @
+    (List.concat_map (fun c -> collect_state_vars [] c.value proc_attrs) cases) @
+    state_vars
+
+  | String(_) -> state_vars
   | Num(_) -> state_vars
-  | Array of expr list
-  | If of expr * expr * expr option
-  | StmtList of expr list
-  | Call of string * expr list
-  | String of string
-  | Access of expr * string
-  | Case of expr * case_branch list
 
    (* Should only be decl, possibly only be class decl *)
-  | Implementation of expr
-  | FuncDef of func_def
-  | File of file
-  | Effect of effect
-  | Process of string * proc_def list
-  | Entity of string * typed_attr list
-  | TS of tsexpr list
-  | Variant of string * variant_tag list *)
+  | Implementation(_) -> state_vars
+  | FuncDef(_) -> state_vars
+  | File(_) -> state_vars
+  | Effect(_) -> state_vars
+  | Process(_, _) -> state_vars
+  | Entity(_, _) -> state_vars
+  | TS(_) -> state_vars
+  | Variant(_, _) -> state_vars
 
-let state_vars_of_action (_action: Core.proc_action) =
-  (* List.fold_left collect_state_vars [] action.action_ast.body *)
-  [{name="var1"; typ=Core.STInt};
-   {name="var2"; typ=Core.STString}]
+let state_vars_of_action (action: Core.proc_action) (proc_attrs: typed_attr list) =
+  List.fold_left
+    (fun state_vars e -> collect_state_vars state_vars e proc_attrs)
+    []
+    action.body
+    (* collect_state_vars is returning duplicates - should ultimately fix that instead
+       of this unique sort *)
+    |> List.sort_uniq (fun sv1 sv2 -> Core.(compare sv1.name sv2.name))
 
-let analyze_action actions action = 
+let analyze_action actions action proc_attrs =
   {
-    state_vars=state_vars_of_action action;
+    state_vars=state_vars_of_action action proc_attrs;
     action_ast=action;
   } :: actions
   
-let analyze_actions (actions: Core.proc_action list) = List.fold_left analyze_action [] actions
+let analyze_actions (actions: Core.proc_action list) (proc_attrs: typed_attr list) =
+  List.fold_left
+    (fun analyzed_actions action -> analyze_action analyzed_actions action proc_attrs)
+    []
+    actions
 
 let analyze_model m stmt =
   match stmt with
@@ -92,7 +131,7 @@ let analyze_model m stmt =
     { m with
       schemas = {name; attrs;} :: m.schemas;
       variables = attrs @ m.variables;
-      actions = m.actions @ (analyze_actions actions);
+      actions = m.actions @ (analyze_actions actions attrs);
     }
   | Core.Entity(e, attrs) -> 
     { m with

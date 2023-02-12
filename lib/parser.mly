@@ -130,7 +130,8 @@ pattern_binding:
 
 case_branch:
   | BAR i = IDEN LPAREN bindings = separated_list(COMMA, pattern_binding) RPAREN COLON body = expression
-                                                  { {pattern={vname=i; var_bindings=bindings}; value=body} }
+                                                  { {pattern=VariantPattern({vname=i; var_bindings=bindings}); value=body} }
+  | BAR s = STRING COLON body = expression        { {pattern=StringPattern(s); value=body} }
 
 proc_def:
   | ta = typed_attr                               { ProcAttr(ta) }
@@ -142,8 +143,8 @@ proc_def:
                                                     }) }
 typed_attr:
   | attr = IDEN COLON typ = IDEN                  { {name=attr; typ=type_of_string typ} }
-  | attr = IDEN COLON gen_typ = IDEN LPAREN typ = separated_list(COMMA, IDEN) RPAREN
-                                                  { {name=attr; typ=STGeneric(gen_typ, typ)} }
+  | attr = IDEN COLON gen_typ = IDEN LPAREN typs = separated_list(COMMA, IDEN) RPAREN
+                                                  { {name=attr; typ=STGeneric(gen_typ, List.map type_of_string typs)} }
 
 (* TypeScript Lang *)
 tsstatements:

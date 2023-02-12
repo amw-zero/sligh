@@ -5,7 +5,7 @@ type sligh_type =
   | STString
   | STDecimal
   | STCustom of string
-  | STGeneric of string * string list
+  | STGeneric of string * sligh_type list
   | STVariant of string * variant_tag list
 
 and typed_attr = {
@@ -22,10 +22,14 @@ type pattern_binding =
   | PBVar of string
   | PBAny
 
-type value_pattern = {
+type variant_pattern = {
   vname: string;
   var_bindings: pattern_binding list
 }
+
+type value_pattern =
+  | StringPattern of string
+  | VariantPattern of variant_pattern
 
 type expr =
   TS of tsexpr list
@@ -138,6 +142,7 @@ and ts_type =
   | TSTNumber
   | TSTString
   | TSTCustom of string
+  | TSTGeneric of string * ts_type list
 
 and tsclassdef =
   | CDSLExpr of expr

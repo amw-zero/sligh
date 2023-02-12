@@ -7,13 +7,13 @@ let rec string_of_boolexp t = match t with
   | BFalse -> "false"
   | BIf (t1, t2, t3) -> Printf.sprintf "if %s then %s else %s" (string_of_boolexp t1) (string_of_boolexp t2) (string_of_boolexp t3)
 
-let string_of_type t = match t with
+let rec string_of_type t = match t with
   | STInt -> "Int"
   | STCustom s -> s
   | STString -> "String"
   | STDecimal -> "Decimal"
   | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
-  | STGeneric(g, ts) -> Printf.sprintf "%s(%s)" g (String.concat ", " ts)
+  | STGeneric(g, ts) -> Printf.sprintf "%s(%s)" g (String.concat ", " (List.map string_of_type ts))
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
@@ -55,7 +55,9 @@ and string_of_proc_def def = match def with
 and string_of_proc_action { aname; body; args} = Printf.sprintf "def %s(%s):\n\t%s" aname (String.concat ", " (List.map string_of_typed_attr args)) (String.concat "\n" (List.map string_of_expr body))
 and string_of_stmt_list sl = String.concat "\n" (List.map string_of_expr sl)
 and string_of_case_branch b = Printf.sprintf "| %s: %s" (string_of_value_pattern b.pattern) (string_of_expr b.value)
-and string_of_value_pattern vp = Printf.sprintf "%s(%s)" vp.vname (String.concat ", " (List.map string_of_pattern_binding vp.var_bindings))
+and string_of_value_pattern vp = match vp with
+  | StringPattern(s) -> Printf.sprintf "\"%s\"" s
+  | VariantPattern(var_p) -> Printf.sprintf "%s(%s)" var_p.vname (String.concat ", " (List.map string_of_pattern_binding var_p.var_bindings))
 and string_of_ts_expr e = match e with
   | TSIden(i) -> string_of_tsiden i
   | TSNum(n) -> "ts-" ^ string_of_int n
@@ -97,3 +99,6 @@ and string_of_tstype tst = match tst with
   | TSTNumber -> "number"
   | TSTCustom c -> c
   | TSTString -> "string"
+  | TSTGeneric(n, types) -> Printf.sprintf "%s<%s>"
+    n
+    (String.concat ", " (List.map string_of_tstype types))

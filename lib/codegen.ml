@@ -7,13 +7,17 @@ let rec string_of_boolexp t = match t with
   | BFalse -> "false"
   | BIf (t1, t2, t3) -> Printf.sprintf "if %s then %s else %s" (string_of_boolexp t1) (string_of_boolexp t2) (string_of_boolexp t3)
 
-let string_of_type t = match t with
+let string_of_generic_type n = match n with
+  | "Set" -> "Array"
+  | _ -> failwith (Printf.sprintf "Unknown generic type mapping: %s" n)
+
+let rec string_of_type t = match t with
   | STInt -> "number"
   | STCustom s -> s
   | STString -> "string"
   | STDecimal -> "number"
   | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
-  | STGeneric(_, _) -> "string"
+  | STGeneric(n, ts) -> Printf.sprintf "%s<%s>" (string_of_generic_type n) (String.concat ", " (List.map string_of_type ts))
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
@@ -127,6 +131,9 @@ and string_of_tstype tst = match tst with
   | TSTNumber -> "number"
   | TSTCustom c -> c
   | TSTString -> "string"
+  | TSTGeneric(n, types) -> Printf.sprintf "%s<%s>"
+    n
+    (String.concat ", " (List.map string_of_tstype types))
 
 and string_of_ts_typed_attr ta = Printf.sprintf "%s: %s" ta.tsname (string_of_tstype ta.tstyp)
 
@@ -144,14 +151,14 @@ and process_constructor defs =
 
 let string_of_model model_ast = String.concat "\n\n" (List.map string_of_expr model_ast)
 
-let tstype_of_sltype typ = match typ with
+let rec tstype_of_sltype typ = match typ with
   | Some(t) -> (match t with
     | STInt -> Some(TSTNumber)
     | STString -> Some(TSTString)
     | STDecimal -> Some(TSTNumber)
     | STCustom(c) -> Some(TSTCustom(c))
     | STVariant(n, _) -> Some(TSTCustom(n))
-    | STGeneric(_, _) -> Some(TSTString))
+    | STGeneric(n, types) -> Some(TSTGeneric(n, List.filter_map (fun t -> tstype_of_sltype (Some(t))) types)))
   | None -> None
 
 (* Currently unused, but converts a Sligh expression to a TS one *)

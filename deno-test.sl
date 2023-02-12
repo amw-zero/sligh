@@ -22,10 +22,17 @@ def genVariant(name: String, cases: VariantCaseList):
   tsMethodCall("fc", "oneOf", cases.map(genVariantCase))
 end
 
+def genGeneric(name: String, types: Array(Type)):
+  case name:
+    | "Set": tsMethodCall("fc", "uniqueArray", [genType(types.index(0))])
+  end
+end
+
 def genType(type: Type):
   case type:
     | Schema(s): genSchemaValue(s)
     | Variant(name, cases): genVariant(name, cases)
+    | Generic(name, types): genGeneric(name, types)
     | String(): genString()
     | Int(): genInt()
     | Decimal(): genFloat()
@@ -48,6 +55,7 @@ def toTestValue(attr: TypedAttribute):
   case attr.type:
     | Schema(s): tsLet(attr.name, genSchemaValue(s))
     | String(): tsLet(attr.name, genString())
+    | Generic(name, types): tsLet(attr.name, genGeneric(name, types))
     | Int(): tsLet(attr.name, genInt())
     | Decimal(): tsLet(attr.name, genFloat())
   end
@@ -77,7 +85,6 @@ end
 def toStateProp(attr: TypedAttribute):
   tsObjectProp(attr.name, tsIden(attr.name))
 end
-
 
 def toActionTest(action: Action):
   let clientName = "client"
