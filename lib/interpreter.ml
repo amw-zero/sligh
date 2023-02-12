@@ -380,9 +380,6 @@ let typed_attr_instance attr env = VInstance([
 ])
 
 let action_instance (action: Process.action) env =
-  print_endline "Adding action instance:";
-  Process.print_action action;
-
   VInstance([
     { iname="name"; ivalue=VString(Core.(action.action_ast.aname)) };
     { iname="args"; ivalue=VArray(List.map (fun arg -> typed_attr_instance arg env) action.action_ast.args)};
