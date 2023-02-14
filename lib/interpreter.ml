@@ -33,6 +33,7 @@ type value =
   | VTSTypedAttr of tstyped_attr
   | VTSObjectProp of obj_prop
   | VTSType of ts_type
+  | VTSSymbolImport of tssymbol_import
 
 and schema = {
   sname: string;
@@ -84,6 +85,7 @@ let rec string_of_value v = match v with
   | VVoid -> "Void"
   | VTSObjectProp({oname; oval}) -> Printf.sprintf "%s: %s" oname (Util.string_of_ts_expr oval)
   | VTSType(t) -> Util.string_of_tstype(t)
+  | VTSSymbolImport(_) -> "symbol import"
 and string_of_instance_attr attr = Printf.sprintf "%s: %s" attr.iname (string_of_value attr.ivalue)
 and string_of_type_val tv = match tv with
   | VSchema s -> string_of_schema s
@@ -123,6 +125,14 @@ let val_as_tstyped_attr v = match v with
 let val_as_tstyped_attr_list v = match v with
 | VArray(vs) -> List.map val_as_tstyped_attr vs
 | _ -> failwith (Printf.sprintf "Expected Array of TSTypedAttrs val: %s" (string_of_value v))
+
+let val_as_tssymbol_import v = match v with
+| VTSSymbolImport(si) -> si
+| _ -> failwith (Printf.sprintf "Expected TSSymbolImport val: %s" (string_of_value v))
+
+let val_as_tssymbol_import_list v = match v with
+| VArray(vs) -> List.map val_as_tssymbol_import vs
+| _ -> failwith (Printf.sprintf "Expected Array of TSSymbolImports val: %s" (string_of_value v))
 
 let val_as_tsexprs v = match v with
 | VTS(tses) -> tses
@@ -326,6 +336,20 @@ let builtin_tsexport_def = {
   fdbody=[];
 }
 
+let builtin_tsimport_name = "tsImport"
+let builtin_tsimport_def = {
+  fdname=builtin_tsimport_name;
+  fdargs=[{name="imports";typ=STString}; {name="file";typ=STString}];
+  fdbody=[];
+}
+
+let builtin_tssymbol_import_name = "tsSymbolImport"
+let builtin_tssymbol_import_def = {
+  fdname=builtin_tssymbol_import_name;
+  fdargs=[{name="symbol";typ=STString}; {name="alias";typ=STString}];
+  fdbody=[];
+}
+
 let all_builtins = [
   {bname=builtin_map_name; bdef=builtin_map_def};
   {bname=builtin_concat_name; bdef=builtin_concat_def};
@@ -353,6 +377,8 @@ let all_builtins = [
   {bname=builtin_tsawait_name; bdef=builtin_tsawait_def};
   {bname=builtin_tsnew_name; bdef=builtin_tsnew_def};
   {bname=builtin_tsexport_name; bdef=builtin_tsexport_def};
+  {bname=builtin_tsimport_name; bdef=builtin_tsimport_def};
+  {bname=builtin_tssymbol_import_name; bdef=builtin_tssymbol_import_def};
 ]
 
 let new_environment_with_builtins () =
@@ -804,6 +830,16 @@ and eval_builtin_func name args env =
     let expr = List.nth args 0 |> val_as_tsexpr in
 
     (VTSExpr(TSExport(expr)), env)
+  | "tsImport" ->
+    let imports = List.nth args 0 |> val_as_tssymbol_import_list in
+    let file = List.nth args 1 |> val_as_str in
+
+    (VTSExpr(TSImport(imports, file)), env)
+  | "tsSymbolImport" ->
+    let symbol = List.nth args 0 |> val_as_str in
+    let alias = List.nth args 1 |> val_as_str in
+
+    (VTSSymbolImport({symbol; alias=Some(alias)}), env)
   | _ -> failwith (Printf.sprintf "Attempted to call unimplemented builtin func: %s" name)
 
 and eval_ts ts_expr env = match ts_expr with
@@ -849,6 +885,7 @@ and eval_ts ts_expr env = match ts_expr with
 | TSClosure (_, _) -> ([ts_expr], env)
 | TSAwait _ -> ([ts_expr], env)
 | TSExport _ -> ([ts_expr], env)
+| TSImport(_, _) -> ([ts_expr], env)
 | TSAsync _ -> ([ts_expr], env)
 | TSNew(_, _) -> ([ts_expr], env)
 

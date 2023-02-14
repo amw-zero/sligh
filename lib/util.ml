@@ -22,6 +22,10 @@ let string_of_pattern_binding pb = match pb with
   | PBVar(n) -> n
   | PBAny -> "_"
 
+let string_of_symbol_import si = match si.alias with
+  | Some(a) -> Printf.sprintf "%s as %s" si.symbol a
+  | None -> si.symbol
+
 let string_of_variant_tag vt = Printf.sprintf "| %s(%s)" vt.tname (String.concat ", " (List.map string_of_typed_attr vt.tattrs))
 
 (* Debug representation of expressions *)
@@ -78,6 +82,10 @@ and string_of_ts_expr e = match e with
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e)
+  | TSImport(imports, file) ->
+      Printf.sprintf "import { %s } from \"%s\";"
+      (String.concat ", " (List.map string_of_symbol_import imports))
+      file
   | TSAsync(e) -> Printf.sprintf "async %s" (string_of_ts_expr e)
   | TSNew(c, args) -> Printf.sprintf "new %s(%s)" c (String.concat ", " (List.map string_of_ts_expr args))
   | SLSpliceExpr(_) -> "SLSpliceExpr"

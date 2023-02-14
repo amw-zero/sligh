@@ -27,6 +27,10 @@ let string_of_variant_tag vt =
     vt.tname
     (String.concat "\n" ((Printf.sprintf "type: \"%s\";" vt.tname) :: (List.map string_of_typed_attr vt.tattrs)))
 
+let string_of_symbol_import si = match si.alias with
+  | Some(a) -> Printf.sprintf "%s as %s" si.symbol a
+  | None -> si.symbol
+
   (* Only supporting codegen to TS right now *)
 let rec string_of_expr e = match e with
   | Let(name, body) -> Printf.sprintf "let %s = %s;" name (string_of_expr body)
@@ -115,6 +119,7 @@ and string_of_ts_expr e = match e with
   | TSClosure(args, body) -> Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e)
+  | TSImport(imports, file) -> Printf.sprintf "import { %s } from \"%s\";" (String.concat ", " (List.map string_of_symbol_import imports)) file
   | TSAsync(e) -> Printf.sprintf "async %s" (string_of_ts_expr e)
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | TSNew(c, args) -> Printf.sprintf "new %s(%s)" c (String.concat ", " (List.map string_of_ts_expr args))

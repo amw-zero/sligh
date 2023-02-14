@@ -27,6 +27,11 @@ type variant_pattern = {
   var_bindings: pattern_binding list
 }
 
+type tssymbol_import = {
+  symbol: string;
+  alias: string option;
+}
+
 type value_pattern =
   | StringPattern of string
   | VariantPattern of variant_pattern
@@ -119,6 +124,7 @@ and tsexpr =
 | TSAwait of tsexpr
 | TSAsync of tsexpr
 | TSExport of tsexpr
+| TSImport of tssymbol_import list * string
 | SLExpr of expr
 | SLSpliceExpr of expr
 

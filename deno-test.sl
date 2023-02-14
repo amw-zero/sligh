@@ -118,7 +118,12 @@ def actionTests():
   tsClosure([], Model.actions.map(toActionTest))
 end
 
+def toSchemaImplImport(schema: Schema):
+  tsSymbolImport(schema.name, schema.name.appendStr("Impl"))
+end
+
 typescript:
+  {{ tsImport(Model.schemas.map(toSchemaImplImport), "./react_ui/src/state.ts") }}
   {{* Model.actions.map(toActionStateType) }}
   {{ tsExport(tsLet("runTests", actionTests())) }}
 end
