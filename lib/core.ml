@@ -118,8 +118,7 @@ and tsexpr =
 | TSNew of string * tsexpr list
 | TSAwait of tsexpr
 | TSAsync of tsexpr
-
-(* | TSFunc of string * tstyped_attr * tsexpr list *)
+| TSExport of tsexpr
 | SLExpr of expr
 | SLSpliceExpr of expr
 

@@ -77,7 +77,7 @@ def actionState(action: Action):
   action.args.concat(action.stateVars)
 end
 
-def actionStateType(action: Action):
+def toActionStateType(action: Action):
   tsInterface(actionStateTypeName(action.name),
     actionState(action).map(toTsTypedAttr))
 end
@@ -111,12 +111,14 @@ def toActionTest(action: Action):
   let testBody = [dataSetup, [stateSetup], property].flatten()
   let testWrapper = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], testBody).tsAsync()
   
-  [
-    actionStateType(action),
-    tsMethodCall("Deno", "test", [action.name, testWrapper])
-  ]
+  tsMethodCall("Deno", "test", [action.name, testWrapper])
+end
+
+def actionTests():
+  tsClosure([], Model.actions.map(toActionTest))
 end
 
 typescript:
-  {{* Model.actions.map(toActionTest).flatten() }}
+  {{* Model.actions.map(toActionStateType) }}
+  {{ tsExport(tsLet("runTests", actionTests())) }}
 end

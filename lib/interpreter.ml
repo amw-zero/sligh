@@ -319,6 +319,13 @@ let builtin_tsnew_def = {
   fdbody=[];
 }
 
+let builtin_tsexport_name = "tsExport"
+let builtin_tsexport_def = {
+  fdname=builtin_tsexport_name;
+  fdargs=[{name="expr";typ=STString}];
+  fdbody=[];
+}
+
 let all_builtins = [
   {bname=builtin_map_name; bdef=builtin_map_def};
   {bname=builtin_concat_name; bdef=builtin_concat_def};
@@ -345,6 +352,7 @@ let all_builtins = [
   {bname=builtin_tsasync_name; bdef=builtin_tsasync_def};
   {bname=builtin_tsawait_name; bdef=builtin_tsawait_def};
   {bname=builtin_tsnew_name; bdef=builtin_tsnew_def};
+  {bname=builtin_tsexport_name; bdef=builtin_tsexport_def};
 ]
 
 let new_environment_with_builtins () =
@@ -792,6 +800,10 @@ and eval_builtin_func name args env =
     let args = List.nth args 1 |> val_as_val_list |> List.map (fun v -> tsexpr_of_val v) in
 
     (VTSExpr(TSNew(cls, args)), env)
+  | "tsExport" ->
+    let expr = List.nth args 0 |> val_as_tsexpr in
+
+    (VTSExpr(TSExport(expr)), env)
   | _ -> failwith (Printf.sprintf "Attempted to call unimplemented builtin func: %s" name)
 
 and eval_ts ts_expr env = match ts_expr with
@@ -836,6 +848,7 @@ and eval_ts ts_expr env = match ts_expr with
 | TSInterface (_, _) -> ([ts_expr], env)
 | TSClosure (_, _) -> ([ts_expr], env)
 | TSAwait _ -> ([ts_expr], env)
+| TSExport _ -> ([ts_expr], env)
 | TSAsync _ -> ([ts_expr], env)
 | TSNew(_, _) -> ([ts_expr], env)
 

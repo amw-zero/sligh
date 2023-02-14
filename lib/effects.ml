@@ -110,6 +110,7 @@ and apply_tsexpr proc_name effect_env interp_env tse =
   | TSInterface(_, _) -> Some(tse)
   | TSString(_) -> Some(tse)
   | TSAwait(_) -> Some(tse)
+  | TSExport(_) -> Some(tse)
   | TSAsync(_) -> Some(tse)
   | TSNew(_, _) -> Some(tse)
 and apply_tsclassdef proc_name effect_env interp_env cd = match cd with
