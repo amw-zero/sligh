@@ -350,6 +350,13 @@ let builtin_tssymbol_import_def = {
   fdbody=[];
 }
 
+let builtin_tsstring_name = "tsString"
+let builtin_tsstring_def = {
+  fdname=builtin_tsstring_name;
+  fdargs=[{name="str";typ=STString}];
+  fdbody=[];
+}
+
 let all_builtins = [
   {bname=builtin_map_name; bdef=builtin_map_def};
   {bname=builtin_concat_name; bdef=builtin_concat_def};
@@ -379,6 +386,8 @@ let all_builtins = [
   {bname=builtin_tsexport_name; bdef=builtin_tsexport_def};
   {bname=builtin_tsimport_name; bdef=builtin_tsimport_def};
   {bname=builtin_tssymbol_import_name; bdef=builtin_tssymbol_import_def};
+  {bname=builtin_tsstring_name; bdef=builtin_tsstring_def};
+
 ]
 
 let new_environment_with_builtins () =
@@ -683,8 +692,8 @@ and eval_builtin_func name args env =
 
     (VArray(result), env)
   | "append" ->
-    let elem_arg = List.nth args 0 in 
-    let lst_arg = List.nth args 1 |> val_as_val_list in
+    let lst_arg = List.nth args 0 |> val_as_val_list in
+    let elem_arg = List.nth args 1 in
 
     let result: value list = List.cons elem_arg lst_arg in
 
@@ -840,6 +849,10 @@ and eval_builtin_func name args env =
     let alias = List.nth args 1 |> val_as_str in
 
     (VTSSymbolImport({symbol; alias=Some(alias)}), env)
+  | "tsString" ->
+    let str = List.nth args 0 |> val_as_str in
+
+    (VTSExpr(TSString(str)), env)
   | _ -> failwith (Printf.sprintf "Attempted to call unimplemented builtin func: %s" name)
 
 and eval_ts ts_expr env = match ts_expr with
