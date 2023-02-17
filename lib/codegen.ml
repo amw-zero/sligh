@@ -88,6 +88,13 @@ and string_of_builtin n args =
     return a;
     })();
     |} arr elem
+  | "delete" ->
+    let arr = List.nth args 0 |> string_of_expr in
+    let elem = List.nth args 1 |> string_of_expr in
+
+    Printf.sprintf {|
+    %s.filter((e) => e.id === %s);
+    |} arr elem
   | _ -> failwith (Printf.sprintf "Attempted to compile unknown builtin func: %s" n)  
 
 and string_of_ts_expr e = match e with

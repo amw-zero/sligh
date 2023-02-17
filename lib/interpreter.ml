@@ -361,6 +361,11 @@ let all_builtins = [
   {bname=builtin_map_name; bdef=builtin_map_def};
   {bname=builtin_concat_name; bdef=builtin_concat_def};
   {bname=builtin_append_name; bdef=builtin_append_def};
+  {bname="delete"; bdef={
+    fdname="delete";
+    fdargs=[{name="array";typ=STString}; {name="elem";typ=STString}];
+    fdbody=[];
+  }};
   {bname=builtin_appendstr_name; bdef=builtin_appendstr_def};
   {bname=builtin_flatten_name; bdef=builtin_flatten_def};
   {bname=builtin_index_name; bdef=builtin_index_def};
@@ -753,7 +758,7 @@ and eval_builtin_func name args env =
       | _ -> failwith (Printf.sprintf "Calling tsClassProp on non-Type value %s" (string_of_value typ_arg)) in
 
     (VTSClassDef(tsClassProp name_arg typ_arg), env)
-  | "tsClassMethod" -> 
+  | "tsClassMethod" ->
     let name_arg = List.nth args 0 |> val_as_str in
     let args_arg = List.nth args 1 |> val_as_val_list in
     let args_arg = List.map (fun arg -> match arg with
@@ -769,9 +774,9 @@ and eval_builtin_func name args env =
       | VTSTypedAttr(ta) -> ta
       | _ -> failwith (Printf.sprintf "Calling tsClassMethod, args not array of instances %s" (string_of_value arg))) args_arg in
 
-    let body_arg = List.nth args 2 |> tsexpr_of_val in
+    let body_arg = List.nth args 2 |> val_as_tsexpr_list in
 
-    (VTSClassDef(tsClassMethod name_arg args_arg [body_arg]), env)
+    (VTSClassDef(tsClassMethod name_arg args_arg body_arg), env)
   | "tsTypedAttr" -> 
     let name_arg = List.nth args 0 |> val_as_str in
     let type_arg = List.nth args 1 in
