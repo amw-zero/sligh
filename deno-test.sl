@@ -123,7 +123,13 @@ def toSchemaImplImport(schema: Schema):
 end
 
 typescript:
-  {{ tsImport(Model.schemas.map(toSchemaImplImport), "./react_ui/src/state.ts") }}
+  {{ tsAliasImport(
+    [tsSymbolImport("one", "two")], "file") }}
+
+  {{ tsDefaultImport("some", "file") }}
+  {{ tsLet("x", typescript: {{ [1,2,3].length() }} end) }}
+
+  {{ tsAliasImport(Model.schemas.map(toSchemaImplImport), "./react_ui/src/state.ts") }}
   {{* Model.actions.map(toActionStateType) }}
   {{ tsExport(tsLet("runTests", actionTests())) }}
 end

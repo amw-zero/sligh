@@ -125,11 +125,11 @@ let analyze_actions (actions: Core.proc_action list) (proc_attrs: typed_attr lis
 
 let analyze_model m stmt =
   match stmt with
-  | Core.Process(name, defs) ->
+  | Core.Process(_, defs) ->
     let actions = filter_actions defs in
     let attrs = filter_attrs defs in
     { m with
-      schemas = {name; attrs;} :: m.schemas;
+      schemas = m.schemas;
       variables = attrs @ m.variables;
       actions = m.actions @ (analyze_actions actions attrs);
     }

@@ -336,7 +336,7 @@ let builtin_tsexport_def = {
   fdbody=[];
 }
 
-let builtin_tsimport_name = "tsImport"
+let builtin_tsimport_name = "tsAliasImport"
 let builtin_tsimport_def = {
   fdname=builtin_tsimport_name;
   fdargs=[{name="imports";typ=STString}; {name="file";typ=STString}];
@@ -364,6 +364,11 @@ let all_builtins = [
   {bname=builtin_appendstr_name; bdef=builtin_appendstr_def};
   {bname=builtin_flatten_name; bdef=builtin_flatten_def};
   {bname=builtin_index_name; bdef=builtin_index_def};
+  {bname="length"; bdef={
+    fdname="length";
+    fdargs=[{name="array";typ=STString}];
+    fdbody=[];
+  }};
   (* TS Syntax Methods *)
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_tsclass_name; bdef=builtin_tsclassprop_def};
@@ -385,9 +390,13 @@ let all_builtins = [
   {bname=builtin_tsnew_name; bdef=builtin_tsnew_def};
   {bname=builtin_tsexport_name; bdef=builtin_tsexport_def};
   {bname=builtin_tsimport_name; bdef=builtin_tsimport_def};
+  {bname="tsDefaultImport"; bdef={
+    fdname="tsDefaultImport";
+    fdargs=[{name="import";typ=STString}; {name="file";typ=STString}];
+    fdbody=[];
+  }};
   {bname=builtin_tssymbol_import_name; bdef=builtin_tssymbol_import_def};
   {bname=builtin_tsstring_name; bdef=builtin_tsstring_def};
-
 ]
 
 let new_environment_with_builtins () =
@@ -713,9 +722,13 @@ and eval_builtin_func name args env =
     (VArray(result), env)
   | "index" ->
     let arr_arg = List.nth args 0 |> val_as_val_list in
-    let idx_arg = List.nth args 1 |> val_as_int in 
+    let idx_arg = List.nth args 1 |> val_as_int in
 
     (List.nth arr_arg idx_arg, env)
+  | "length" ->
+    let arr_arg = List.nth args 0 |> val_as_val_list in
+
+    (VNum(List.length arr_arg), env)
   | "tsClass" ->
     let name_arg = List.nth args 0 in
     let name_arg = match name_arg with
@@ -736,6 +749,7 @@ and eval_builtin_func name args env =
     let typ_arg = List.nth args 1 in
     let typ_arg = match typ_arg with
       | VType(tv) -> tstype_of_type_val tv
+      | VTSType(tst) -> tst
       | _ -> failwith (Printf.sprintf "Calling tsClassProp on non-Type value %s" (string_of_value typ_arg)) in
 
     (VTSClassDef(tsClassProp name_arg typ_arg), env)
@@ -774,7 +788,7 @@ and eval_builtin_func name args env =
     (VTSExpr(tsAccess left_arg right_arg), env)
   | "tsLet" ->
     let name = List.nth args 0 |> val_as_str in
-    let value = List.nth args 1 |> val_as_tsexpr in
+    let value = List.nth args 1 |> tsexpr_of_val in
 
     (VTSExpr(TSLet(name, value)), env)
   | "tsIden" -> 
@@ -839,11 +853,17 @@ and eval_builtin_func name args env =
     let expr = List.nth args 0 |> val_as_tsexpr in
 
     (VTSExpr(TSExport(expr)), env)
-  | "tsImport" ->
+  | "tsAliasImport" ->
     let imports = List.nth args 0 |> val_as_tssymbol_import_list in
     let file = List.nth args 1 |> val_as_str in
 
-    (VTSExpr(TSImport(imports, file)), env)
+    (VTSExpr(TSAliasImport(imports, file)), env)
+
+  | "tsDefaultImport" ->
+    let import = List.nth args 0 |> val_as_str in
+    let file = List.nth args 1 |> val_as_str in
+
+    (VTSExpr(TSDefaultImport(import, file)), env)
   | "tsSymbolImport" ->
     let symbol = List.nth args 0 |> val_as_str in
     let alias = List.nth args 1 |> val_as_str in
@@ -898,7 +918,8 @@ and eval_ts ts_expr env = match ts_expr with
 | TSClosure (_, _) -> ([ts_expr], env)
 | TSAwait _ -> ([ts_expr], env)
 | TSExport _ -> ([ts_expr], env)
-| TSImport(_, _) -> ([ts_expr], env)
+| TSAliasImport(_, _) -> ([ts_expr], env)
+| TSDefaultImport(_, _) -> ([ts_expr], env)
 | TSAsync _ -> ([ts_expr], env)
 | TSNew(_, _) -> ([ts_expr], env)
 

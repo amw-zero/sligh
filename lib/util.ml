@@ -82,10 +82,11 @@ and string_of_ts_expr e = match e with
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e)
-  | TSImport(imports, file) ->
+  | TSAliasImport(imports, file) ->
       Printf.sprintf "import { %s } from \"%s\";"
       (String.concat ", " (List.map string_of_symbol_import imports))
       file
+  | TSDefaultImport(import, file) -> Printf.sprintf "import %s from \"%s\";" import file
   | TSAsync(e) -> Printf.sprintf "async %s" (string_of_ts_expr e)
   | TSNew(c, args) -> Printf.sprintf "new %s(%s)" c (String.concat ", " (List.map string_of_ts_expr args))
   | SLSpliceExpr(_) -> "SLSpliceExpr"

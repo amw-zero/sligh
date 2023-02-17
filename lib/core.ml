@@ -124,7 +124,8 @@ and tsexpr =
 | TSAwait of tsexpr
 | TSAsync of tsexpr
 | TSExport of tsexpr
-| TSImport of tssymbol_import list * string
+| TSAliasImport of tssymbol_import list * string
+| TSDefaultImport of string * string
 | SLExpr of expr
 | SLSpliceExpr of expr
 
