@@ -887,7 +887,7 @@ and eval_builtin_func name args env =
     (VTSExpr(TSObject(props)), env)
   | "tsObjectProp" ->
     let name = List.nth args 0 |> val_as_str in
-    let value = List.nth args 1 |> val_as_tsexpr in
+    let value = List.nth args 1 |> tsexpr_of_val in
 
     (VTSObjectProp({oname=name; oval=value}), env)
   | "tsObjectPatProp" ->
