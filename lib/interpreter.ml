@@ -408,6 +408,11 @@ let all_builtins = [
   {bname=builtin_tsstatement_list_name; bdef=builtin_tsstatement_list_def};
   {bname=builtin_tsinterface_name; bdef=builtin_tsinterface_def};
   {bname=builtin_tsmethod_call_name; bdef=builtin_tsmethod_call_def};
+  {bname="tsFuncCall"; bdef={
+    fdname="tsFuncCall";
+    fdargs=[{name="name";typ=STString}; {name="args";typ=STString};];
+    fdbody=[];
+  }};
   {bname=builtin_tsclosure_name; bdef=builtin_tsclosure_def};
   {bname=builtin_tslet_name; bdef=builtin_tslet_def};
   {bname=builtin_tsobject_name; bdef=builtin_tsobject_def};
@@ -430,6 +435,11 @@ let all_builtins = [
   {bname="tsObjectPatProp"; bdef={
     fdname="tsObjectPatProp";
     fdargs=[{name="name";typ=STString}; {name="value";typ=STString}];
+    fdbody=[];
+  }};
+  {bname="tsReturn"; bdef={
+    fdname="tsReturn";
+    fdargs=[{name="expr";typ=STString};];
     fdbody=[];
   }};
   {bname=builtin_tssymbol_import_name; bdef=builtin_tssymbol_import_def};
@@ -870,6 +880,12 @@ and eval_builtin_func name args env =
     let args = List.nth args 2 |> val_as_val_list |> List.map (fun v -> tsexpr_of_val v) in
 
     (VTSExpr(TSMethodCall(receiver, call_name, args)), env)
+
+  | "tsFuncCall" ->
+    let call_name = List.nth args 0 |> val_as_str in
+    let args = List.nth args 1 |> val_as_val_list |> List.map (fun v -> tsexpr_of_val v) in
+
+    (VTSExpr(TSFuncCall(call_name, args)), env)    
   | "tsClosure" ->
     let closure_args = List.nth args 0 |> val_as_val_list
       |> List.map (fun v -> match v with
@@ -909,6 +925,11 @@ and eval_builtin_func name args env =
     let args = List.nth args 1 |> val_as_val_list |> List.map (fun v -> tsexpr_of_val v) in
 
     (VTSExpr(TSNew(cls, args)), env)
+
+  | "tsReturn" ->
+    let expr = List.nth args 0 |> val_as_tsexpr in
+
+    (VTSExpr(TSReturn(expr)), env)
   | "tsExport" ->
     let expr = List.nth args 0 |> val_as_tsexpr in
 
@@ -965,6 +986,8 @@ and eval_ts ts_expr env = match ts_expr with
     let e2' = eval_ts e2 env |> fst |> List.hd in
 
     ([TSIf(e1', e2', None)], env))
+
+| TSReturn(e) -> ([TSReturn(eval_ts e env |> fst |> List.hd)], env)   
 
 (* These evalulate to themselves because they have no recursive nodes, i.e. are terminal *)
 | TSIden _ -> ([ts_expr], env)

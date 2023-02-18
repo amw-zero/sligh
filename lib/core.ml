@@ -114,6 +114,7 @@ and tsexpr =
 | TSIf of tsexpr * tsexpr * tsexpr option
 | TSArray of tsexpr list
 | TSString of string
+| TSReturn of tsexpr
 | TSAccess of tsexpr * tsexpr
 | TSAssignment of tsexpr * tsexpr
 | TSInterface of string * tstyped_attr list

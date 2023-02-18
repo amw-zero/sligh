@@ -116,6 +116,7 @@ and string_of_ts_expr e = match e with
   | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map string_of_ts_expr args |> print_list ", ")
   | TSFuncCall(f, args) -> Printf.sprintf "%s(%s)" f (List.map string_of_ts_expr args |> print_list ", ")
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
+  | TSReturn(e) -> Printf.sprintf "return %s" (string_of_ts_expr e)
   | TSString(s) -> Printf.sprintf "\"%s\"" s
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1) (string_of_ts_expr e2)
