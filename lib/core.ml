@@ -43,7 +43,7 @@ type expr =
   (* Statements, move to separate type *)
   | Let of string * expr
   | Assignment of string * expr
-
+  | Bool of bool
   | Iden of string * sligh_type option
   | Num of int
   | Array of expr list
@@ -107,6 +107,7 @@ and case_branch = {
 and tsexpr =
 | TSIden of tsiden
 | TSNum of int
+| TSBool of bool
 | TSLet of string * tsexpr
 | TSStmtList of tsexpr list
 | TSMethodCall of string * string * tsexpr list
@@ -118,11 +119,10 @@ and tsexpr =
 | TSAccess of tsexpr * tsexpr
 | TSAssignment of tsexpr * tsexpr
 | TSInterface of string * tstyped_attr list
-| TSClosure of tsiden list * tsexpr list
+| TSClosure of tsiden list * tsexpr list * bool
 | TSObject of obj_prop list
 | TSNew of string * tsexpr list
 | TSAwait of tsexpr
-| TSAsync of tsexpr
 | TSExport of tsexpr
 | TSAliasImport of tssymbol_import list * string
 | TSDefaultImport of string * string
@@ -153,13 +153,11 @@ and ts_type =
 and tsclassdef =
   | CDSLExpr of expr
   | TSClassProp of string * ts_type
-  | TSClassMethod of string * tstyped_attr list * tsexpr list
+  | TSClassMethod of string * tstyped_attr list * tsexpr list * bool
 
 let tsClassProp name typ = TSClassProp(name, typ)
 
 let tsClass name defs = TSClass(name, defs)
-
-let tsClassMethod name args body = TSClassMethod(name, args, body)
 
 let tsTypedAttr name typ = {tsname=name; tstyp=typ}
 

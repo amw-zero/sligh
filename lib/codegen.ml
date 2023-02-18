@@ -40,6 +40,7 @@ let rec string_of_expr e = match e with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)
   | Num(n) -> string_of_int n
+  | Bool(b) -> if b then "true" else "false"
   | If(e1, e2, e3) -> (match e3 with
     | Some(elseE) -> Printf.sprintf "if  %s:\n %s\nelse:\n  %send" (string_of_expr e1) (string_of_expr e2) (string_of_expr elseE)
     | None -> Printf.sprintf "if %s:\n %s\nend" (string_of_expr e1) (string_of_expr e2))
@@ -102,6 +103,7 @@ and string_of_ts_expr e = match e with
     | Some(t) -> Printf.sprintf "%s: %s" iname (string_of_tstype t)
     | None -> Printf.sprintf "%s" iname)
   | TSNum(n) -> string_of_int n
+  | TSBool(b) -> string_of_bool b
   | TSIf(e1, e2, e3) -> (match e3 with
     | Some(elseE) -> Printf.sprintf "if (%s) {\n %s}\nelse {\n%s\n}" (string_of_ts_expr e1) (string_of_ts_expr e2) (string_of_ts_expr elseE)
     | None -> Printf.sprintf "if (%s) {\n %s\n}" (string_of_ts_expr e1) (string_of_ts_expr e2))
@@ -123,12 +125,14 @@ and string_of_ts_expr e = match e with
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
-  | TSClosure(args, body) -> Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+  | TSClosure(args, body, is_async) -> if is_async then
+      Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+    else
+      Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e)
   | TSAliasImport(imports, file) -> Printf.sprintf "import { %s } from \"%s\";" (String.concat ", " (List.map string_of_symbol_import imports)) file
   | TSDefaultImport(import, file) -> Printf.sprintf "import %s from \"%s\";" import file
-  | TSAsync(e) -> Printf.sprintf "async %s" (string_of_ts_expr e)
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | TSNew(c, args) -> Printf.sprintf "new %s(%s)" c (String.concat ", " (List.map string_of_ts_expr args))
   | SLSpliceExpr(_) -> "SLSpliceExpr"
@@ -153,7 +157,10 @@ and string_of_ts_typed_attr ta = Printf.sprintf "%s: %s" ta.tsname (string_of_ts
 
 and string_of_tsclassdef cd = match cd with
   | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
-  | TSClassMethod(nm, args, body) -> Printf.sprintf "%s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list "\n")
+  | TSClassMethod(nm, args, body, is_async) -> if is_async then
+      Printf.sprintf "async %s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list "\n")
+    else
+      Printf.sprintf "%s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list "\n")
   | CDSLExpr(_) -> "CDSLExpr remove"  
 and process_constructor defs = 
   let attrs = Process.filter_attrs defs in
@@ -181,6 +188,7 @@ let rec tsexpr_of_expr e = match e with
   | StmtList(es) -> TSStmtList(List.map tsexpr_of_expr es)
   | Iden(name, typ) -> TSIden({iname=name; itype=tstype_of_sltype typ})
   | Num(i) -> TSNum(i)
+  | Bool(b) -> TSBool(b)
   | If(e1, e2, e3) -> (match e3 with
     | Some(elseE) -> TSIf(tsexpr_of_expr e1, tsexpr_of_expr e2, Some(tsexpr_of_expr elseE))
     | None -> TSIf(tsexpr_of_expr e1, tsexpr_of_expr e2, None))

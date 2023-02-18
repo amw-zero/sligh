@@ -91,6 +91,7 @@ let rec collect_state_vars state_vars e (proc_attrs: typed_attr list): typed_att
 
   | String(_) -> state_vars
   | Num(_) -> state_vars
+  | Bool(_) -> state_vars
 
    (* Should only be decl, possibly only be class decl *)
   | Implementation(_) -> state_vars

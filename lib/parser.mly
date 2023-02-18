@@ -8,7 +8,6 @@ open Interpreter
 %token FALSE
 
 %token IF
-%token THEN
 %token ELSE
 
 %token LPAREN
@@ -108,6 +107,8 @@ func_call:
 expression:
   | recv = expression DOT meth = IDEN LPAREN args = separated_list(COMMA, expression) RPAREN
                                                   { Call(meth, [recv] @ args) }
+  | TRUE                                          { Bool(true) }
+  | FALSE                                         { Bool(false) }
   | assignment                                    { $1 }
   | n = NUMBER                                    { Num(n) }
   | variable                                      { $1 }
@@ -172,7 +173,6 @@ tsexp:
   | LBRACE props = separated_list(COMMA, obj_prop) RBRACE
                                                 { TSObject(props) }
   | AWAIT e = tsexp                             { TSAwait(e) }
-  | ASYNC e = tsexp                             { TSAsync(e) }
   | recv = IDEN DOT meth = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN
                                                 { TSMethodCall(recv, meth, args) }
   | func = IDEN LPAREN args = separated_list(COMMA, tsexp) RPAREN

@@ -33,7 +33,6 @@ rule read ctx = parse
   | "true"            { TRUE }
   | "false"           { FALSE }
   | "if"              { IF }
-  | "then"            { THEN }
   | "else"            { ELSE }
   | "case"            { CASE }
   | "data"            { DATA }

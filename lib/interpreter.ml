@@ -18,6 +18,8 @@ type primitive_typ =
 type value =
   | VNum of int
   | VString of string
+  | VBool of bool
+  | VNil
   | VArray of value list
   | VFunc of func_def
   | VMacro of proc_effect list
@@ -71,6 +73,8 @@ and type_val =
 
 let rec string_of_value v = match v with
   | VNum(n) -> string_of_int n
+  | VBool(b) -> if b then "true" else "false"
+  | VNil -> "nil"
   | VFunc(fd) -> Printf.sprintf "<func %s>" fd.fdname
   | VType(tv) -> string_of_type_val tv
   | VArray(vs) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_value vs))
@@ -154,6 +158,10 @@ let val_as_tsobj_props v = match v with
 | VArray(vs) -> List.map val_as_tsobj_prop vs
 | _ -> failwith (Printf.sprintf "Expected Array of TSObjectProp vals: %s" (string_of_value v))
 
+let val_as_bool v = match v with
+| VBool(b) -> b
+| _ -> failwith (Printf.sprintf "Expected Bool: %s" (string_of_value v))
+
 type interp_env = value Env.t
 
 type builtin = {
@@ -220,7 +228,7 @@ let builtin_tsclassprop_def = {
 let builtin_tsclassmethod_name = "tsClassMethod"
 let builtin_tsclassmethod_def = {
   fdname=builtin_tsclassmethod_name;
-  fdargs=[{name="name";typ=STString}; {name="args";typ=STString}; {name="body";typ=STString}];
+  fdargs=[{name="name";typ=STString}; {name="args";typ=STString}; {name="body";typ=STString}; {name="is_async";typ=STString}];
   fdbody=[];
 }
 
@@ -276,7 +284,7 @@ let builtin_tsmethod_call_def = {
 let builtin_tsclosure_name = "tsClosure"
 let builtin_tsclosure_def = {
   fdname=builtin_tsclosure_name;
-  fdargs=[{name="args";typ=STString}; {name="body";typ=STString}];
+  fdargs=[{name="args";typ=STString}; {name="body";typ=STString}; {name="is_async";typ=STString}];
   fdbody=[];
 }
 
@@ -305,13 +313,6 @@ let builtin_tstype_name = "tsType"
 let builtin_tstype_def = {
   fdname=builtin_tstype_name;
   fdargs=[{name="name";typ=STString};];
-  fdbody=[];
-}
-
-let builtin_tsasync_name = "tsAsync"
-let builtin_tsasync_def = {
-  fdname=builtin_tsasync_name;
-  fdargs=[{name="block";typ=STString};];
   fdbody=[];
 }
 
@@ -374,6 +375,11 @@ let all_builtins = [
     fdargs=[{name="array";typ=STString}];
     fdbody=[];
   }};
+  {bname="greaterThan"; bdef={
+    fdname="greaterThan";
+    fdargs=[{name="num";typ=STString}; {name="gt";typ=STString}];
+    fdbody=[];
+  }};
   (* TS Syntax Methods *)
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_tsclass_name; bdef=builtin_tsclassprop_def};
@@ -390,7 +396,6 @@ let all_builtins = [
   {bname=builtin_tsobject_name; bdef=builtin_tsobject_def};
   {bname=builtin_tsobjectprop_name; bdef=builtin_tsobjectprop_def};
   {bname=builtin_tstype_name; bdef=builtin_tstype_def};
-  {bname=builtin_tsasync_name; bdef=builtin_tsasync_def};
   {bname=builtin_tsawait_name; bdef=builtin_tsawait_def};
   {bname=builtin_tsnew_name; bdef=builtin_tsnew_def};
   {bname=builtin_tsexport_name; bdef=builtin_tsexport_def};
@@ -606,6 +611,13 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
   match e with
   | Iden(i, _) -> (Env.find i env, env)
   | Num(n) -> (VNum(n), env)
+  | Bool(b) -> (VBool(b), env)
+  | If(e, e_then, e_else) -> (match eval e env with
+    | (VBool(b), env') -> if b then
+        eval e_then env'
+      else
+        Option.value (Option.map (fun els -> eval els env') e_else) ~default: (VNil, env')
+    | _ -> failwith (Printf.sprintf "Expected bool expr: %s" (Util.string_of_expr e)))
   | Call(name, args) ->
     let (arg_sigs, body) = try (match Env.find name env with
       | VFunc({fdargs;fdbody;_}) -> (fdargs, fdbody)
@@ -734,6 +746,11 @@ and eval_builtin_func name args env =
     let arr_arg = List.nth args 0 |> val_as_val_list in
 
     (VNum(List.length arr_arg), env)
+  | "greaterThan" ->
+    let larg = List.nth args 0 |> val_as_int in
+    let rarg = List.nth args 1 |> val_as_int in
+  
+    (VBool(larg > rarg), env)
   | "tsClass" ->
     let name_arg = List.nth args 0 in
     let name_arg = match name_arg with
@@ -775,8 +792,9 @@ and eval_builtin_func name args env =
       | _ -> failwith (Printf.sprintf "Calling tsClassMethod, args not array of instances %s" (string_of_value arg))) args_arg in
 
     let body_arg = List.nth args 2 |> val_as_tsexpr_list in
+    let is_async = List.nth args 3 |> val_as_bool in
 
-    (VTSClassDef(tsClassMethod name_arg args_arg body_arg), env)
+    (VTSClassDef(TSClassMethod(name_arg, args_arg, body_arg, is_async)), env)
   | "tsTypedAttr" -> 
     let name_arg = List.nth args 0 |> val_as_str in
     let type_arg = List.nth args 1 in
@@ -830,8 +848,9 @@ and eval_builtin_func name args env =
       |> List.map (fun ta -> {iname=ta.tsname; itype=Some(ta.tstyp)}) in
 
     let body = List.nth args 1 |> val_as_val_list |> List.map tsexpr_of_val in
+    let is_async = List.nth args 2 |> val_as_bool in
 
-    (VTSExpr(TSClosure(closure_args, body)), env)
+    (VTSExpr(TSClosure(closure_args, body, is_async)), env)
   | "tsObject" ->
     let props = List.nth args 0 |> val_as_tsobj_props in
 
@@ -845,10 +864,6 @@ and eval_builtin_func name args env =
     let blk = List.nth args 0 |> val_as_tsexpr in
 
     (VTSExpr(TSAwait(blk)), env)
-  | "tsAsync" ->
-    let blk = List.nth args 0 |> val_as_tsexpr in
-
-    (VTSExpr(TSAsync(blk)), env)
   | "tsNew" ->
     let cls = List.nth args 0 |> val_as_str in
     let args = List.nth args 1 |> val_as_val_list |> List.map (fun v -> tsexpr_of_val v) in
@@ -914,18 +929,18 @@ and eval_ts ts_expr env = match ts_expr with
 (* These evalulate to themselves because they have no recursive nodes, i.e. are terminal *)
 | TSIden _ -> ([ts_expr], env)
 | TSNum _ ->  ([ts_expr], env)
+| TSBool(_) -> ([ts_expr], env)
 | TSClass (_, _) -> ([ts_expr], env) 
 | TSArray _ -> ([ts_expr], env) 
 | TSString _ -> ([ts_expr], env)
 | TSAccess (_, _) -> ([ts_expr], env)
 | TSAssignment (_, _) -> ([ts_expr], env)
 | TSInterface (_, _) -> ([ts_expr], env)
-| TSClosure (_, _) -> ([ts_expr], env)
+| TSClosure (_, _, _) -> ([ts_expr], env)
 | TSAwait _ -> ([ts_expr], env)
 | TSExport _ -> ([ts_expr], env)
 | TSAliasImport(_, _) -> ([ts_expr], env)
 | TSDefaultImport(_, _) -> ([ts_expr], env)
-| TSAsync _ -> ([ts_expr], env)
 | TSNew(_, _) -> ([ts_expr], env)
 
 and tsexpr_of_val (v: value) = match v with

@@ -2,11 +2,6 @@ open Core
 
 let print_list delim l = String.concat delim l
 
-let rec string_of_boolexp t = match t with
-  | BTrue -> "true"
-  | BFalse -> "false"
-  | BIf (t1, t2, t3) -> Printf.sprintf "if %s then %s else %s" (string_of_boolexp t1) (string_of_boolexp t2) (string_of_boolexp t3)
-
 let rec string_of_type t = match t with
   | STInt -> "Int"
   | STCustom s -> s
@@ -37,6 +32,7 @@ let rec string_of_expr e = match e with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)
   | Num(n) -> string_of_int n
+  | Bool(b) -> if b then "true" else "false"
   | If(e1, e2, e3) -> (match e3 with
     | Some(elseE) -> Printf.sprintf "if  %s:\n %s\nelse:\n  %send" (string_of_expr e1) (string_of_expr e2) (string_of_expr elseE)
     | None -> Printf.sprintf "if %s:\n %s\nend" (string_of_expr e1) (string_of_expr e2))
@@ -65,6 +61,7 @@ and string_of_value_pattern vp = match vp with
 and string_of_ts_expr e = match e with
   | TSIden(i) -> string_of_tsiden i
   | TSNum(n) -> "ts-" ^ string_of_int n
+  | TSBool(b) -> string_of_bool b
   | TSLet(v, ie) -> "ts-let ts-" ^ v ^ " = " ^ string_of_ts_expr ie
   | TSStmtList(ss) -> String.concat "\n" (List.map string_of_ts_expr ss)
   | TSClass(n, ds) -> Printf.sprintf "ts-class %s\n\t%s" n (String.concat "\n" (List.map string_of_tsclassdef ds))
@@ -78,7 +75,10 @@ and string_of_ts_expr e = match e with
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSInterface(n, attrs) -> Printf.sprintf "ts-interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
-  | TSClosure(args, body) -> Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+  | TSClosure(args, body, is_async) -> if is_async then
+      Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+    else 
+      Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e)
@@ -87,7 +87,6 @@ and string_of_ts_expr e = match e with
       (String.concat ", " (List.map string_of_symbol_import imports))
       file
   | TSDefaultImport(import, file) -> Printf.sprintf "import %s from \"%s\";" import file
-  | TSAsync(e) -> Printf.sprintf "async %s" (string_of_ts_expr e)
   | TSNew(c, args) -> Printf.sprintf "new %s(%s)" c (String.concat ", " (List.map string_of_ts_expr args))
   | SLSpliceExpr(_) -> "SLSpliceExpr"
   | SLExpr(e) -> string_of_expr e
@@ -100,7 +99,11 @@ and string_of_tsiden {iname; itype} = match itype with
 
 and string_of_tsclassdef cd = match cd with
 | TSClassProp(n, typ) -> Printf.sprintf "ts-%s: ts-%s" n (string_of_tstype typ)
-| TSClassMethod(nm, args, body) -> Printf.sprintf "ts-class-meth %s(%s) {\n\t%s\n}" nm (String.concat "," (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list "\n")
+| TSClassMethod(nm, args, body, is_async) -> if is_async then
+  Printf.sprintf "async ts-class-meth %s(%s) {\n\t%s\n}" nm (String.concat "," (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list "\n")
+else
+  Printf.sprintf "ts-class-meth %s(%s) {\n\t%s\n}" nm (String.concat "," (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list "\n")
+
 | CDSLExpr(_) -> "CDSLExpr remove"
 
 and string_of_ts_typed_attr ta = Printf.sprintf "%s: %s" ta.tsname (string_of_tstype ta.tstyp)

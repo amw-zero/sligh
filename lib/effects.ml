@@ -95,7 +95,7 @@ and apply_tsexpr proc_name effect_env interp_env tse =
     (match (e1', e2') with
     | (Some(e1'_some), Some(e2'_some)) -> Some(TSAssignment(e1'_some, e2'_some))
     | _ -> None)
-  | TSClosure(args, body) -> Some(TSClosure(args, List.filter_map apply_tsexpr_expr body))
+  | TSClosure(args, body, ia) -> Some(TSClosure(args, List.filter_map apply_tsexpr_expr body, ia))
   | TSObject(props) -> 
     let new_props: obj_prop list = List.map (fun p -> {oname=p.oname; oval=apply_tsexpr_expr p.oval |> Option.get} ) props in
 
@@ -106,6 +106,7 @@ and apply_tsexpr proc_name effect_env interp_env tse =
   | SLExpr(e) -> Option.map (fun e' -> SLExpr(e')) (apply proc_name effect_env interp_env e)
   | TSIden(_) -> Some(tse)
   | TSNum(_) -> Some(tse)
+  | TSBool(_) -> Some(tse)
   | TSArray(_) -> Some(tse)
   | TSInterface(_, _) -> Some(tse)
   | TSString(_) -> Some(tse)
@@ -113,10 +114,9 @@ and apply_tsexpr proc_name effect_env interp_env tse =
   | TSExport(_) -> Some(tse)
   | TSAliasImport(_, _) -> Some(tse)
   | TSDefaultImport(_, _) -> Some(tse)
-  | TSAsync(_) -> Some(tse)
   | TSNew(_, _) -> Some(tse)
 and apply_tsclassdef proc_name effect_env interp_env cd = match cd with
-  | TSClassMethod(nm, args, body) -> TSClassMethod(nm, args, List.filter_map (fun tse -> apply_tsexpr proc_name effect_env interp_env tse) body)
+  | TSClassMethod(nm, args, body, ia) -> TSClassMethod(nm, args, List.filter_map (fun tse -> apply_tsexpr proc_name effect_env interp_env tse) body, ia)
   | _ -> cd
 
   

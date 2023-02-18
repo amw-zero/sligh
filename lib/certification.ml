@@ -68,7 +68,7 @@ let action_test act =
   let test_args = [{iname="t"; itype=None}] in
   let test_body = List.map gen_type_val act.args in
 
-  TSMethodCall("Deno", "test", [TSAsync(TSClosure(test_args, test_body))])
+  TSMethodCall("Deno", "test", [TSClosure(test_args, test_body, true)])
 
 let generate_spec _ model_proc _ cert_out _ =
   (* Definitions are separated because they can't be macro-expanded *)

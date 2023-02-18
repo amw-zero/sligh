@@ -93,7 +93,7 @@ def toActionTest(action: Action):
 
   let property = [tsAwait(
     tsMethodCall("fc", "assert", [
-      tsMethodCall("fc", "asyncProperty", [tsIden("state"), tsAsync(
+      tsMethodCall("fc", "asyncProperty", [tsIden("state"),
         tsClosure([tsTypedAttr("state", tsType(actionStateTypeName(action.name)))], [
           tsLet("client", tsNew("Client", [])),
           tsLet("model", tsNew("Budget", [])),
@@ -103,19 +103,19 @@ def toActionTest(action: Action):
           tsMethodCall("model", action.name, action.args.map(toCallValue)),
 
           tsAwait(tsMethodCall("client", "teardown", []))
-        ])
-      )])
+        ], true)
+      ])
     ])
   )]
 
   let testBody = [dataSetup, [stateSetup], property].flatten()
-  let testWrapper = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], testBody).tsAsync()
+  let testWrapper = tsClosure([tsTypedAttr("t", tsType("Deno.Test"))], testBody, false)
   
   tsMethodCall("Deno", "test", [action.name, testWrapper])
 end
 
 def actionTests():
-  tsClosure([], Model.actions.map(toActionTest))
+  tsClosure([], Model.actions.map(toActionTest), false)
 end
 
 def toSchemaImplImport(schema: Schema):
