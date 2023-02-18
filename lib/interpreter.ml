@@ -33,6 +33,11 @@ type value =
   | VTSExpr of tsexpr
   | VTSClassDef of tsclassdef
   | VTSTypedAttr of tstyped_attr
+  (* Object patterns - for function args *)
+  | VTSObjectPat of tsobject_pat
+  | VTSObjectPatProp of tsobject_pat_prop
+
+  (* Object values *)
   | VTSObjectProp of obj_prop
   | VTSType of ts_type
   | VTSSymbolImport of tssymbol_import
@@ -89,6 +94,8 @@ let rec string_of_value v = match v with
   | VVoid -> "Void"
   | VTSObjectProp({oname; oval}) -> Printf.sprintf "%s: %s" oname (Util.string_of_ts_expr oval)
   | VTSType(t) -> Util.string_of_tstype(t)
+  | VTSObjectPat(_) -> "ObjectPat"
+  | VTSObjectPatProp(_) -> "ObjectPatProp"
   | VTSSymbolImport(_) -> "symbol import"
 and string_of_instance_attr attr = Printf.sprintf "%s: %s" attr.iname (string_of_value attr.ivalue)
 and string_of_type_val tv = match tv with
@@ -161,6 +168,16 @@ let val_as_tsobj_props v = match v with
 let val_as_bool v = match v with
 | VBool(b) -> b
 | _ -> failwith (Printf.sprintf "Expected Bool: %s" (string_of_value v))
+
+let val_as_object_pat_prop_list v =
+  val_as_val_list v |>
+  List.map (fun v ->   match v with
+  | VTSObjectPatProp(opp) -> opp
+  | _ -> failwith (Printf.sprintf "Expected VTSObjectPatProp: %s" (string_of_value v))) 
+
+let val_as_tstype v = match v with
+| VTSType(tst)-> tst
+| _ -> failwith (Printf.sprintf "Expected TSType: %s" (string_of_value v))
 
 type interp_env = value Env.t
 
@@ -403,6 +420,16 @@ let all_builtins = [
   {bname="tsDefaultImport"; bdef={
     fdname="tsDefaultImport";
     fdargs=[{name="import";typ=STString}; {name="file";typ=STString}];
+    fdbody=[];
+  }};
+  {bname="tsObjectPat"; bdef={
+    fdname="tsObjectPat";
+    fdargs=[{name="props";typ=STString}; {name="type";typ=STString}];
+    fdbody=[];
+  }};
+  {bname="tsObjectPatProp"; bdef={
+    fdname="tsObjectPatProp";
+    fdargs=[{name="name";typ=STString}; {name="value";typ=STString}];
     fdbody=[];
   }};
   {bname=builtin_tssymbol_import_name; bdef=builtin_tssymbol_import_def};
@@ -844,8 +871,11 @@ and eval_builtin_func name args env =
 
     (VTSExpr(TSMethodCall(receiver, call_name, args)), env)
   | "tsClosure" ->
-    let closure_args = List.nth args 0 |> val_as_tstyped_attr_list
-      |> List.map (fun ta -> {iname=ta.tsname; itype=Some(ta.tstyp)}) in
+    let closure_args = List.nth args 0 |> val_as_val_list
+      |> List.map (fun v -> match v with
+        | VTSTypedAttr(ta) -> TSPTypedAttr(ta)
+        | VTSObjectPat(op) -> TSPObjectPat(op)
+        | _ -> failwith "Expected valid patterns in param list") in
 
     let body = List.nth args 1 |> val_as_val_list |> List.map tsexpr_of_val in
     let is_async = List.nth args 2 |> val_as_bool in
@@ -860,6 +890,16 @@ and eval_builtin_func name args env =
     let value = List.nth args 1 |> val_as_tsexpr in
 
     (VTSObjectProp({oname=name; oval=value}), env)
+  | "tsObjectPatProp" ->
+    let name = List.nth args 0 |> val_as_str in
+    let value = List.nth args 0 |> val_as_str in
+
+    (VTSObjectPatProp({oppname=name; oppvalue=value}), env)
+  | "tsObjectPat" ->
+    let props = List.nth args 0 |> val_as_object_pat_prop_list in
+    let typ = List.nth args 1 |> val_as_tstype in
+
+    (VTSObjectPat({opprops=props; optyp=typ}), env)
   | "tsAwait" ->
     let blk = List.nth args 0 |> val_as_tsexpr in
 

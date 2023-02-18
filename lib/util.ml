@@ -76,9 +76,9 @@ and string_of_ts_expr e = match e with
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSInterface(n, attrs) -> Printf.sprintf "ts-interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
   | TSClosure(args, body, is_async) -> if is_async then
-      Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+      Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map string_of_ts_expr body))
     else 
-      Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+      Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map string_of_ts_expr body))
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e)
@@ -96,6 +96,15 @@ and string_of_obj_prop p = Printf.sprintf "%s: %s" p.oname (string_of_ts_expr p.
 and string_of_tsiden {iname; itype} = match itype with
 | Some(t) -> Printf.sprintf "ts-%s: %s" iname (string_of_tstype t)
 | None -> Printf.sprintf "ts-%s" iname
+
+and string_of_tsparam tsp = match tsp with
+| TSPTypedAttr(ta) -> string_of_ts_typed_attr ta
+| TSPObjectPat(op) -> string_of_tsobject_pat op
+
+and string_of_tsobject_pat op = 
+  Printf.sprintf "{ %s }: %s" (String.concat ", " (List.map string_of_tsobject_pat_prop op.opprops)) (string_of_tstype op.optyp)
+
+and string_of_tsobject_pat_prop opp = Printf.sprintf "%s: %s" opp.oppname opp.oppvalue  
 
 and string_of_tsclassdef cd = match cd with
 | TSClassProp(n, typ) -> Printf.sprintf "ts-%s: ts-%s" n (string_of_tstype typ)

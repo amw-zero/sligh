@@ -119,7 +119,7 @@ and tsexpr =
 | TSAccess of tsexpr * tsexpr
 | TSAssignment of tsexpr * tsexpr
 | TSInterface of string * tstyped_attr list
-| TSClosure of tsiden list * tsexpr list * bool
+| TSClosure of tsparam list * tsexpr list * bool
 | TSObject of obj_prop list
 | TSNew of string * tsexpr list
 | TSAwait of tsexpr
@@ -143,6 +143,20 @@ and tstyped_attr = {
   tsname: string;
   tstyp: ts_type;
 }
+
+and tsobject_pat_prop = {
+  oppname: string;
+  oppvalue: string;
+}
+
+and tsobject_pat = {
+  opprops: tsobject_pat_prop list;
+  optyp: ts_type;
+}
+
+and tsparam =
+  | TSPTypedAttr of tstyped_attr
+  | TSPObjectPat of tsobject_pat
 
 and ts_type = 
   | TSTNumber

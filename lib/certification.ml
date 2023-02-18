@@ -65,7 +65,7 @@ let gen_type_val attr =
   TSString(Core.(attr.name))
 
 let action_test act = 
-  let test_args = [{iname="t"; itype=None}] in
+  let test_args = [] in
   let test_body = List.map gen_type_val act.args in
 
   TSMethodCall("Deno", "test", [TSClosure(test_args, test_body, true)])

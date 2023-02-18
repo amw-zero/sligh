@@ -126,9 +126,9 @@ and string_of_ts_expr e = match e with
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1) (string_of_ts_expr e2)
   | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
   | TSClosure(args, body, is_async) -> if is_async then
-      Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
-    else
-      Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsiden args)) (print_list "\n" (List.map string_of_ts_expr body))
+    Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map string_of_ts_expr body))
+  else 
+    Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map string_of_ts_expr body))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e)
   | TSAliasImport(imports, file) -> Printf.sprintf "import { %s } from \"%s\";" (String.concat ", " (List.map string_of_symbol_import imports)) file
@@ -140,6 +140,14 @@ and string_of_ts_expr e = match e with
 
 and string_of_obj_prop p = Printf.sprintf "%s: %s" p.oname (string_of_ts_expr p.oval)
 
+and string_of_tsparam tsp = match tsp with
+| TSPTypedAttr(ta) -> string_of_ts_typed_attr ta
+| TSPObjectPat(op) -> string_of_tsobject_pat op
+
+and string_of_tsobject_pat op = 
+  Printf.sprintf "{ %s }: %s" (String.concat ", " (List.map string_of_tsobject_pat_prop op.opprops)) (string_of_tstype op.optyp)
+
+and string_of_tsobject_pat_prop opp = Printf.sprintf "%s: %s" opp.oppname opp.oppvalue  
 
 and string_of_tsiden {iname; itype} = match itype with
   | Some(t) -> Printf.sprintf "%s: %s" iname (string_of_tstype t)
