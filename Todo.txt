@@ -1,0 +1,14 @@
+* Separate concrete from abstract syntax. Example: state variables are just identifiers
+  in concrete syntax, but can be elaborated to a separate state var node in abstract syntax.
+  This gives more semantic information to identifiers so that all usages of them are aware if
+  they're a state variable or not.
+
+* Documentation. What builtins are available and what the schema is of the syntax type hierarchy
+  is totally opaque right now. 
+
+* Type system. The foundation is there syntactically, but no actual type checking is performed
+  right now.  
+
+* VSCode plugin.
+
+* Get back to experimenting with implementation derivation via effects.
