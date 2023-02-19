@@ -35,7 +35,7 @@ let compile lexbuf impl_out cert_out =
   let evaled_impl = Effects.apply "impl" effect_env interp_env (Core.TS(evaled_impl)) |> Option.get in
   (* Printf.printf "|--- Impl AST after ME ---|: %s\n|--- end impl ---|\n\n" (Util.string_of_expr evaled_impl); *)
 
-  let impl_str = Codegen.string_of_expr evaled_impl in
+  let impl_str = Codegen.string_of_expr evaled_impl [] in
   File.output_str impl_out impl_str;
 
   (* Macroexpand and output auxiliary files *)

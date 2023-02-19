@@ -26,22 +26,35 @@ let string_of_symbol_import si = match si.alias with
   | Some(a) -> Printf.sprintf "%s as %s" si.symbol a
   | None -> si.symbol
 
+(* attrs are state variables of current process context *)
+let string_of_iden i attrs =
+  match List.find_opt (fun attr -> attr.name = i) attrs with
+  | Some(_) -> Printf.sprintf "this.%s" i
+  | None -> i
+
   (* Only supporting codegen to TS right now *)
-let rec string_of_expr e = match e with
-  | Let(name, body) -> Printf.sprintf "let %s = %s;" name (string_of_expr body)
+let rec string_of_expr e attrs = match e with
+  | Let(name, body) -> Printf.sprintf "let %s = %s;" name (string_of_expr body attrs)
   | Assignment(name, value) ->
-    Printf.sprintf "this.%s = %s" name (string_of_expr value)
+    Printf.sprintf "this.%s = %s" name (string_of_expr value attrs)
   | Iden(i, too) -> (match too with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
-    | None -> i)
+    | None -> string_of_iden i attrs)
   | Num(n) -> string_of_int n
-  | Bool(b) -> if b then "true" else "false"
+  | Bool(b) -> string_of_bool b
   | If(e1, e2, e3) -> (match e3 with
-    | Some(elseE) -> Printf.sprintf "if  %s:\n %s\nelse:\n  %send" (string_of_expr e1) (string_of_expr e2) (string_of_expr elseE)
-    | None -> Printf.sprintf "if %s:\n %s\nend" (string_of_expr e1) (string_of_expr e2))
-  | StmtList(ss) -> string_of_stmt_list ss
-  | Process(n, defs) -> Printf.sprintf "export class %s {\n %s\n  %s\n}" n (process_constructor defs) (String.concat "\n" (List.map string_of_proc_def defs))
-  | Entity(n, attrs) ->  Printf.sprintf "export interface %s {\n\t%s\n}" n (print_list "\n" (List.map string_of_typed_attr attrs))
+    | Some(elseE) -> Printf.sprintf "if  %s:\n %s\nelse:\n  %send" (string_of_expr e1 attrs) (string_of_expr e2 attrs) (string_of_expr elseE attrs)
+    | None -> Printf.sprintf "if %s:\n %s\nend" (string_of_expr e1 attrs) (string_of_expr e2 attrs))
+  | StmtList(ss) -> string_of_stmt_list ss attrs
+  | Process(n, defs) -> 
+    (* This is a little more complicated than necessary because state variables are compiled to member variables
+       and there's no way to know if an identifier is a state variable without referencing the lsit of process 
+       variabless. Separating concrete from abstract syntax would improve this. *)
+    let attrs = Process.filter_attrs defs in
+
+    Printf.sprintf "export class %s {\n %s\n  %s\n}" n (process_constructor defs)
+      (String.concat "\n" (List.map (fun d -> string_of_proc_def d attrs) defs))
+  | Entity(n, eattrs) ->  Printf.sprintf "export interface %s {\n\t%s\n}" n (print_list "\n" (List.map string_of_typed_attr eattrs))
   | Variant(n, vs) ->
     Printf.sprintf "export type %s = %s\n\n%s"
       n
@@ -49,32 +62,37 @@ let rec string_of_expr e = match e with
       (String.concat "\n" (List.map string_of_variant_tag vs))
   | Call(name, args) ->
     if List.exists (fun n -> n = name) Interpreter.builtin_funcs then
-      string_of_builtin name args
+      string_of_builtin name args attrs
     else 
-      name ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
-  | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "function %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody)
-  | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e) i
+      name ^ "(" ^ String.concat ", " (List.map (fun a -> string_of_expr a attrs) args) ^ ")"
+  | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "function %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody attrs)
+  | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e attrs) i
   | String(s) -> Printf.sprintf "\"%s\"" s
   | TS(tses) -> String.concat "\n\n" (List.map string_of_ts_expr tses)
   | _ -> failwith (Printf.sprintf "Unable to generate code for expr: %s" (Util.string_of_expr e))
-and string_of_proc_def def = match def with
+and string_of_proc_def def attrs = match def with
 | ProcAttr({ name; typ }) -> Printf.sprintf "%s: %s" name (string_of_type typ)
-| ProcAction({ aname; body; args}) -> Printf.sprintf "%s(%s) {\n\t%s\n}" aname (String.concat ", " (List.map string_of_typed_attr args)) (String.concat "\n" (List.map string_of_expr body))
-and string_of_stmt_list sl =
+| ProcAction({ aname; body; args}) -> 
+    Printf.sprintf "%s(%s) {\n\t%s\n}" 
+      aname
+      (String.concat ", " (List.map string_of_typed_attr args))
+      (String.concat "\n" (List.map (fun e -> string_of_expr e attrs) body))
+
+and string_of_stmt_list sl attrs =
   let rev_list = List.rev sl in
   let ret_stmt = List.hd rev_list in 
   let rest = List.tl rev_list in
-  let ret_str = Printf.sprintf "return %s;" (string_of_expr ret_stmt) in
-  let rest_strs = List.map string_of_expr rest in
+  let ret_str = Printf.sprintf "return %s;" (string_of_expr ret_stmt attrs) in
+  let rest_strs = List.map (fun e -> string_of_expr e attrs) rest in
   let all_strs = ret_str :: rest_strs in
 
   String.concat "\n" (List.rev all_strs)
 
-and string_of_builtin n args =
+and string_of_builtin n args attrs =
   match n with
   | "append" -> 
-    let arr = List.nth args 0 |> string_of_expr in
-    let elem = List.nth args 1 |> string_of_expr in
+    let arr = string_of_expr (List.nth args 0) attrs in
+    let elem = string_of_expr (List.nth args 1) attrs in
 
     Printf.sprintf {|
     (() => {
@@ -85,8 +103,8 @@ and string_of_builtin n args =
     })();
     |} arr elem
   | "delete" ->
-    let arr = List.nth args 0 |> string_of_expr in
-    let elem = List.nth args 1 |> string_of_expr in
+    let arr = string_of_expr (List.nth args 0) attrs in
+    let elem = string_of_expr (List.nth args 1) attrs in
 
     Printf.sprintf {|
     %s.filter((e) => e.id === %s);
@@ -132,7 +150,8 @@ and string_of_ts_expr e = match e with
   | TSObject(props) -> Printf.sprintf "{%s}" (String.concat ",\n" (List.map string_of_obj_prop props))
   | TSNew(c, args) -> Printf.sprintf "new %s(%s)" c (String.concat ", " (List.map string_of_ts_expr args))
   | SLSpliceExpr(_) -> "SLSpliceExpr"
-  | SLExpr(e) -> string_of_expr e
+  (* Process context gets broken here - might be ok *)
+  | SLExpr(e) -> string_of_expr e []
 
 and string_of_obj_prop p = Printf.sprintf "%s: %s" p.oname (string_of_ts_expr p.oval)
 
@@ -174,7 +193,7 @@ and process_constructor defs =
 
   Printf.sprintf "constructor(%s) {\n  %s\n}" ctor_args ctor_body  
 
-let string_of_model model_ast = String.concat "\n\n" (List.map string_of_expr model_ast)
+let string_of_model model_ast = String.concat "\n\n" (List.map (fun e -> string_of_expr e []) model_ast)
 
 let rec tstype_of_sltype typ = match typ with
   | Some(t) -> (match t with

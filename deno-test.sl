@@ -123,6 +123,12 @@ def toSchemaImplImport(schema: Schema):
 end
 
 typescript:
+  {{ tsClosure([
+    tsObjectPat([
+      tsObjectPatProp("a", "b")
+    ], tsType("Somethin"))
+  ], [], false) }}
+
   {{ tsAliasImport(
     [tsSymbolImport("one", "two")], "file") }}
 
