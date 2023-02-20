@@ -46,7 +46,8 @@ let collect_attrs attrs def = match def with
 
 let filter_attrs (defs: proc_def list): typed_attr list  = List.fold_left collect_attrs [] defs
 
-let rec collect_state_vars state_vars e (proc_attrs: typed_attr list): typed_attr list = match e with
+let rec collect_state_vars state_vars e (proc_attrs: typed_attr list): typed_attr list =
+  match e with
   | Let(_, value) -> state_vars @ collect_state_vars [] value proc_attrs
   | Assignment(var, e) ->
     (* Failure to find attr here means assignment is on a non-state variable *)
@@ -80,10 +81,14 @@ let rec collect_state_vars state_vars e (proc_attrs: typed_attr list): typed_att
       args @ state_vars
 
   | Access(l, r) ->
-    let proc_attr = List.find (fun attr -> Core.(attr.name = r)) proc_attrs in
-    let l_state_vars = collect_state_vars [] l proc_attrs in
+    let proc_attr = List.find_opt (fun attr -> Core.(attr.name = r)) proc_attrs in
 
-    {name=r; typ=proc_attr.typ} :: state_vars @ l_state_vars
+    (match proc_attr with
+    | Some(pa) ->
+      let l_state_vars = collect_state_vars [] l proc_attrs in
+
+      {name=r; typ=pa.typ} :: state_vars @ l_state_vars
+    | None -> state_vars)
   | Case(e, cases) ->
     collect_state_vars [] e proc_attrs @
     (List.concat_map (fun c -> collect_state_vars [] c.value proc_attrs) cases) @

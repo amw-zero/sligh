@@ -17,20 +17,20 @@ let output_str file_name strg =
   Printf.fprintf open_chan "%s\n" strg;
   close_out open_chan
 
-let output_tsexpr_list file_name tss =
-  output_str file_name (String.concat "\n\n" (List.map Codegen.string_of_ts_expr tss))
+let output_tsexpr_list file_name env tss =
+  output_str file_name (String.concat "\n\n" (List.map (fun t -> Codegen.string_of_ts_expr t env) tss))
 
-let output_tsexpr file_name (e: Interpreter.value) =
+let output_tsexpr file_name (e: Interpreter.value) env =
   match e with
-  | VTS(tss) -> output_tsexpr_list file_name tss
+  | VTS(tss) -> output_tsexpr_list file_name env tss
   | _ -> print_endline "Unable to generate code for non-TS expr"
 
-let output_file file_name file_body interp_env effect_env =
+let output_file file_name file_body interp_env effect_env env =
   let file_expr = Interpreter.evaln file_body interp_env |> Interpreter.val_as_tsexprs in
   let file_expr = Effects.apply file_name effect_env interp_env (Core.TS(file_expr)) |> Option.get in
-  let file_str = Codegen.string_of_expr file_expr [] in
+  let file_str = Codegen.string_of_expr file_expr [] env in
 
   output_str file_name file_str
 
-let output fs interp_env effect_env =
-  Files.iter (fun file_name file_body -> output_file file_name file_body interp_env effect_env) fs
+let output fs interp_env effect_env env =
+  Files.iter (fun file_name file_body -> output_file file_name file_body interp_env effect_env env) fs

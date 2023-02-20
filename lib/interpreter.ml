@@ -179,6 +179,16 @@ let val_as_tstype v = match v with
 | VTSType(tst)-> tst
 | _ -> failwith (Printf.sprintf "Expected TSType: %s" (string_of_value v))
 
+let val_as_instance v = match v with
+| VInstance(inst) -> inst
+| _ -> failwith (Printf.sprintf "Expected instance, but %s is not one" (string_of_value v))
+
+let val_as_schema v = match v with
+| VType(tv) -> (match tv with
+  | VSchema(s) -> s
+  | _ -> failwith "Expected schema")
+| _ -> failwith "Expected schema"
+
 type interp_env = value Env.t
 
 type builtin = {
@@ -444,6 +454,14 @@ let all_builtins = [
   }};
   {bname=builtin_tssymbol_import_name; bdef=builtin_tssymbol_import_def};
   {bname=builtin_tsstring_name; bdef=builtin_tsstring_def};
+
+  (* Create instances *)
+  {bname="new"; bdef={
+    fdname="new";
+    (* Arity checks will be ignored to support creating different schemas *)
+    fdargs=[{name="args";typ=STString};];
+    fdbody=[];
+  }};
 ]
 
 let new_environment_with_builtins () =
@@ -451,10 +469,6 @@ let new_environment_with_builtins () =
   List.fold_left (fun env b -> Env.add b.bname (VFunc(b.bdef)) env) env all_builtins
 
 let builtin_funcs = List.map (fun b -> b.bname) all_builtins
-
-let val_as_instance v = match v with  
-  | VInstance(inst) -> inst
-  | _ -> failwith (Printf.sprintf "Expected instance, but %s is not one" (string_of_value v))
 
 let find_attr attr_name instance = match List.find_opt (fun attr -> attr.iname = attr_name) instance with
   | Some(attr) -> Some(attr.ivalue)
@@ -500,17 +514,27 @@ let add_process_to_env name (attrs: typed_attr list) (actions: Process.action li
 
   Env.add name (VInstance(instance_attrs)) env
 
-let add_schema_to_env name (attrs: typed_attr list) (env: interp_env) =
+let schema_type_instance name attrs env =
   let schema_attrs = List.map (fun attr -> typed_attr_instance attr env) attrs in
   let schema_types = List.map (fun attr -> {aname=attr.name; typ=type_val_of_sligh_type attr.typ env}) attrs in
 
-  let instance_attrs = [
+  VInstance([
     {iname="name"; ivalue=VString(name)};
     {iname="attributes"; ivalue=VArray(schema_attrs)};
     {iname="type"; ivalue=VType(VSchema({ sname=name; attrs=schema_types}))}
-  ] in
+  ])
 
-  Env.add name (VInstance(instance_attrs)) env
+let add_schema_to_env name (attrs: typed_attr list) (env: interp_env) =
+  Env.add name (schema_type_instance name attrs env) env
+
+let schema_instance (schema: schema) values =
+  let attr_names = List.map (fun a -> a.aname) schema.attrs in
+  let bound_pairs = List.combine attr_names values in
+  let instance_attrs = List.map (fun (attr, v) -> {
+    iname=attr; ivalue=v
+  }) bound_pairs in
+
+  VInstance(instance_attrs)
 
 let variant_case_instance vt env =
   VInstance([
@@ -642,6 +666,9 @@ let bind_pattern_values v pattern env = match pattern with
       | VTArray(_) -> env)
     | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v)))
 
+let get_schema value =
+  value |> val_as_instance |> find_attr "type" |> Option.get |> val_as_schema
+
   (* Evaluate a Sligh expression *)
 let rec evaln es env = eval_and_return es env
 and eval (e: expr) (env: interp_env): (value * interp_env) =
@@ -660,7 +687,7 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
       | VFunc({fdargs;fdbody;_}) -> (fdargs, fdbody)
       | _ -> failwith "Attempted to call non function definition")
       with Not_found -> failwith (Printf.sprintf "Couldn't find function def to call: %s" name) in
-    if List.length args != List.length arg_sigs then failwith (Printf.sprintf "Bad arity at func call: %s" name) else ();
+    if name <> "new" && List.length args != List.length arg_sigs then failwith (Printf.sprintf "Bad arity at func call: %s" name) else ();
     
     let reduced_args = List.map
       (fun a ->  eval a env |> fst)
@@ -719,6 +746,10 @@ and eval_and_return expr_list env =
 
 and eval_builtin_func name args env =
   match name with
+  | "new" ->
+    let schema = get_schema (List.nth args 0) in
+
+    (schema_instance schema args, env)
   | "map" -> 
     let lst_arg = List.nth args 0 in
     let map_func_arg = List.nth args 1 in 

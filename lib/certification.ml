@@ -1,5 +1,5 @@
 open Core
-open Process
+(* open Process *)
 (* let generate model_proc model_file impl_file = *)
 
 (* Todo:
@@ -11,7 +11,7 @@ open Process
 
 *)
 
-let generate _ _ _ cert_out interp_env =
+let generate _ _ _ cert_out interp_env env =
   (* Definitions are separated because they can't be macro-expanded *)
 
   (* The structure of this test creates implicit dependencies that the 
@@ -58,7 +58,7 @@ let generate _ _ _ cert_out interp_env =
 
   let ts = Interpreter.evaln props_stmts interp_env in
   match ts with
-  | VTS(tss) -> File.output_tsexpr_list cert_out tss
+  | VTS(tss) -> File.output_tsexpr_list cert_out env tss
   | _ -> print_endline "Not TS"
 
 let gen_type_val attr = 
@@ -70,7 +70,7 @@ let action_test act =
 
   TSMethodCall("Deno", "test", [TSClosure(test_args, test_body, true)])
 
-let generate_spec _ model_proc _ cert_out _ =
+let generate_spec _ _ _ _ _ =
   (* Definitions are separated because they can't be macro-expanded *)
   (*let cert_props_defs = {|
     def toName(attr: Attribute):
@@ -127,7 +127,7 @@ let generate_spec _ model_proc _ cert_out _ =
   end
 end *)
 
-  let test_ts = List.map action_test (List.map (fun a -> a.action_ast) model_proc.actions) in
+  (* let test_ts = List.map action_test (List.map (fun a -> a.action_ast) model_proc.actions) in *)
 
   (* 
     For each action:
@@ -137,5 +137,6 @@ end *)
       * Invoke action on model and impl
       * Cmopare results with refinement mapping
   *)
+  ()
 
-  File.output_tsexpr_list cert_out test_ts
+  (* File.output_tsexpr_list cert_out env test_ts *)
