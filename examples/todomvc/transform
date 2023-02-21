@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+sligh todomvc.sl
+sligh todomvc.sl -transform refinetest.sl -out refine
