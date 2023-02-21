@@ -43,7 +43,20 @@ let rec string_of_expr e attrs env = match e with
   | Num(n) -> string_of_int n
   | Bool(b) -> string_of_bool b
   | If(e1, e2, e3) -> (match e3 with
-    | Some(elseE) -> Printf.sprintf "if  %s:\n %s\nelse:\n  %send" (string_of_expr e1 attrs env) (string_of_expr e2 attrs env) (string_of_expr elseE attrs env)
+    | Some(else_e) ->
+      let cond = string_of_expr e1 attrs env in
+      let then_str = string_of_expr e2 attrs env in
+      let else_str = string_of_expr else_e attrs env in
+
+      Printf.sprintf {|
+      (() => {
+        if (%s) {
+          return %s
+        } else {
+          return %s
+        }
+      })()
+      |} cond then_str else_str
     | None -> Printf.sprintf "if %s:\n %s\nend" (string_of_expr e1 attrs env) (string_of_expr e2 attrs env))
   | StmtList(ss) -> string_of_stmt_list ss attrs env
   | Process(n, defs) -> 
@@ -65,7 +78,12 @@ let rec string_of_expr e attrs env = match e with
       string_of_builtin name args attrs env
     else 
       name ^ "(" ^ String.concat ", " (List.map (fun a -> string_of_expr a attrs env) args) ^ ")"
-  | FuncDef({fdname; fdargs; fdbody}) -> Printf.sprintf "function %s(%s):\n\t%s\nend\n" fdname (String.concat ", " (List.map string_of_typed_attr fdargs)) (string_of_stmt_list fdbody attrs env)
+  | FuncDef({fdname; fdargs; fdbody}) -> 
+    Printf.sprintf "function %s(%s) {\n\t%s\n}\n"
+      fdname
+      (String.concat ", "
+        (List.map string_of_typed_attr fdargs))
+      (string_of_stmt_list fdbody attrs env)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e attrs env) i
   | String(s) -> Printf.sprintf "\"%s\"" s
   | TS(tses) -> String.concat "\n\n" (List.map (fun e -> string_of_ts_expr e env) tses)
@@ -86,7 +104,7 @@ and string_of_stmt_list sl attrs env =
   let rev_list = List.rev sl in
   let ret_stmt = List.hd rev_list in 
   let rest = List.tl rev_list in
-  let ret_str = Printf.sprintf "return %s;" (string_of_expr ret_stmt attrs env) in
+  let ret_str = Printf.sprintf "let ret = %s; return ret;" (string_of_expr ret_stmt attrs env) in
   let rest_strs = List.map (fun e -> string_of_expr e attrs env) rest in
   let all_strs = ret_str :: rest_strs in
 
@@ -106,12 +124,6 @@ and string_of_builtin n args attrs (env: Env.env) =
           (fun (prop_name, prop_value) ->
             Printf.sprintf "%s: %s" prop_name (string_of_expr prop_value attrs env))
           bound_pairs))
-
-    (* .push({
-          id: id,
-          name: crt.name,
-          amount: crt.amount
-       }) *)
   | "append" -> 
     let arr = string_of_expr (List.nth args 0) attrs env in
     let elem = string_of_expr (List.nth args 1) attrs env in
@@ -129,8 +141,22 @@ and string_of_builtin n args attrs (env: Env.env) =
     let elem = string_of_expr (List.nth args 1) attrs env in
 
     Printf.sprintf {|
-    %s.filter((e) => e.id === %s);
+    %s.filter((e) => e.id === %s)
     |} arr elem
+  | "map" ->
+    let arr = string_of_expr (List.nth args 0) attrs env in
+    let map_func = string_of_expr (List.nth args 1) attrs env in
+
+    Printf.sprintf {|
+    %s.map((a) => %s(a))
+    |} arr map_func
+  | "equals" ->
+    let larg = string_of_expr (List.nth args 0) attrs env in
+    let rarg = string_of_expr (List.nth args 1) attrs env in
+
+    Printf.sprintf {|
+    %s === %s
+    |} larg rarg
   | _ -> failwith (Printf.sprintf "Attempted to compile unknown builtin func: %s" n)  
 
 and string_of_ts_expr e env = match e with
@@ -163,7 +189,7 @@ and string_of_ts_expr e env = match e with
   | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
   | TSClosure(args, body, is_async) -> if is_async then
     Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map (fun e -> string_of_ts_expr e env) body))
-  else 
+  else
     Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map (fun e -> string_of_ts_expr e env) body))
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e env)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e env)

@@ -407,6 +407,11 @@ let all_builtins = [
     fdargs=[{name="num";typ=STString}; {name="gt";typ=STString}];
     fdbody=[];
   }};
+  {bname="equals"; bdef={
+    fdname="equals";
+    fdargs=[{name="num";typ=STString}; {name="e";typ=STString}];
+    fdbody=[];
+  }};
   (* TS Syntax Methods *)
   {bname=builtin_tsclassprop_name; bdef=builtin_tsclassprop_def};
   {bname=builtin_tsclass_name; bdef=builtin_tsclassprop_def};
@@ -725,6 +730,7 @@ and eval (e: expr) (env: interp_env): (value * interp_env) =
     let evaled_tses = List.concat_map (fun tse -> eval_ts tse env |> fst) tses in
     (VTS(evaled_tses), env)
   | FuncDef(fd) ->
+    (* Wrap body in stmt list like ProcAction, along with instance attrs *)
     (VVoid, Env.add fd.fdname (VFunc(fd)) env)
   | Process(d, defs) ->
       let attrs: typed_attr list = Process.filter_attrs defs in
@@ -819,6 +825,11 @@ and eval_builtin_func name args env =
     let rarg = List.nth args 1 |> val_as_int in
   
     (VBool(larg > rarg), env)
+  | "equals" ->
+    let larg = List.nth args 0 |> val_as_int in
+    let rarg = List.nth args 1 |> val_as_int in
+
+    (VBool(larg = rarg), env)
   | "tsClass" ->
     let name_arg = List.nth args 0 in
     let name_arg = match name_arg with

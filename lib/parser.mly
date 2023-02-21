@@ -136,11 +136,11 @@ case_branch:
 
 proc_def:
   | ta = typed_attr                               { ProcAttr(ta) }
-  | DEF act = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON es = expression* END
+  | DEF act = IDEN LPAREN args = separated_list(COMMA, typed_attr) RPAREN COLON ss = statement* END
                                                   { ProcAction({
                                                       aname=act;
                                                       args;
-                                                      body=es
+                                                      body=ss
                                                     }) }
 typed_attr:
   | attr = IDEN COLON typ = IDEN                  { {name=attr; typ=type_of_string typ} }
