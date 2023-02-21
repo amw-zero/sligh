@@ -2,6 +2,7 @@ type sligh_type =
   | STInt
   | STString
   | STDecimal
+  | STBool
   | STCustom of string
   | STGeneric of string * sligh_type list
   | STVariant of string * variant_tag list
@@ -160,6 +161,7 @@ and tsparam =
 and ts_type = 
   | TSTNumber
   | TSTString
+  | TSTBool
   | TSTCustom of string
   | TSTGeneric of string * ts_type list
 

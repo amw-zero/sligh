@@ -11,6 +11,7 @@ let rec string_of_type t = match t with
   | STCustom s -> s
   | STString -> "string"
   | STDecimal -> "number"
+  | STBool -> "boolean"
   | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
   | STGeneric(n, ts) -> Printf.sprintf "%s<%s>" (string_of_generic_type n) (String.concat ", " (List.map string_of_type ts))
 
@@ -220,6 +221,7 @@ and string_of_tstype tst = match tst with
   | TSTNumber -> "number"
   | TSTCustom c -> c
   | TSTString -> "string"
+  | TSTBool -> "boolean"
   | TSTGeneric(n, types) -> Printf.sprintf "%s<%s>"
     n
     (String.concat ", " (List.map string_of_tstype types))
@@ -249,6 +251,7 @@ let rec tstype_of_sltype typ = match typ with
     | STString -> Some(TSTString)
     | STDecimal -> Some(TSTNumber)
     | STCustom(c) -> Some(TSTCustom(c))
+    | STBool -> Some(TSTBool)
     | STVariant(n, _) -> Some(TSTCustom(n))
     | STGeneric(n, types) -> Some(TSTGeneric(n, List.filter_map (fun t -> tstype_of_sltype (Some(t))) types)))
   | None -> None

@@ -14,6 +14,7 @@ type primitive_typ =
   | PTNum
   | PTString
   | PTDecimal
+  | PTBool
 
 type value =
   | VNum of int
@@ -491,6 +492,7 @@ let rec type_val_of_sligh_type st env =
   | STString -> VPrimitive(PTString)
   | STDecimal -> VPrimitive(PTDecimal)
   | STGeneric(n, types) -> VTGeneric(n, List.map (fun t -> type_val_of_sligh_type t env) types)
+  | STBool -> VPrimitive(PTBool)
 
 let typed_attr_instance attr env = VInstance([
   { iname="name"; ivalue=VString(attr.name) };
@@ -607,7 +609,8 @@ let ts_type_of_type_val tv = match tv with
   | VPrimitive(pt) -> (match pt with
     | PTNum -> TSTNumber
     | PTString -> TSTString
-    | PTDecimal -> TSTNumber)
+    | PTDecimal -> TSTNumber
+    | PTBool -> TSTBool)
   | _ -> failwith (Printf.sprintf "Unable to convert type val to TS Type: %s" (string_of_type_val tv))
 
 let check_branch_match v pattern = match pattern with
@@ -620,7 +623,8 @@ let check_branch_match v pattern = match pattern with
       | VPrimitive(pt) -> (match pt with
         | PTNum -> "Int" = vp.vname
         | PTString -> "String" = vp.vname
-        | PTDecimal -> "Decimal" = vp.vname)
+        | PTDecimal -> "Decimal" = vp.vname
+        | PTBool -> "Bool" = vp.vname)
       | VTVariant(_) -> "Variant" = vp.vname
       | VTGeneric(_, _) -> "Generic" = vp.vname
       | _ -> failwith (Printf.sprintf "Not supporting pattern match for type: %s" (string_of_type_val tv)))
@@ -667,6 +671,7 @@ let bind_pattern_values v pattern env = match pattern with
         | PTNum -> env
         | PTString -> env
         | PTDecimal -> env
+        | PTBool -> env
       )
       | VTArray(_) -> env)
     | _ -> failwith (Printf.sprintf "Not supporting pattern match for value: %s" (string_of_value v)))
@@ -1072,6 +1077,7 @@ let type_of_string s = match s with
   | "Int" -> STInt
   | "String" -> STString
   | "Decimal" -> STDecimal
+  | "Bool" -> STBool
   | _ -> STCustom(s)
 
 let tstype_of_string s = match s with

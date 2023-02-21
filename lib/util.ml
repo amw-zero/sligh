@@ -7,6 +7,7 @@ let rec string_of_type t = match t with
   | STCustom s -> s
   | STString -> "String"
   | STDecimal -> "Decimal"
+  | STBool -> "Bool"
   | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
   | STGeneric(g, ts) -> Printf.sprintf "%s(%s)" g (String.concat ", " (List.map string_of_type ts))
 
@@ -122,6 +123,7 @@ and string_of_tstype tst = match tst with
   | TSTNumber -> "number"
   | TSTCustom c -> c
   | TSTString -> "string"
+  | TSTBool -> "boolean"
   | TSTGeneric(n, types) -> Printf.sprintf "%s<%s>"
     n
     (String.concat ", " (List.map string_of_tstype types))
