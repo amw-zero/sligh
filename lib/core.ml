@@ -124,6 +124,7 @@ and tsexpr =
 | TSNew of string * tsexpr list
 | TSAwait of tsexpr
 | TSExport of tsexpr
+| TSCast of tsexpr * string
 | TSAliasImport of tssymbol_import list * string
 | TSDefaultImport of string * string
 | SLExpr of expr

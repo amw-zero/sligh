@@ -188,6 +188,7 @@ and string_of_ts_expr e env = match e with
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
   | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
+  | TSCast(e, cast) -> Printf.sprintf "%s as %s" (string_of_ts_expr e env) cast
   | TSClosure(args, body, is_async) -> if is_async then
     Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map (fun e -> string_of_ts_expr e env) body))
   else

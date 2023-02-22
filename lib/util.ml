@@ -70,6 +70,7 @@ and string_of_ts_expr e = match e with
   | TSFuncCall(f, args) -> Printf.sprintf "%s(%s)" f (List.map string_of_ts_expr args |> print_list "\n")
   | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map string_of_ts_expr es))
   | TSReturn(e) -> Printf.sprintf "return %s" (string_of_ts_expr e)
+  | TSCast(e, cast) -> Printf.sprintf "%s as %s" (string_of_ts_expr e) cast
   | TSString(s) -> s
   | TSIf(e1, e2, e3) -> (match e3 with
     | Some(elseE) -> Printf.sprintf "if (%s) {\n %s}\nelse {\n%s\n}" (string_of_ts_expr e1) (string_of_ts_expr e2) (string_of_ts_expr elseE)

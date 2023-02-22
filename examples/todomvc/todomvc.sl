@@ -17,7 +17,7 @@ process TodoMVC:
 
   def CompleteTodo(id: Int):
     def markComplete(t: Todo):
-      if t.id.equals(id):
+      if t.id.equalsInt(id):
         Todo.new(t.id, t.name, true)
       else:
         t
@@ -29,7 +29,7 @@ process TodoMVC:
 
   def UncompleteTodo(id: Int):
     def markUncomplete(t: Todo):
-      if t.id.equals(id):
+      if t.id.equalsInt(id):
         Todo.new(t.id, t.name, true)
       else:
         t

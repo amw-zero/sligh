@@ -190,6 +190,11 @@ let val_as_schema v = match v with
   | _ -> failwith "Expected schema")
 | _ -> failwith "Expected schema"
 
+let val_as_func_def v = match v with
+| VFunc(fd) -> fd
+| _ -> failwith (Printf.sprintf "Expected VFunc, but %s is not one" (string_of_value v))
+
+
 type interp_env = value Env.t
 
 type builtin = {
@@ -408,9 +413,24 @@ let all_builtins = [
     fdargs=[{name="num";typ=STString}; {name="gt";typ=STString}];
     fdbody=[];
   }};
-  {bname="equals"; bdef={
-    fdname="equals";
+  {bname="equalsInt"; bdef={
+    fdname="equalsInt";
     fdargs=[{name="num";typ=STString}; {name="e";typ=STString}];
+    fdbody=[];
+  }};
+  {bname="equalsStr"; bdef={
+    fdname="equalsStr";
+    fdargs=[{name="s1";typ=STString}; {name="s2";typ=STString}];
+    fdbody=[];
+  }};
+  {bname="and"; bdef={
+    fdname="and";
+    fdargs=[{name="b1";typ=STString}; {name="b2";typ=STString}];
+    fdbody=[];
+  }};
+  {bname="filter"; bdef={
+    fdname="filter";
+    fdargs=[{name="fn";typ=STString}; {name="lst";typ=STString}];
     fdbody=[];
   }};
   (* TS Syntax Methods *)
@@ -456,6 +476,11 @@ let all_builtins = [
   {bname="tsReturn"; bdef={
     fdname="tsReturn";
     fdargs=[{name="expr";typ=STString};];
+    fdbody=[];
+  }};
+  {bname="tsCast"; bdef={
+    fdname="tsCast";
+    fdargs=[{name="expr";typ=STString}; {name="cast";typ=STString};];
     fdbody=[];
   }};
   {bname=builtin_tssymbol_import_name; bdef=builtin_tssymbol_import_def};
@@ -640,7 +665,8 @@ let bind_pattern_values v pattern env = match pattern with
           | PBAny -> None in
 
         (match var_name with
-        | Some(n) -> Env.add n (Env.find s.sname env) env
+        | Some(n) ->
+          Env.add n (Env.find s.sname env) env
         | None -> env)
       | VTVariant({vvname; _}) ->
         let variant = Env.find vvname env |> val_as_instance in
@@ -781,6 +807,19 @@ and eval_builtin_func name args env =
     ) lst in
 
     (VArray(result), env)
+
+  | "filter" -> 
+    let lst = List.nth args 0 |> val_as_val_list in
+    let list_func = List.nth args 1 |> val_as_func_def in 
+
+    let result = List.filter (fun e ->
+      let arg_pairs: (typed_attr * value) list = List.combine list_func.fdargs [e] in
+      let call_env = List.fold_left build_call_env env arg_pairs in
+
+      eval_and_return list_func.fdbody call_env |> val_as_bool
+    ) lst in
+
+    (VArray(result), env)    
   | "concat" ->
     let lst1_arg = List.nth args 0 in
     let lst2_arg = List.nth args 1 in 
@@ -830,11 +869,22 @@ and eval_builtin_func name args env =
     let rarg = List.nth args 1 |> val_as_int in
   
     (VBool(larg > rarg), env)
-  | "equals" ->
+  | "equalsInt" ->
     let larg = List.nth args 0 |> val_as_int in
     let rarg = List.nth args 1 |> val_as_int in
 
     (VBool(larg = rarg), env)
+
+  | "equalsStr" ->
+    let larg = List.nth args 0 |> val_as_str in
+    let rarg = List.nth args 1 |> val_as_str in
+
+    (VBool(larg = rarg), env)
+  | "and" ->
+    let larg = List.nth args 0 |> val_as_bool in
+    let rarg = List.nth args 1 |> val_as_bool in
+
+    (VBool(larg && rarg), env)
   | "tsClass" ->
     let name_arg = List.nth args 0 in
     let name_arg = match name_arg with
@@ -977,6 +1027,11 @@ and eval_builtin_func name args env =
     let expr = List.nth args 0 |> val_as_tsexpr in
 
     (VTSExpr(TSReturn(expr)), env)
+  | "tsCast" ->
+    let expr = List.nth args 0 |> val_as_tsexpr in
+    let cast = List.nth args 1 |> val_as_str in
+
+    (VTSExpr(TSCast(expr, cast)), env)
   | "tsExport" ->
     let expr = List.nth args 0 |> val_as_tsexpr in
 
@@ -1035,6 +1090,7 @@ and eval_ts ts_expr env = match ts_expr with
     ([TSIf(e1', e2', None)], env))
 
 | TSReturn(e) -> ([TSReturn(eval_ts e env |> fst |> List.hd)], env)   
+| TSCast(e, cast) -> ([TSCast(eval_ts e env |> fst |> List.hd, cast)], env)
 
 (* These evalulate to themselves because they have no recursive nodes, i.e. are terminal *)
 | TSIden _ -> ([ts_expr], env)
