@@ -81,8 +81,11 @@ let action_type action =
     let action_name = action.action_ast.aname in
     let action_type_name = Printf.sprintf "%sType" action_name in
     let state_vars = List.map to_interface_property action.state_vars in
+    let args = List.map to_interface_property action.action_ast.args in
 
-    TSInterface(action_type_name, state_vars)
+    let properties = List.concat [state_vars; args] in
+
+    TSInterface(action_type_name, properties)
 
 let generate_spec _ model_proc _ cert_out env =
   let action_types = List.map action_type model_proc.actions in

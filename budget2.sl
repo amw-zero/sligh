@@ -25,7 +25,7 @@ process Budget:
   recurringTransactions: Set(RecurringTransaction)
   scheduledTransactions: Set(ScheduledTransaction)
 
-  def AddRecurringTransaction(crt: RecurringTransaction, id: Int):
+  def AddRecurringTransaction(crt: CreateRecurringTransaction, id: Int):
     recurringTransactions := recurringTransactions.append(RecurringTransaction.new(
       id, crt.name, crt.amount, crt.rule
     ))
