@@ -1,3 +1,19 @@
+# Setup
+
+```
+brew install ocaml
+brew install opam
+opam install dune
+
+dune build
+```
+
+There are several test applications, for example `./gendeno` creates a Deno test from the `budget2.sl` Budget app model.
+
+# Model-driven Test Generation
+
+
+
 # Model-driven Implementation Derivation and Test Generation
 
 This is a pivot on the idea in [Sligh](https://github.com/amw-zero/sligh). The same general goal applies: the language should enable a [model-driven workflow](https://concerningquality.com/model-based-testing/) that automates as much of the implementation and test generation and possible.

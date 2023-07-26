@@ -1,4 +1,5 @@
 open Core
+open Process
 (* open Process *)
 (* let generate model_proc model_file impl_file = *)
 
@@ -70,64 +71,23 @@ let action_test act =
 
   TSMethodCall("Deno", "test", [TSClosure(test_args, test_body, true)])
 
-let generate_spec _ _ _ _ _ =
-  (* Definitions are separated because they can't be macro-expanded *)
-  (*let cert_props_defs = {|
-    def toName(attr: Attribute):
-      attr.name
-    end
 
-    def toSchemaValueGenerator(schema: Schema):
-      s.attributes.map(toName)
-    end
+let to_interface_property state_var =
+  let tstyp = Codegen.tstype_of_sltype (Some(state_var.typ)) in
 
-    def toStr(attr: TypedAttribute):
-      case attr.type:
-        | Schema(s): toSchemaValueGenerator(s)
-        | String(): "String"
-        | Int(): "Int"
-        | Decimal(): "Decimal"
-      end
-    end
+  Core.({ tsname=state_var.name; tstyp=Option.value tstyp ~default:(TSTCustom("no type")) } )
 
-    def toRefinementProperty(action: Action):
-      action.args.map(toStr)
-    end
-  |} in
+let action_type action =
+    let action_name = action.action_ast.aname in
+    let action_type_name = Printf.sprintf "%sType" action_name in
+    let state_vars = List.map to_interface_property action.state_vars in
 
-  let cert_props = {|
-    typescript:
-      {{* Model.actions.map(toRefinementProperty) }}
-    end
-  |} in
+    TSInterface(action_type_name, state_vars)
 
-  let lexbuf_defs = Lexing.from_string cert_props_defs in
-  let lexbuf_props = Lexing.from_string cert_props in
-
-  let defs_stmts = Parse.parse_with_error lexbuf_defs in
-  let props_stmts = Parse.parse_with_error lexbuf_props in
-  let interp_env = List.fold_left Interpreter.build_env interp_env defs_stmts in
-
-   let ts = Interpreter.evaln props_stmts interp_env in
-  match ts with
-  | VTS(tss) -> File.output_tsexpr_list cert_out tss
-  | _ -> print_endline "Not TS" *)
-
-
-  (* process Budget:
-  recurringTransactions: Set(RecurringTransaction)
-  scheduledTransactions: Set(ScheduledTransaction)
-
-  def AddRecurringTransaction(rt: RecurringTransaction):
-    recurringTransactions := recurringTransactions.append(rt)
-  end
-
-  def ViewRecurringTransactions
-    recurringTransactions
-  end
-end *)
-
+let generate_spec _ model_proc _ cert_out env =
+  let action_types = List.map action_type model_proc.actions in
   (* let test_ts = List.map action_test (List.map (fun a -> a.action_ast) model_proc.actions) in *)
+
 
   (* 
     For each action:
@@ -137,6 +97,5 @@ end *)
       * Invoke action on model and impl
       * Cmopare results with refinement mapping
   *)
-  ()
-
-  (* File.output_tsexpr_list cert_out env test_ts *)
+  
+  File.output_tsexpr_list cert_out env action_types
