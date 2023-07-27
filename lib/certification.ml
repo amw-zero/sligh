@@ -65,6 +65,27 @@ let generate _ _ _ cert_out interp_env env =
 let action_type_name act =
   Printf.sprintf "%sType" act.action_ast.aname  
 
+let gen_type t = match t with
+| STInt -> TSMethodCall("fc", "num", [])
+| STString -> TSMethodCall("fc", "string", [])
+| STDecimal -> TSMethodCall("fc", "decimal", [])
+| STBool -> TSMethodCall("fc", "boolean", [])
+(* Will need to look up schema from Env, and generate object form that *)
+| STCustom(_) -> TSMethodCall("fc", "custom", [])
+| STGeneric(_, _) -> TSMethodCall("fc", "generic", [])
+| STVariant(_, _) -> TSMethodCall("fc", "variant", [])
+
+let to_obj_prop_gen attr = 
+  Core.({ oname=attr.name; oval=gen_type attr.typ})
+
+let state_gen_from_action act =
+  let state_vars = List.map to_obj_prop_gen act.state_vars in
+  let args = List.map to_obj_prop_gen act.action_ast.args in
+
+  let properties = List.concat [state_vars; args] in
+
+  TSObject(properties)
+
 let action_test act = 
   let action_type = action_type_name act in
   let property_body = [TSNum(4)] in
@@ -75,9 +96,10 @@ let action_test act =
       true
     )
   ]) in
+  let state_gen = TSLet("state", state_gen_from_action act) in
   let assertion = TSAwait(TSMethodCall("fc", "assert", [property_check])) in
   let test_name = Printf.sprintf "Test local action refinement: %s" act.action_ast.aname in
-  TSFuncCall("test", [TSString(test_name); TSClosure([], [assertion], true)])
+  TSFuncCall("test", [TSString(test_name); TSClosure([], [state_gen; assertion], true)])
 
 
 let to_interface_property attr =
@@ -91,13 +113,13 @@ let schema_to_interface name attrs =
   TSInterface(name, schema_properties)
 
 let action_type action =
-    let action_type_name = action_type_name action in
-    let state_vars = List.map to_interface_property action.state_vars in
-    let args = List.map to_interface_property action.action_ast.args in
+  let action_type_name = action_type_name action in
+  let state_vars = List.map to_interface_property action.state_vars in
+  let args = List.map to_interface_property action.action_ast.args in
 
-    let properties = List.concat [state_vars; args] in
+  let properties = List.concat [state_vars; args] in
 
-    TSInterface(action_type_name, properties)
+  TSInterface(action_type_name, properties)
 
 let generate_spec _ model_proc _ cert_out env =
   let schema_names = List.map fst (Env.SchemaEnv.bindings Env.(env.schemas)) in
@@ -105,9 +127,7 @@ let generate_spec _ model_proc _ cert_out env =
   let action_types = List.map action_type model_proc.actions in
   let action_tests = List.map action_test model_proc.actions in
   let everything = List.concat [env_types; action_types; action_tests] in
-  (* let test_ts = List.map action_test (List.map (fun a -> a.action_ast) model_proc.actions) in *)
-
-
+ 
   (* 
     For each action:
       * Create Deno.test block
