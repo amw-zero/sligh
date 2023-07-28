@@ -65,18 +65,21 @@ let generate _ _ _ cert_out interp_env env =
 let action_type_name act =
   Printf.sprintf "%sType" act.action_ast.aname  
 
-let gen_type t = match t with
+let rec gen_type env t = match t with
 | STInt -> TSMethodCall("fc", "integer", [])
 | STString -> TSMethodCall("fc", "string", [])
 | STDecimal -> TSMethodCall("fc", "decimal", [])
 | STBool -> TSMethodCall("fc", "boolean", [])
 (* Will need to look up schema from Env, and generate object form that *)
-| STCustom(_) -> TSMethodCall("fc", "custom", [])
+| STCustom(n) -> 
+  let attrs = Env.SchemaEnv.find n env in
+  let properties = List.map (fun a -> to_obj_prop_gen env a) attrs in
+  TSMethodCall("fc", "record", [TSObject(properties)])
 | STGeneric(_, _) -> TSMethodCall("fc", "generic", [])
 | STVariant(_, _) -> TSMethodCall("fc", "variant", [])
 
-let to_obj_prop_gen attr = 
-  Core.({ oname=attr.name; oval=gen_type attr.typ})
+and to_obj_prop_gen env attr = 
+  Core.({ oname=attr.name; oval=gen_type env attr.typ})
 
 let db_type_name act =
   Printf.sprintf "%sDBState" act.action_ast.aname  
@@ -91,12 +94,13 @@ let infra_state act =
 let action_state act =
   List.concat([act.state_vars; act.action_ast.args; infra_state act])
 
-let state_gen_from_action act =
-  let properties = List.map to_obj_prop_gen (action_state act) in
+let state_gen_from_action env act =
+  let act_to_obj_prop = to_obj_prop_gen env in
+  let properties = List.map act_to_obj_prop (action_state act) in
 
   TSMethodCall("fc", "record", [TSObject(properties)])
 
-let action_test act = 
+let action_test env act = 
   let action_type = action_type_name act in
   let property_body = [TSNum(4)] in
   let property_check = TSMethodCall("fc", "asyncProperty", [
@@ -107,7 +111,7 @@ let action_test act =
       true
     )
   ]) in
-  let state_gen = TSLet("state", state_gen_from_action act) in
+  let state_gen = TSLet("state", state_gen_from_action env act) in
   let assertion = TSAwait(TSMethodCall("fc", "assert", [property_check])) in
   let test_name = Printf.sprintf "Test local action refinement: %s" act.action_ast.aname in
   TSFuncCall("test", [TSString(test_name); TSClosure([], [state_gen; assertion], true)])
@@ -133,23 +137,34 @@ let action_type action =
   TSInterface(action_type_name, properties)
 
 let db_type act = 
-  let properties = List.map to_tstyped_attr act.state_vars in
+  act.state_vars  
+
+let db_type_ts act = 
+  let properties = List.map to_tstyped_attr (db_type act) in
 
   TSInterface(db_type_name act, properties)
 
+
+
 let generate_spec _ model_proc _ cert_out env =
+  (* Add DB types to env so they can be generated *)
+  let db_types = List.map (fun a -> Entity(db_type_name a, a.state_vars)) model_proc.actions in
+  let env = List.fold_left (fun e s -> Env.add_stmt_to_env s e) env db_types in
+
+  let to_action_test = action_test Env.(env.schemas) in
   let schema_names = List.map fst (Env.SchemaEnv.bindings Env.(env.schemas)) in
   let env_types = List.map (fun s -> schema_to_interface s (Env.SchemaEnv.find s env.schemas)) schema_names in
   let action_types = List.map action_type model_proc.actions in
-  let action_tests = List.map action_test model_proc.actions in
-  let db_types = List.map db_type model_proc.actions in
+  let action_tests = List.map to_action_test model_proc.actions in
+  let db_type_ts = List.map db_type_ts model_proc.actions in
+
   let imports = {|import { expect, test } from 'vitest';
   import { makeStore } from '../lib/state';
   import { Counter } from '../lib/model';
   import fc from 'fast-check';
   |} in
 
-  let everything = List.concat [env_types; db_types; action_types; action_tests] in
+  let everything = List.concat [env_types; db_type_ts; action_types; action_tests] in
  
   (* 
     For each action:
