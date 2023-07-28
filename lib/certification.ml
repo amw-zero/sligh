@@ -66,7 +66,7 @@ let action_type_name act =
   Printf.sprintf "%sType" act.action_ast.aname  
 
 let gen_type t = match t with
-| STInt -> TSMethodCall("fc", "num", [])
+| STInt -> TSMethodCall("fc", "integer", [])
 | STString -> TSMethodCall("fc", "string", [])
 | STDecimal -> TSMethodCall("fc", "decimal", [])
 | STBool -> TSMethodCall("fc", "boolean", [])
@@ -78,18 +78,29 @@ let gen_type t = match t with
 let to_obj_prop_gen attr = 
   Core.({ oname=attr.name; oval=gen_type attr.typ})
 
+let db_type_name act =
+  Printf.sprintf "%sDBState" act.action_ast.aname  
+
+(* TypedAttrs for infrastructure state, so it can be shared across a few different operations *)
+let infra_state act =  
+  Core.([
+    {name="db"; typ=STCustom(db_type_name act)}
+  ])
+
+  (* The local state for an action *)
+let action_state act =
+  List.concat([act.state_vars; act.action_ast.args; infra_state act])
+
 let state_gen_from_action act =
-  let state_vars = List.map to_obj_prop_gen act.state_vars in
-  let args = List.map to_obj_prop_gen act.action_ast.args in
+  let properties = List.map to_obj_prop_gen (action_state act) in
 
-  let properties = List.concat [state_vars; args] in
-
-  TSObject(properties)
+  TSMethodCall("fc", "record", [TSObject(properties)])
 
 let action_test act = 
   let action_type = action_type_name act in
   let property_body = [TSNum(4)] in
   let property_check = TSMethodCall("fc", "asyncProperty", [
+    TSIden({iname="state"; itype=None});
     TSClosure(
       [TSPTypedAttr({tsname="state"; tstyp=TSTCustom(action_type)})],
       property_body,
@@ -102,31 +113,43 @@ let action_test act =
   TSFuncCall("test", [TSString(test_name); TSClosure([], [state_gen; assertion], true)])
 
 
-let to_interface_property attr =
+let to_tstyped_attr attr =
   let tstyp = Codegen.tstype_of_sltype (Some(attr.typ)) in
 
   Core.({ tsname=attr.name; tstyp=Option.value tstyp ~default:(TSTCustom("no type")) } )
 
 let schema_to_interface name attrs =
-  let schema_properties = List.map to_interface_property attrs in
+  let schema_properties = List.map to_tstyped_attr attrs in
 
   TSInterface(name, schema_properties)
 
+  (* The local state that an action operates on. It consists of the state variables that
+     the action reads and modifies, the action's arguments, as well as implementation-specific variables
+     such as database state and infrastructure errors. *)
 let action_type action =
   let action_type_name = action_type_name action in
-  let state_vars = List.map to_interface_property action.state_vars in
-  let args = List.map to_interface_property action.action_ast.args in
-
-  let properties = List.concat [state_vars; args] in
+  let properties = List.map to_tstyped_attr (action_state action) in
 
   TSInterface(action_type_name, properties)
+
+let db_type act = 
+  let properties = List.map to_tstyped_attr act.state_vars in
+
+  TSInterface(db_type_name act, properties)
 
 let generate_spec _ model_proc _ cert_out env =
   let schema_names = List.map fst (Env.SchemaEnv.bindings Env.(env.schemas)) in
   let env_types = List.map (fun s -> schema_to_interface s (Env.SchemaEnv.find s env.schemas)) schema_names in
   let action_types = List.map action_type model_proc.actions in
   let action_tests = List.map action_test model_proc.actions in
-  let everything = List.concat [env_types; action_types; action_tests] in
+  let db_types = List.map db_type model_proc.actions in
+  let imports = {|import { expect, test } from 'vitest';
+  import { makeStore } from '../lib/state';
+  import { Counter } from '../lib/model';
+  import fc from 'fast-check';
+  |} in
+
+  let everything = List.concat [env_types; db_types; action_types; action_tests] in
  
   (* 
     For each action:
@@ -137,4 +160,4 @@ let generate_spec _ model_proc _ cert_out env =
       * Cmopare results with refinement mapping
   *)
   
-  File.output_tsexpr_list cert_out env everything
+  File.output_tsexpr_list_imports cert_out env everything imports

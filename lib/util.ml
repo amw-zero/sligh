@@ -33,6 +33,7 @@ let rec string_of_expr e = match e with
     | Some(t) -> Printf.sprintf "%s: %s" i (string_of_type t)
     | None -> i)
   | Num(n) -> string_of_int n
+  | Plus(e1, e2) -> Printf.sprintf "%s + %s" (string_of_expr e1) (string_of_expr e2)
   | Bool(b) -> if b then "true" else "false"
   | If(e1, e2, e3) -> (match e3 with
     | Some(elseE) -> Printf.sprintf "if  %s:\n %s\nelse:\n  %send" (string_of_expr e1) (string_of_expr e2) (string_of_expr elseE)

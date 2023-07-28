@@ -1,2 +1,2 @@
 #!/usr/bin/env sh
-dune exec sligh budget2.sl -- -cert cert -include Model
+dune exec sligh counter.sl -- -cert cert -include Model

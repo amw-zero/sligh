@@ -43,6 +43,7 @@ let rec string_of_expr e attrs env = match e with
     | None -> string_of_iden i attrs)
   | Num(n) -> string_of_int n
   | Bool(b) -> string_of_bool b
+  | Plus(e1, e2) -> Printf.sprintf "%s + %s" (string_of_expr e1 attrs env) (string_of_expr e2 attrs env)
   | If(e1, e2, e3) -> (match e3 with
     | Some(else_e) ->
       let cond = string_of_expr e1 attrs env in
@@ -283,6 +284,7 @@ let rec tsexpr_of_expr e = match e with
   (* Not handling these, but should *)
   | FuncDef(_) -> failwith "Not handling FuncDef to TS"
   | Case(_, _) -> failwith "Not handling Case to TS"
+  | Plus(_, _) -> failwith "Not handling Plus to TS"
   
   (* Not handling these, and probably should never *)
   | Effect(_) -> failwith "Not handling Effect to TS"

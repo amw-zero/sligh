@@ -48,6 +48,7 @@ rule read ctx = parse
   | "="               { EQUALS }
   | "|"               { BAR }
   | "_"               { UNDERSCORE }
+  | "+"               { PLUS }
   | "let"             { LET }
   | "end"             { END }
   | "def"             { DEF }

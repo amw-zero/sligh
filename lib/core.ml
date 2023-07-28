@@ -45,6 +45,7 @@ type expr =
   | Bool of bool
   | Iden of string * sligh_type option
   | Num of int
+  | Plus of expr * expr
   | Array of expr list
   | If of expr * expr * expr option
   | StmtList of expr list

@@ -60,10 +60,12 @@ let rec collect_state_vars state_vars e (proc_attrs: typed_attr list): typed_att
     (match proc_attr with
     | Some(pa) -> {name=i; typ=pa.typ} :: state_vars
     | None -> state_vars)
+  | Plus(e1, e2) -> 
+    state_vars @ collect_state_vars [] e1 proc_attrs @ collect_state_vars [] e2 proc_attrs
   | Array(es) ->
       List.concat_map
         (fun e -> collect_state_vars [] e proc_attrs)
-        es @ state_vars
+        es @ state_vars 
   | If(cond, then_e, else_e) ->
     let else_state_vars: typed_attr list = match else_e with
       | Some(ee) -> collect_state_vars [] ee proc_attrs

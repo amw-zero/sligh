@@ -12,10 +12,13 @@ let print ps =
   Files.iter (fun k v -> Printf.printf "%s -> %s\n" k (Util.string_of_stmt_list v)) ps
 
 let output_str file_name strg =  
-  let fname = Printf.sprintf "%s.ts" file_name in
-  let open_chan = open_out fname in
+  let open_chan = open_out file_name in
   Printf.fprintf open_chan "%s\n" strg;
   close_out open_chan
+
+let output_tsexpr_list_imports file_name env tss imports =
+    let ts = (String.concat "\n\n" (List.map (fun t -> Codegen.string_of_ts_expr t env) tss)) in
+    output_str file_name (Printf.sprintf "%s\n\n%s" imports ts)
 
 let output_tsexpr_list file_name env tss =
   output_str file_name (String.concat "\n\n" (List.map (fun t -> Codegen.string_of_ts_expr t env) tss))
