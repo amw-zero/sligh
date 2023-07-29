@@ -100,9 +100,65 @@ let state_gen_from_action env act =
 
   TSMethodCall("fc", "record", [TSObject(properties)])
 
+let to_tstyped_attr attr =
+  let tstyp = Codegen.tstype_of_sltype (Some(attr.typ)) in
+
+  Core.({ tsname=attr.name; tstyp=Option.value tstyp ~default:(TSTCustom("no type")) } )  
+
+let to_state_access attr =
+  TSAccess(TSIden({iname="state"; itype=None}), TSIden({iname=Core.(attr.name); itype=None}))
+
+let assert_state_var attr =
+  Core.(
+  TSMethodCall(
+    Printf.sprintf "expect(model.%s)" attr.name,
+    "toEqual",
+    [TSAccess(
+      TSMethodCall("impl", "getState", []),
+      TSIden({iname=attr.name; itype=None})
+    )]
+  ))
+
+let to_impl_arg attr =
+  (* object propr *)
+  Core.({oname=attr.name; oval=TSAccess(TSIden({iname="state"; itype=None}), TSIden({iname=attr.name; itype=None}))})
+
+  (* The property-based test body - the actual test logic lives here*)
+let test_body act =
+  let model_state_args = List.map to_state_access act.state_vars in
+  let create_model = TSLet("model", TSNew("Counter", model_state_args)) in
+
+  let create_impl = TSLet("impl", TSFuncCall("makeStore", [])) in
+
+  let impl_set_state_args = List.map to_impl_arg act.state_vars in
+  let set_impl_state = TSMethodCall("impl", "setState", [TSObject(impl_set_state_args)]) in
+
+  let action_args = List.map to_state_access act.action_ast.args in
+  let invoke_action_model = TSMethodCall("model", act.action_ast.aname, action_args) in
+  
+  let get_impl_state = TSLet("implState", TSMethodCall("impl", "getState", [])) in
+  let invoke_action_impl = TSMethodCall("implState", act.action_ast.aname, action_args) in
+  
+  (* let apply_refinement_mapping = TSNum(5) in *)
+  let assert_results = List.map assert_state_var act.state_vars in
+
+  List.concat [
+    [create_model;
+    create_impl;
+    set_impl_state;
+    invoke_action_model;
+    get_impl_state;
+    invoke_action_impl;
+    ];
+    assert_results
+    (* apply_refinement_mapping; *)
+
+  ]
+
+  (* The actual per-action test *)
 let action_test env act = 
   let action_type = action_type_name act in
-  let property_body = [TSNum(4)] in
+  let property_body = test_body act in
   let property_check = TSMethodCall("fc", "asyncProperty", [
     TSIden({iname="state"; itype=None});
     TSClosure(
@@ -115,12 +171,6 @@ let action_test env act =
   let assertion = TSAwait(TSMethodCall("fc", "assert", [property_check])) in
   let test_name = Printf.sprintf "Test local action refinement: %s" act.action_ast.aname in
   TSFuncCall("test", [TSString(test_name); TSClosure([], [state_gen; assertion], true)])
-
-
-let to_tstyped_attr attr =
-  let tstyp = Codegen.tstype_of_sltype (Some(attr.typ)) in
-
-  Core.({ tsname=attr.name; tstyp=Option.value tstyp ~default:(TSTCustom("no type")) } )
 
 let schema_to_interface name attrs =
   let schema_properties = List.map to_tstyped_attr attrs in
@@ -144,8 +194,12 @@ let db_type_ts act =
 
   TSInterface(db_type_name act, properties)
 
-
-
+(* Should ultimately be parameterizable by different infra / architecture 'backends'. A backend should:
+   * Create a model configured at a specific state
+   * Produce an implementation configured at a specific state
+   * Support invoking the action
+   * Support asserting on the resulting state, with refinement mapping
+*)
 let generate_spec _ model_proc _ cert_out env =
   (* Add DB types to env so they can be generated *)
   let db_types = List.map (fun a -> Entity(db_type_name a, a.state_vars)) model_proc.actions in
@@ -164,15 +218,11 @@ let generate_spec _ model_proc _ cert_out env =
   import fc from 'fast-check';
   |} in
 
-  let everything = List.concat [env_types; db_type_ts; action_types; action_tests] in
- 
-  (* 
-    For each action:
-      * Create Deno.test block
-      * create all argument data for action
-      * create system state
-      * Invoke action on model and impl
-      * Cmopare results with refinement mapping
-  *)
+  let everything = List.concat [
+    env_types; 
+    db_type_ts; 
+    action_types; 
+    action_tests
+  ] in
   
   File.output_tsexpr_list_imports cert_out env everything imports
