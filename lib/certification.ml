@@ -210,7 +210,6 @@ let generate_spec _ model_proc _ cert_out env =
   let env_types = List.map (fun s -> schema_to_interface s (Env.SchemaEnv.find s env.schemas)) schema_names in
   let action_types = List.map action_type model_proc.actions in
   let action_tests = List.map to_action_test model_proc.actions in
-  let db_type_ts = List.map db_type_ts model_proc.actions in
 
   let imports = {|import { expect, test } from 'vitest';
   import { makeStore } from '../lib/state';
@@ -220,7 +219,6 @@ let generate_spec _ model_proc _ cert_out env =
 
   let everything = List.concat [
     env_types; 
-    db_type_ts; 
     action_types; 
     action_tests
   ] in
