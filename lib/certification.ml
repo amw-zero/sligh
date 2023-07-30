@@ -137,7 +137,7 @@ let test_body act =
   let invoke_action_model = TSMethodCall("model", act.action_ast.aname, action_args) in
   
   let get_impl_state = TSLet("implState", TSMethodCall("impl", "getState", [])) in
-  let invoke_action_impl = TSMethodCall("implState", act.action_ast.aname, action_args) in
+  let invoke_action_impl = TSAwait(TSMethodCall("implState", act.action_ast.aname, action_args)) in
   
   (* let apply_refinement_mapping = TSNum(5) in *)
   let assert_results = List.map assert_state_var act.state_vars in
@@ -213,7 +213,7 @@ let generate_spec _ model_proc _ cert_out env =
 
   let imports = {|import { expect, test } from 'vitest';
   import { makeStore } from '../lib/state';
-  import { Counter } from '../lib/model';
+  import { Counter } from './model';
   import fc from 'fast-check';
   |} in
 
