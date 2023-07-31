@@ -152,12 +152,55 @@ and string_of_builtin n args attrs (env: Env.env) =
     Printf.sprintf {|
     %s.map((a) => %s(a))
     |} arr map_func
+  | "update" ->
+    let arr = string_of_expr (List.nth args 0) attrs env in
+    let finder = string_of_expr (List.nth args 1) attrs env in
+    let updater = string_of_expr (List.nth args 2) attrs env in
+
+    Printf.sprintf {|
+    (() => {
+      const index = %s.findIndex((a) => %s(a));
+      let ret = [...%s];
+      ret[index] = %s(ret[index]);
+
+      return ret;
+    })();
+    |} arr finder arr updater
   | "equals" ->
     let larg = string_of_expr (List.nth args 0) attrs env in
     let rarg = string_of_expr (List.nth args 1) attrs env in
 
     Printf.sprintf {|
     %s === %s
+    |} larg rarg
+  | "equalsStr" ->
+    let larg = string_of_expr (List.nth args 0) attrs env in
+    let rarg = string_of_expr (List.nth args 1) attrs env in
+
+    Printf.sprintf {|
+    %s === %s
+    |} larg rarg
+
+  | "notEqualsStr" ->
+    let larg = string_of_expr (List.nth args 0) attrs env in
+    let rarg = string_of_expr (List.nth args 1) attrs env in
+
+    Printf.sprintf {|
+    %s !== %s
+    |} larg rarg    
+  | "index" ->
+    let larg = string_of_expr (List.nth args 0) attrs env in
+    let rarg = string_of_expr (List.nth args 1) attrs env in
+
+    Printf.sprintf {|
+    %s[%s]
+    |} larg rarg
+  | "filter" ->
+    let larg = string_of_expr (List.nth args 0) attrs env in
+    let rarg = string_of_expr (List.nth args 1) attrs env in
+
+    Printf.sprintf {|
+    %s.filter(%s)
     |} larg rarg
   | _ -> failwith (Printf.sprintf "Attempted to compile unknown builtin func: %s" n)  
 

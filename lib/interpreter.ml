@@ -423,6 +423,16 @@ let all_builtins = [
     fdargs=[{name="s1";typ=STString}; {name="s2";typ=STString}];
     fdbody=[];
   }};
+  {bname="notEqualsStr"; bdef={
+    fdname="notEqualsStr";
+    fdargs=[{name="s1";typ=STString}; {name="s2";typ=STString}];
+    fdbody=[];
+  }};
+  {bname="update"; bdef={
+    fdname="update";
+    fdargs=[{name="finder";typ=STString}; {name="updater";typ=STString}];
+    fdbody=[];
+  }};
   {bname="and"; bdef={
     fdname="and";
     fdargs=[{name="b1";typ=STString}; {name="b2";typ=STString}];

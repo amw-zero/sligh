@@ -105,6 +105,11 @@ let to_tstyped_attr attr =
 
   Core.({ tsname=attr.name; tstyp=Option.value tstyp ~default:(TSTCustom("no type")) } )  
 
+  (* Accesses a part of the state from the db *)
+let to_db_access attr =
+  TSAccess(TSIden({iname="state.db"; itype=None}), TSIden({iname=Core.(attr.name); itype=None}))
+
+  (* Accesses a part of the client-side *)
 let to_state_access attr =
   TSAccess(TSIden({iname="state"; itype=None}), TSIden({iname=Core.(attr.name); itype=None}))
 
@@ -125,7 +130,7 @@ let to_impl_arg attr =
 
   (* The property-based test body - the actual test logic lives here*)
 let test_body act =
-  let model_state_args = List.map to_state_access act.state_vars in
+  let model_state_args = List.map to_db_access act.state_vars in
   let create_model = TSLet("model", TSNew("Counter", model_state_args)) in
 
   let create_impl = TSLet("impl", TSFuncCall("makeStore", [])) in

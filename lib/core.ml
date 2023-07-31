@@ -131,8 +131,7 @@ and tsexpr =
 | SLExpr of expr
 | SLSpliceExpr of expr
 
-and obj_prop = {
-  oname: string;
+and obj_prop = { oname: string;
   oval: tsexpr;
 }
 
