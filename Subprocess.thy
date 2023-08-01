@@ -18,6 +18,8 @@ record ('s, 'v) lens  =
   Get :: "'s \<Rightarrow> 'v"
   Put :: "'v \<Rightarrow> 's \<Rightarrow> 's"
 
+definition "well_formed l \<equiv> (\<forall>ls lv. (Put l) ((Get l) ls) ls = ls \<and> (Get l) ((Put l) lv ls) = ls)"
+
 type_synonym ('e, 's) process = "'e \<Rightarrow> 's \<Rightarrow> 's"
 
 definition exec :: "('e, 's) process \<Rightarrow> 'e list \<Rightarrow> 's \<Rightarrow> 's" where
@@ -29,13 +31,14 @@ record ('s, 'a) subaction =
 
 type_synonym ('e, 's, 'a) action_mapping = "'e \<Rightarrow> ('s, 'a) subaction"
 
+(* Project the global state to the action state, then step at the local action level, then write the 
+  result back to the global state *)
 definition compose_subactions :: "('e, 's, 'a) action_mapping \<Rightarrow> ('e, 's) process"  where
-"compose_subactions spmap = (\<lambda>e s.(
-  let subproc = spmap e in
-  let lns = (salens subproc) in
-  let stp = (sastep subproc) in
-  let v = (Get lns) s in
-  let res = stp v in
+"compose_subactions samap = (\<lambda>e s.(
+  let subact = samap e;
+  lns = (salens subact);
+  subact_v = (Get lns) s;
+  res = (sastep subact) subact_v in
   
   (Put lns) res s
 ))"
@@ -46,55 +49,38 @@ text "'Action Refinement' is where each isolated implementation action refines i
     action in the model. The state type of the step function vfn is local to the action and does
     not refer to the global state in any way."
 
-definition "single_action_refines proc_i proc_m = (\<forall>ss ss'. proc_i ss = ss' \<longrightarrow> proc_m ss = ss')"
+definition "action_simulates am_i am_m e s t = (
+  let proc_i = sastep (am_i e); proc_m = sastep (am_m e) in
 
-definition "action_refines am_i am_m e =
-  (let proc_i = sastep (am_i e) in 
-  let proc_m = sastep (am_m e) in
+  proc_i s = t \<longrightarrow> proc_m s = t)"
 
-  single_action_refines proc_i proc_m)"
+definition "simulates impl_proc model_proc e s t = (impl_proc e s = t \<longrightarrow> model_proc e s = t)"
+
+theorem
+  assumes "well_formed lm"
+    and "am_m = (\<lambda>e. \<lparr>salens=lm, sastep=stm\<rparr>)"
+    and "well_formed li"
+    and "am_i = (\<lambda>e. \<lparr>salens=li, sastep=stm\<rparr> )"
+    and "model_proc \<equiv> compose_subactions am_m"
+    and "impl_proc \<equiv> compose_subactions am_i"
+    and "action_simulates am_i am_m e s t"
+  shows "simulates impl_proc model_proc e s t"
+  using assms
+  unfolding simulates_def action_simulates_def compose_subactions_def Let_def well_formed_def
+  by (metis subaction.select_convs(1))
 
 definition "refines impl_proc model_proc es = (\<forall>s. exec impl_proc es = s \<longrightarrow> exec model_proc es = s)"
 
-lemma local_refinement:
-  assumes "action_refines am_i am_m e"
-  shows "single_action_refines (sastep (am_i e)) (sastep (am_m e))"
-proof -
-  have "action_refines am_i am_m e" by fact
-  then have "single_action_refines (sastep (am_i e)) (sastep (am_m e))" 
-    unfolding action_refines_def single_action_refines_def
-    by auto
-  then show ?thesis by simp
-qed
+theorem assumes "simulates impl_proc model_proc e s t"
+shows "refines impl_proc model_proc es"
+  oops
 
-lemma composed_subactions_refinement:
-  assumes "\<And> e. e \<in> set es \<Longrightarrow> action_refines am_i am_m e"
-  shows "refines (compose_subactions am_i) (compose_subactions am_m) es"
-proof (induction es)
-  case Nil
-  then show ?case unfolding exec_def refines_def by simp
-next
-  case (Cons e es)
-  from Cons.prems have "action_refines am_i am_m e"  by simp
-  from local_refinement[OF this, of e] have "single_action_refines (sastep (am_i e)) (sastep (am_m e))" by auto
-  with Cons.IH Cons.prems show ?case
-    unfolding refines_def exec_def compose_subactions_def single_action_refines_def
-    by (auto simp add: Let_def)
-qed
-
-theorem main_theorem:
-  assumes "model_proc = compose_subactions am_m"
-    and "impl_proc = compose_subactions am_i"
-    and "\<And>e. e \<in> set es \<Longrightarrow> action_refines am_i am_m e"
-  shows "refines impl_proc model_proc es"
-  using assms composed_subactions_refinement
-  by auto
 
 text "Action refinement implies refinement of the processes with global state, provided that 
     each process at the global level's step function is defined via the 'compose_subprocs' 
     function"
 
-text "Need to relate action_refines to global execution"
+text "Need to relate action_simulates to global execution"
 
 (* If a model and implementation can be built by composing sub-actions together,
    and the individal actions refine each other at the local level,
@@ -103,7 +89,7 @@ theorem
   assumes
     "model_proc = compose_subactions am_m" and
     "impl_proc =  compose_subactions am_i" and
-    "action_refines am_i am_m"
+    "action_simulates am_i am_m"
   shows "refines impl_proc model_proc es"
 proof(induction es arbitrary: s am_i am_m)
   case Nil
@@ -179,7 +165,7 @@ definition "refines_dt C M = (\<forall>s s' es. exec_dt C s es = s' \<longrighta
 theorem "\<lbrakk>
   model_proc = \<lparr> state=s, step=compose_subprocs spmm \<rparr>;
   impl_proc = \<lparr> state=s, step=compose_subprocs spmi \<rparr>;
-  action_refines spmi spmm
+  action_simulates spmi spmm
 \<rbrakk> \<Longrightarrow> exec_dt impl_proc es = s' \<longrightarrow> exec_dt model_proc es = s'"
 proof(induction es arbitrary: s s' spmm spmi)
   case Nil
@@ -187,8 +173,8 @@ proof(induction es arbitrary: s s' spmm spmi)
 next
   case (Cons e es)
   then show ?case
-    apply (clarsimp simp: compose_subprocs_def action_refines_def single_action_refines_def exec_dt_def)
-    unfolding compose_subprocs_def action_refines_def single_action_refines_def refines_dt_def 
+    apply (clarsimp simp: compose_subprocs_def action_simulates_def single_action_simulates_def exec_dt_def)
+    unfolding compose_subprocs_def action_simulates_def single_action_simulates_def refines_dt_def 
       exec_dt_def Let_def
     sorry
    
