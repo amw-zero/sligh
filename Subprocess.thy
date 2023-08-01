@@ -4,13 +4,12 @@ imports Main
 
 begin
 
-text "Related to assume-guarantee reasoning, e.g. https://arxiv.org/pdf/2103.13743.pdf"
+text "A simpler version of assume-guarantee reasoning that focuses on non-interference of state 
+      updates alone, e.g. https://arxiv.org/pdf/2103.13743.pdf"
 text "Goes back to Lamport & Abadi: https://lamport.azurewebsites.net/pubs/abadi-conjoining.pdf"
 
-section "Step function only"
-
-text "Each action operates on its own state, which is defined as a 'v view type that's
-      definable by a lens on the state type. This is different than the seL4 process model,
+text "Each action operates on its own state, which is defined as a 'v view type. The relationship
+     between 'v and 's is definable by a lens. This is different than the seL4 process model,
       since that effectively only has a single lens whereas multiple lenses are required for
       each action here."
 
@@ -18,21 +17,31 @@ record ('s, 'v) lens  =
   Get :: "'s \<Rightarrow> 'v"
   Put :: "'v \<Rightarrow> 's \<Rightarrow> 's"
 
-definition "well_formed l \<equiv> (\<forall>ls lv. (Put l) ((Get l) ls) ls = ls \<and> (Get l) ((Put l) lv ls) = ls)"
+text "Well-behaved lenses must follow the 'lens laws' which ensure that they retrieve and update
+      the same part of the source state."
 
+definition "well_behaved l \<equiv> (\<forall>ls lv. (Put l) ((Get l) ls) ls = ls \<and> (Get l) ((Put l) lv ls) = ls)"
+
+text "A process is a representation of a program that proceeds through a sequence of states in 
+      response to actions (inputs) of type 'e, i.e. a state machine."
 type_synonym ('e, 's) process = "'e \<Rightarrow> 's \<Rightarrow> 's"
 
-definition exec :: "('e, 's) process \<Rightarrow> 'e list \<Rightarrow> 's \<Rightarrow> 's" where
-"exec step es i = foldl (\<lambda>s e. step e s) i es"
+text "A subaction is a step function on its own local state type 'a, where 'a is defineable as a lens
+      on some global state type 's"
 
 record ('s, 'a) subaction =
   salens :: "('s, 'a) lens"
   sastep :: "'a \<Rightarrow> 'a"
 
+text "An action mapping maps an action 'e to its corresponding subaction"
+
 type_synonym ('e, 's, 'a) action_mapping = "'e \<Rightarrow> ('s, 'a) subaction"
 
-(* Project the global state to the action state, then step at the local action level, then write the 
-  result back to the global state *)
+text "compose_subactions defines how a global process can be defined from a set of subactions.
+      It uses the lens defined in the subaction for each action type to get the local action state
+      from the global state, execute the local action step function, and write the result back into
+      the global state."
+
 definition compose_subactions :: "('e, 's, 'a) action_mapping \<Rightarrow> ('e, 's) process"  where
 "compose_subactions samap = (\<lambda>e s.(
   let subact = samap e;
@@ -43,142 +52,37 @@ definition compose_subactions :: "('e, 's, 'a) action_mapping \<Rightarrow> ('e,
   (Put lns) res s
 ))"
 
-(* lemma - a process built with compose_subactions is equivalent to a process defined without it? *)
-
-text "'Action Refinement' is where each isolated implementation action refines its corresponding
-    action in the model. The state type of the step function vfn is local to the action and does
-    not refer to the global state in any way."
+text "'Action Simulation' is where each local implementation action refines its corresponding
+    action in the model."
 
 definition "action_simulates am_i am_m e s t = (
   let proc_i = sastep (am_i e); proc_m = sastep (am_m e) in
 
   proc_i s = t \<longrightarrow> proc_m s = t)"
 
+text "Basic notion of simulation."
+
 definition "simulates impl_proc model_proc e s t = (impl_proc e s = t \<longrightarrow> model_proc e s = t)"
 
+text "We want to show that in order to prove that an implementation process simulates another 
+      process, we can instead decompose both processes each into a set of local actions. If the
+      local actions simulate each other, and the lenses used to define the local action states are
+      well-behaved, then the global implementation process simulates the global model."
 theorem
-  assumes "well_formed lm"
+  assumes "well_behaved lm"
     and "am_m = (\<lambda>e. \<lparr>salens=lm, sastep=stm\<rparr>)"
-    and "well_formed li"
+    and "well_behaved li"
     and "am_i = (\<lambda>e. \<lparr>salens=li, sastep=stm\<rparr> )"
     and "model_proc \<equiv> compose_subactions am_m"
     and "impl_proc \<equiv> compose_subactions am_i"
     and "action_simulates am_i am_m e s t"
   shows "simulates impl_proc model_proc e s t"
   using assms
-  unfolding simulates_def action_simulates_def compose_subactions_def Let_def well_formed_def
+  unfolding simulates_def action_simulates_def compose_subactions_def well_behaved_def
   by (metis subaction.select_convs(1))
 
-definition "refines impl_proc model_proc es = (\<forall>s. exec impl_proc es = s \<longrightarrow> exec model_proc es = s)"
-
-theorem assumes "simulates impl_proc model_proc e s t"
-shows "refines impl_proc model_proc es"
-  oops
-
-
-text "Action refinement implies refinement of the processes with global state, provided that 
-    each process at the global level's step function is defined via the 'compose_subprocs' 
-    function"
-
-text "Need to relate action_simulates to global execution"
-
-(* If a model and implementation can be built by composing sub-actions together,
-   and the individal actions refine each other at the local level,
-   then the global implementation refines the global model. *)
-theorem 
-  assumes
-    "model_proc = compose_subactions am_m" and
-    "impl_proc =  compose_subactions am_i" and
-    "action_simulates am_i am_m"
-  shows "refines impl_proc model_proc es"
-proof(induction es arbitrary: s am_i am_m)
-  case Nil
-  then show ?case unfolding exec_def refines_def by simp
-next
-  case (Cons a es)
-  then show ?case
-    sorry
-  qed
-
-definition "simulates impl_proc model_proc= (\<forall>e s s'.
-  impl_proc e s = s' \<longrightarrow> model_proc e s = s')"
-
-theorem
-  assumes "simulates I M"
-  shows "refines I M es"
-  oops
-
-
-(* 
-
-GlobalState |> ActionLens.Get |> Action |> ActionLens.Put
-
-*)
-
-
-record ('s, 'e) dt =
-  state :: 's
-  step :: "'e \<Rightarrow> 's \<Rightarrow> 's"
-
-definition exec_dt :: "('s, 'e) dt \<Rightarrow> 'e list \<Rightarrow> 's" where
-"exec_dt dt es = foldl (\<lambda>s e. (step dt) e s) (state dt) es"
-
-type_synonym ('e, 's) dt_step = "'e \<Rightarrow> 's \<Rightarrow> 's"
-
-section "Substate Mapping"
-
-text "A subprocess consists of a lens on the global state and
-      a function that modifies the view that's projected from the 
-      lens. This view is meant to have one variant per event in 
-      the original data type, where each variant represents the 
-      subset of the state that that event needs to carry out its
-      operation."
-      
-record ('s, 'v) subproc =
-  splens :: "('s, 'v) lens"
-  spstep :: "'v \<Rightarrow> 'v"
-
-text "The subproc_mapping generates a sub data type given an event"
-
-type_synonym ('e, 's, 'v) subproc_mapping = "'e \<Rightarrow> ('s, 'v) subproc"
-
-definition compose_subprocs :: "('e, 's, 'v) subproc_mapping \<Rightarrow> ('e, 's) dt_step"  where
-"compose_subprocs spmap = (\<lambda>e s.(
-  let subproc = spmap e in
-  let lns = (splens subproc) in
-  let stp = (spstep subproc) in
-  let v = (Get lns) s in
-  let res = stp v in
-  
-  (Put lns) res s
-))"
-
-(* Some equivalence between a process and its decomposition into a set of subprocesses"
-theorem
-  assumes "proc = \<lparr> state=s, step=step \<rparr>"
-    and   "subproc = 
-  shows proc_subproc_equiv: "x = y"
-*)
-
-definition "refines_dt C M = (\<forall>s s' es. exec_dt C s es = s' \<longrightarrow> exec_dt M s es = s')"
-
-theorem "\<lbrakk>
-  model_proc = \<lparr> state=s, step=compose_subprocs spmm \<rparr>;
-  impl_proc = \<lparr> state=s, step=compose_subprocs spmi \<rparr>;
-  action_simulates spmi spmm
-\<rbrakk> \<Longrightarrow> exec_dt impl_proc es = s' \<longrightarrow> exec_dt model_proc es = s'"
-proof(induction es arbitrary: s s' spmm spmi)
-  case Nil
-  then show ?case unfolding exec_dt_def by auto
-next
-  case (Cons e es)
-  then show ?case
-    apply (clarsimp simp: compose_subprocs_def action_simulates_def single_action_simulates_def exec_dt_def)
-    unfolding compose_subprocs_def action_simulates_def single_action_simulates_def refines_dt_def 
-      exec_dt_def Let_def
-    sorry
-   
-qed
+definition exec :: "('e, 's) process \<Rightarrow> 'e list \<Rightarrow> 's \<Rightarrow> 's" where
+"exec step es i = foldl (\<lambda>s e. step e s) i es"
 
 section "Subprocs for banking"
 
