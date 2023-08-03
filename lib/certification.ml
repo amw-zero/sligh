@@ -70,16 +70,27 @@ let rec gen_type env t = match t with
 | STString -> TSMethodCall("fc", "string", [])
 | STDecimal -> TSMethodCall("fc", "decimal", [])
 | STBool -> TSMethodCall("fc", "boolean", [])
-(* Will need to look up schema from Env, and generate object form that *)
 | STCustom(n) -> 
   let attrs = Env.SchemaEnv.find n env in
   let properties = List.map (fun a -> to_obj_prop_gen env a) attrs in
   TSMethodCall("fc", "record", [TSObject(properties)])
-| STGeneric(_, _) -> TSMethodCall("fc", "generic", [])
+| STGeneric(n, typs) -> gen_generic n typs env
 | STVariant(_, _) -> TSMethodCall("fc", "variant", [])
 
 and to_obj_prop_gen env attr = 
   Core.({ oname=attr.name; oval=gen_type env attr.typ})
+
+and gen_generic name typs env =
+  match name with
+  | "Set"  -> 
+    let typ = List.nth typs 0 in 
+    let typ_gen = gen_type env typ in
+    TSMethodCall("fc", "array", [typ_gen])
+  | "Array" ->
+    let typ = List.nth typs 0 in 
+    let typ_gen = gen_type env typ in
+    TSMethodCall("fc", "array", [typ_gen])
+  | _ -> TSMethodCall("fc", "generic", [])  
 
 let db_type_name act =
   Printf.sprintf "%sDBState" act.action_ast.aname  
@@ -129,9 +140,11 @@ let to_impl_arg attr =
   Core.({oname=attr.name; oval=TSAccess(TSIden({iname="state"; itype=None}), TSIden({iname=attr.name; itype=None}))})
 
   (* The property-based test body - the actual test logic lives here*)
+  (* Note about cache coherence - the client state can start out incoherent, since any client can modify the server state
+     But, after an action, the client must be coherent with server state. *)
 let test_body act =
   let model_state_args = List.map to_db_access act.state_vars in
-  let create_model = TSLet("model", TSNew("Counter", model_state_args)) in
+  let create_model = TSLet("model", TSNew("CounterApp", model_state_args)) in
 
   let create_impl = TSLet("impl", TSFuncCall("makeStore", [])) in
 
@@ -157,7 +170,6 @@ let test_body act =
     ];
     assert_results
     (* apply_refinement_mapping; *)
-
   ]
 
   (* The actual per-action test *)
@@ -177,8 +189,16 @@ let action_test env act =
   let test_name = Printf.sprintf "Test local action refinement: %s" act.action_ast.aname in
   TSFuncCall("test", [TSString(test_name); TSClosure([], [state_gen; assertion], true)])
 
+
+(* This probably shouldn't exist. But Sligh Sets get compiled to TS Arrays in Codegen, and
+    that has to happen here too or the test doesn't typecheck. *)
+    let convert_type attr = 
+    match attr.typ with
+    | STGeneric(n, typs) -> if n = "Set" then {name=attr.name; typ=STGeneric("Array", typs)} else attr
+    | _ -> attr  
+
 let schema_to_interface name attrs =
-  let schema_properties = List.map to_tstyped_attr attrs in
+  let schema_properties = List.map (fun a -> to_tstyped_attr (convert_type a)) attrs in
 
   TSInterface(name, schema_properties)
 
@@ -187,7 +207,7 @@ let schema_to_interface name attrs =
      such as database state and infrastructure errors. *)
 let action_type action =
   let action_type_name = action_type_name action in
-  let properties = List.map to_tstyped_attr (action_state action) in
+  let properties = List.map (fun attr -> to_tstyped_attr (convert_type attr)) (action_state action) in
 
   TSInterface(action_type_name, properties)
 
@@ -207,7 +227,7 @@ let db_type_ts act =
 *)
 let generate_spec _ model_proc _ cert_out env =
   (* Add DB types to env so they can be generated *)
-  let db_types = List.map (fun a -> Entity(db_type_name a, a.state_vars)) model_proc.actions in
+  let db_types = List.map (fun a -> Entity(db_type_name a, (List.map convert_type a.state_vars))) model_proc.actions in
   let env = List.fold_left (fun e s -> Env.add_stmt_to_env s e) env db_types in
 
   let to_action_test = action_test Env.(env.schemas) in
@@ -218,7 +238,7 @@ let generate_spec _ model_proc _ cert_out env =
 
   let imports = {|import { expect, test } from 'vitest';
   import { makeStore } from '../lib/state';
-  import { Counter } from './model';
+  import { CounterApp } from './model';
   import fc from 'fast-check';
   |} in
 
