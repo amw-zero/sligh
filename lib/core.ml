@@ -166,10 +166,15 @@ and ts_type =
   | TSTCustom of string
   | TSTGeneric of string * ts_type list
 
+and ts_func_decl_arg = {
+  tattr: tstyped_attr;
+  default_val: tsexpr option;
+}
+
 and tsclassdef =
   | CDSLExpr of expr
   | TSClassProp of string * ts_type
-  | TSClassMethod of string * tstyped_attr list * tsexpr list * bool
+  | TSClassMethod of string * ts_func_decl_arg list * tsexpr list * bool
 
 let tsClassProp name typ = TSClassProp(name, typ)
 

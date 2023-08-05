@@ -135,6 +135,9 @@ let assert_state_var attr =
     )]
   ))
 
+let to_db_setup attr =
+  Core.({oname=attr.name; oval=to_db_access attr})
+
 let to_impl_arg attr =
   (* object propr *)
   Core.({oname=attr.name; oval=TSAccess(TSIden({iname="state"; itype=None}), TSIden({iname=attr.name; itype=None}))})
@@ -149,7 +152,9 @@ let test_body act =
   let create_impl = TSLet("impl", TSFuncCall("makeStore", [])) in
 
   let impl_set_state_args = List.map to_impl_arg act.state_vars in
-  let set_impl_state = TSMethodCall("impl", "setState", [TSObject(impl_set_state_args)]) in
+  let set_impl_state_client = TSMethodCall("impl", "setState", [TSObject(impl_set_state_args)]) in
+
+  let set_impl_state_server = TSMethodCall("impl", "setDBState", [TSObject(List.map to_db_setup act.state_vars)]) in
 
   let action_args = List.map to_state_access act.action_ast.args in
   let invoke_action_model = TSMethodCall("model", act.action_ast.aname, action_args) in
@@ -163,7 +168,8 @@ let test_body act =
   List.concat [
     [create_model;
     create_impl;
-    set_impl_state;
+    set_impl_state_client;
+    set_impl_state_server;
     invoke_action_model;
     get_impl_state;
     invoke_action_impl;

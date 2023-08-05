@@ -931,8 +931,8 @@ and eval_builtin_func name args env =
           | VType(tv) -> ts_type_of_type_val tv
           | _ -> failwith "not a type val" in
 
-        {tsname=name; tstyp= typ}
-      | VTSTypedAttr(ta) -> ta
+        {tattr={tsname=name; tstyp= typ}; default_val=None}
+      | VTSTypedAttr(ta) -> {tattr=ta; default_val=None}
       | _ -> failwith (Printf.sprintf "Calling tsClassMethod, args not array of instances %s" (string_of_value arg))) args_arg in
 
     let body_arg = List.nth args 2 |> val_as_tsexpr_list in

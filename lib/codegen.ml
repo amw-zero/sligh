@@ -27,6 +27,17 @@ let string_of_symbol_import si = match si.alias with
   | Some(a) -> Printf.sprintf "%s as %s" si.symbol a
   | None -> si.symbol
 
+let default_val_for_type t = match t with
+| STInt -> Num(0)
+| STCustom _ -> failwith "Not implemented: default val for STCustom"
+| STString -> String("")
+| STBool -> Bool(false)
+| STGeneric(n, _) -> (match n with
+  | "Set" -> Array([])
+  | _ -> failwith "Not implemented: default val for STGeneric")
+| STDecimal -> Num(0)
+| STVariant(_, _) -> failwith "Not implemented: default value for STVariant"
+
 (* attrs are state variables of current process context *)
 let string_of_iden i attrs =
   match List.find_opt (fun attr -> attr.name = i) attrs with
@@ -63,11 +74,11 @@ let rec string_of_expr e attrs env = match e with
   | StmtList(ss) -> string_of_stmt_list ss attrs env
   | Process(n, defs) -> 
     (* This is a little more complicated than necessary because state variables are compiled to member variables
-       and there's no way to know if an identifier is a state variable without referencing the lsit of process 
-       variabless. Separating concrete from abstract syntax would improve this. *)
+       and there's no way to know if an identifier is a state variable without referencing the list of process 
+       variables. Separating concrete from abstract syntax would improve this. *)
     let attrs = Process.filter_attrs defs in
 
-    Printf.sprintf "export class %s {\n %s\n  %s\n}" n (process_constructor defs)
+    Printf.sprintf "export class %s {\n %s\n  %s\n}" n (process_constructor defs env)
       (String.concat "\n" (List.map (fun d -> string_of_proc_def d attrs env) defs))
   | Entity(n, eattrs) ->  Printf.sprintf "export interface %s {\n\t%s\n}" n (print_list "\n" (List.map string_of_typed_attr eattrs))
   | Variant(n, vs) ->
@@ -88,6 +99,7 @@ let rec string_of_expr e attrs env = match e with
       (string_of_stmt_list fdbody attrs env)
   | Access(e, i) -> Printf.sprintf "%s.%s" (string_of_expr e attrs env) i
   | String(s) -> Printf.sprintf "\"%s\"" s
+  | Array(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map (fun e -> string_of_expr e [] env) es))
   | TS(tses) -> String.concat "\n\n" (List.map (fun e -> string_of_ts_expr e env) tses)
   | _ -> failwith (Printf.sprintf "Unable to generate code for expr: %s" (Util.string_of_expr e))
 and string_of_proc_def def attrs env = match def with
@@ -273,16 +285,25 @@ and string_of_tstype tst = match tst with
 
 and string_of_ts_typed_attr ta = Printf.sprintf "%s: %s" ta.tsname (string_of_tstype ta.tstyp)
 
+and string_of_tsfunc_decl_arg a env = match a.default_val with
+| Some(e) -> Printf.sprintf "%s = %s" (string_of_ts_typed_attr a.tattr) (string_of_ts_expr e env)
+| None -> string_of_ts_typed_attr a.tattr
+
 and string_of_tsclassdef cd env = match cd with
   | TSClassProp(n, typ) -> Printf.sprintf "%s: %s" n (string_of_tstype typ)
-  | TSClassMethod(nm, args, body, is_async) -> if is_async then
-      Printf.sprintf "async %s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map (fun e -> string_of_ts_expr e env) body |> print_list "\n")
+  | TSClassMethod(nm, args, body, is_async) -> 
+    let method_def =  Printf.sprintf "%s(%s) { %s }" nm (String.concat ", " (List.map (fun a -> string_of_tsfunc_decl_arg a env) args)) (List.map (fun e -> string_of_ts_expr e env) body |> print_list "\n") in
+    if is_async then
+      Printf.sprintf "async %s" method_def
     else
-      Printf.sprintf "%s(%s) { %s }" nm (String.concat ", " (List.map string_of_ts_typed_attr args)) (List.map (fun e -> string_of_ts_expr e env) body |> print_list "\n")
+      method_def
   | CDSLExpr(_) -> "CDSLExpr remove"  
-and process_constructor defs = 
+and process_constructor defs env = 
   let attrs = Process.filter_attrs defs in
-  let ctor_args = String.concat ", " (List.map string_of_typed_attr attrs) in
+  let with_defaults = List.map (fun a -> (a, default_val_for_type a.typ)) attrs in
+  let ctor_args = String.concat ", " (List.map (fun a -> 
+    Printf.sprintf "%s = %s" (string_of_typed_attr (fst a)) (string_of_expr (snd a) [] env)
+  ) with_defaults ) in
   let ctor_body = String.concat "\n" (List.map (fun attr -> 
       Printf.sprintf "this.%s = %s;" attr.name attr.name) attrs) in
 

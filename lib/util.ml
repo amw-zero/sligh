@@ -108,14 +108,18 @@ and string_of_tsparam tsp = match tsp with
 and string_of_tsobject_pat op = 
   Printf.sprintf "{ %s }: %s" (String.concat ", " (List.map string_of_tsobject_pat_prop op.opprops)) (string_of_tstype op.optyp)
 
-and string_of_tsobject_pat_prop opp = Printf.sprintf "%s: %s" opp.oppname opp.oppvalue  
+and string_of_tsobject_pat_prop opp = Printf.sprintf "%s: %s" opp.oppname opp.oppvalue
+
+and string_of_tsfunc_decl_arg a = match a.default_val with
+| Some(e) -> Printf.sprintf "%s = %s" (string_of_ts_typed_attr a.tattr) (string_of_ts_expr e)
+| None -> string_of_ts_typed_attr a.tattr
 
 and string_of_tsclassdef cd = match cd with
 | TSClassProp(n, typ) -> Printf.sprintf "ts-%s: ts-%s" n (string_of_tstype typ)
 | TSClassMethod(nm, args, body, is_async) -> if is_async then
-  Printf.sprintf "async ts-class-meth %s(%s) {\n\t%s\n}" nm (String.concat "," (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list "\n")
+  Printf.sprintf "async ts-class-meth %s(%s) {\n\t%s\n}" nm (String.concat "," (List.map string_of_tsfunc_decl_arg args)) (List.map string_of_ts_expr body |> print_list "\n")
 else
-  Printf.sprintf "ts-class-meth %s(%s) {\n\t%s\n}" nm (String.concat "," (List.map string_of_ts_typed_attr args)) (List.map string_of_ts_expr body |> print_list "\n")
+  Printf.sprintf "ts-class-meth %s(%s) {\n\t%s\n}" nm (String.concat "," (List.map string_of_tsfunc_decl_arg args)) (List.map string_of_ts_expr body |> print_list "\n")
 
 | CDSLExpr(_) -> "CDSLExpr remove"
 
