@@ -50,7 +50,7 @@ let compile lexbuf impl_out cert_out =
   Certification.generate model_proc "model.ts" "impl.ts" cert_out interp_env env
 
 (* Compilers certifying specification *)
-let compile_spec input_file impl_in cert_out out_file =
+let compile_cert_test input_file impl_in cert_out out_file =
   let fh = open_in input_file in
   let lex = Lexing.from_channel fh in
   lex.Lexing.lex_curr_p <- {lex.Lexing.lex_curr_p with Lexing.pos_fname = input_file};

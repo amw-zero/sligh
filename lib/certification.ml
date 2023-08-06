@@ -1,16 +1,5 @@
 open Core
 open Process
-(* open Process *)
-(* let generate model_proc model_file impl_file = *)
-
-(* Todo:
-   
-   * Generate test body for each action
-   * Each test body generates all of the model and state data,
-     then passes that data into the model and the impl, and checks that
-     the refinement property holds
-
-*)
 
 let generate _ _ _ cert_out interp_env env =
   (* Definitions are separated because they can't be macro-expanded *)
@@ -127,7 +116,7 @@ let to_state_access attr =
 let assert_state_var attr =
   Core.(
   TSMethodCall(
-    Printf.sprintf "expect(model.%s)" attr.name,
+    Printf.sprintf "expect(modelResult.%s)" attr.name,
     "toEqual",
     [TSAccess(
       TSMethodCall("impl", "getState", []),
@@ -138,17 +127,23 @@ let assert_state_var attr =
 let to_db_setup attr =
   Core.({oname=attr.name; oval=to_db_access attr})
 
+let to_args_setup attr =
+  Core.({oname=attr.name; oval=to_state_access attr})  
+
 let to_impl_arg attr =
   (* object propr *)
   Core.({oname=attr.name; oval=TSAccess(TSIden({iname="state"; itype=None}), TSIden({iname=attr.name; itype=None}))})
+
+let model_action_name act =
+  Printf.sprintf "%sModel" act.action_ast.aname
+
+let model_action_in_state act =
+  List.concat [act.action_ast.args; act.state_vars]  
 
   (* The property-based test body - the actual test logic lives here*)
   (* Note about cache coherence - the client state can start out incoherent, since any client can modify the server state
      But, after an action, the client must be coherent with server state. *)
 let test_body act =
-  let model_state_args = List.map to_db_access act.state_vars in
-  let create_model = TSLet("model", TSNew("CounterApp", model_state_args)) in
-
   let create_impl = TSLet("impl", TSFuncCall("makeStore", [])) in
 
   let impl_set_state_args = List.map to_impl_arg act.state_vars in
@@ -156,17 +151,24 @@ let test_body act =
 
   let set_impl_state_server = TSMethodCall("impl", "setDBState", [TSObject(List.map to_db_setup act.state_vars)]) in
 
-  let action_args = List.map to_state_access act.action_ast.args in
-  let invoke_action_model = TSMethodCall("model", act.action_ast.aname, action_args) in
+  let model_action_props = List.map to_db_setup act.state_vars in
+  let model_state_props = List.map to_args_setup act.action_ast.args in
+  let model_action_in_props = List.concat [
+    model_action_props;
+    model_state_props;
+  ] in
+  let model_action_args = TSObject(model_action_in_props) in
+  let invoke_action_model = TSLet("modelResult", TSFuncCall(model_action_name act, [model_action_args])) in
   
   let get_impl_state = TSLet("implState", TSMethodCall("impl", "getState", [])) in
+  let action_args = List.map to_state_access act.action_ast.args in
   let invoke_action_impl = TSAwait(TSMethodCall("implState", act.action_ast.aname, action_args)) in
   
   (* let apply_refinement_mapping = TSNum(5) in *)
   let assert_results = List.map assert_state_var act.state_vars in
 
   List.concat [
-    [create_model;
+    [
     create_impl;
     set_impl_state_client;
     set_impl_state_server;
@@ -178,7 +180,7 @@ let test_body act =
     (* apply_refinement_mapping; *)
   ]
 
-  (* The actual per-action test *)
+  (* The per-action test *)
 let action_test env act = 
   let action_type = action_type_name act in
   let property_body = test_body act in
@@ -225,6 +227,51 @@ let db_type_ts act =
 
   TSInterface(db_type_name act, properties)
 
+
+let model_action_in_type_name act =
+  Printf.sprintf "%sModelIn" act.action_ast.aname
+
+let model_action_out_type_name act =
+  Printf.sprintf "%sModelOut" act.action_ast.aname
+
+let model_action_out_state act =
+  act.state_vars
+
+let model_action_in_type act =
+  let action_type_name = model_action_in_type_name act in
+  let properties = List.map (fun attr -> to_tstyped_attr (convert_type attr)) (model_action_in_state act) in
+
+  TSInterface(action_type_name, properties)
+
+let model_action_out_type act =
+  let action_type_name = model_action_out_type_name act in
+  let properties = List.map (fun attr -> to_tstyped_attr (convert_type attr)) (model_action_out_state act) in
+
+  TSInterface(action_type_name, properties) 
+
+let to_model_action act env =
+  let new_args = TSPTypedAttr({tsname="params";tstyp=TSTCustom(model_action_in_type_name act)}) in
+  let param_renames = List.map (fun a ->
+    Core.(Let(a.name, Access(Iden("params", None), a.name)))
+  ) (model_action_in_state act) in
+  
+  let new_body_exprs = List.concat [param_renames; act.action_ast.body] in
+
+  let return_stmt = [TSReturn(TSObject(
+    List.map
+      (fun a -> {
+        oname=Core.(a.name);
+        oval=TSIden({iname=a.name; itype=None})
+      })
+      (model_action_out_state act)
+  ))] in
+  let new_body = List.concat [
+    List.map (fun e -> Codegen.tsexpr_of_expr env e) new_body_exprs;
+    return_stmt
+  ] in
+  
+  TSLet(model_action_name act, TSClosure([new_args], new_body, false))
+
 (* Should ultimately be parameterizable by different infra / architecture 'backends'. A backend should:
    * Create a model configured at a specific state
    * Produce an implementation configured at a specific state
@@ -240,6 +287,11 @@ let generate_spec _ model_proc _ cert_out env =
   let schema_names = List.map fst (Env.SchemaEnv.bindings Env.(env.schemas)) in
   let env_types = List.map (fun s -> schema_to_interface s (Env.SchemaEnv.find s env.schemas)) schema_names in
   let action_types = List.map action_type model_proc.actions in
+
+  let model_action_in_types = List.map model_action_in_type model_proc.actions in
+  let model_action_out_types = List.map model_action_out_type model_proc.actions in
+  let model_actions = List.map (fun a -> to_model_action a env) model_proc.actions in
+
   let action_tests = List.map to_action_test model_proc.actions in
 
   let imports = {|import { expect, test } from 'vitest';
@@ -250,7 +302,10 @@ let generate_spec _ model_proc _ cert_out env =
 
   let everything = List.concat [
     env_types; 
-    action_types; 
+    action_types;
+    model_action_in_types;
+    model_action_out_types;
+    model_actions; 
     action_tests
   ] in
   

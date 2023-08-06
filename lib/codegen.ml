@@ -222,10 +222,13 @@ and string_of_ts_expr e env = match e with
     | None -> Printf.sprintf "%s" iname)
   | TSNum(n) -> string_of_int n
   | TSBool(b) -> string_of_bool b
+  | TSEqual(e1, e2) -> Printf.sprintf "%s === %s" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
+  | TSNotEqual(e1, e2) -> Printf.sprintf "%s === %s" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
   | TSIf(e1, e2, e3) -> (match e3 with
     | Some(elseE) -> Printf.sprintf "if (%s) {\n %s}\nelse {\n%s\n}" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env) (string_of_ts_expr elseE env)
     | None -> Printf.sprintf "if (%s) {\n %s\n}" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env))
   | TSLet(v, ie) -> Printf.sprintf "let %s = %s" v (string_of_ts_expr ie env)
+  | TSPlus(tse1, tse2) -> Printf.sprintf "%s + %s" (string_of_ts_expr tse1 env) (string_of_ts_expr tse2 env)
   | TSStmtList(ss) -> String.concat "\n" (List.map (fun e -> string_of_ts_expr e env) ss)
     (* let rev_list = List.rev ss in
     let ret_stmt = List.hd rev_list in 
@@ -238,17 +241,22 @@ and string_of_ts_expr e env = match e with
   | TSClass(n, ds) -> Printf.sprintf "class %s{%s}" n (String.concat "\n" (List.map (fun d -> string_of_tsclassdef d env) ds))
   | TSMethodCall(recv, m, args) -> Printf.sprintf "%s.%s(%s)" recv m (List.map (fun e -> string_of_ts_expr e env) args |> print_list ", ")
   | TSFuncCall(f, args) -> Printf.sprintf "%s(%s)" f (List.map (fun e -> string_of_ts_expr e env) args |> print_list ", ")
-  | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map (fun e -> string_of_ts_expr e env) es))
+  | TSArray(es) -> Printf.sprintf "[%s]" (String.concat ", " (List.map (fun e -> string_of_tsexpr_or_spread e env) es))
   | TSReturn(e) -> Printf.sprintf "return %s" (string_of_ts_expr e env)
   | TSString(s) -> Printf.sprintf "\"%s\"" s
   | TSAccess(e1, e2) -> Printf.sprintf "%s.%s" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
   | TSAssignment(e1, e2) -> Printf.sprintf "%s = %s;" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
+  | TSIndex(e1, e2) -> Printf.sprintf "%s[%s]" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
   | TSInterface(n, attrs) -> Printf.sprintf "interface %s {\n %s\n}" n (String.concat "\n" (List.map string_of_ts_typed_attr attrs))
   | TSCast(e, cast) -> Printf.sprintf "%s as %s" (string_of_ts_expr e env) cast
   | TSClosure(args, body, is_async) -> if is_async then
-    Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map (fun e -> string_of_ts_expr e env) body))
-  else
-    Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map (fun e -> string_of_ts_expr e env) body))
+      Printf.sprintf "async (%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map (fun e -> string_of_ts_expr e env) body))
+    else
+      Printf.sprintf "(%s) => {\n  %s\n}" (String.concat ", " (List.map string_of_tsparam args)) (print_list "\n" (List.map (fun e -> string_of_ts_expr e env) body))
+  | TSImmediateInvoke(c) -> (match c with
+      | TSClosure(_, _, _) ->
+        Printf.sprintf "(%s)()" (string_of_ts_expr c env)
+      | _ -> failwith "Can only immediately invoke a closure")
   | TSAwait(e) -> Printf.sprintf "await %s" (string_of_ts_expr e env)
   | TSExport(e) -> Printf.sprintf "export %s" (string_of_ts_expr e env)
   | TSAliasImport(imports, file) -> Printf.sprintf "import { %s } from \"%s\";" (String.concat ", " (List.map string_of_symbol_import imports)) file
@@ -258,6 +266,10 @@ and string_of_ts_expr e env = match e with
   | SLSpliceExpr(_) -> "SLSpliceExpr"
   (* Process context gets broken here - might be ok *)
   | SLExpr(e) -> string_of_expr e [] env
+
+and string_of_tsexpr_or_spread e env =  match e with
+| TSEOSExpr(e) -> string_of_ts_expr e env
+| TSEOSSpread(a) -> Printf.sprintf "...%s" a 
 
 and string_of_obj_prop p env = Printf.sprintf "%s: %s" p.oname (string_of_ts_expr p.oval env)
 
@@ -323,32 +335,50 @@ let rec tstype_of_sltype typ = match typ with
   | None -> None
 
 (* Currently unused, but converts a Sligh expression to a TS one *)
-let rec tsexpr_of_expr e = match e with
-  | Let(var, e) -> TSLet(var, tsexpr_of_expr e)
-  | StmtList(es) -> TSStmtList(List.map tsexpr_of_expr es)
+let rec tsexpr_of_expr env e  = 
+  let to_tsexpr = tsexpr_of_expr env in
+  let to_tsexpr_or_spread = tsexpr_or_spread_of_expr env in
+  match e with
+  | Let(var, e) -> TSLet(var, to_tsexpr e)
+  | StmtList(es) -> TSStmtList(List.map to_tsexpr es)
   | Iden(name, typ) -> TSIden({iname=name; itype=tstype_of_sltype typ})
   | Num(i) -> TSNum(i)
   | Bool(b) -> TSBool(b)
   | If(e1, e2, e3) -> (match e3 with
-    | Some(elseE) -> TSIf(tsexpr_of_expr e1, tsexpr_of_expr e2, Some(tsexpr_of_expr elseE))
-    | None -> TSIf(tsexpr_of_expr e1, tsexpr_of_expr e2, None))
-  | Array(es) -> TSArray(List.map tsexpr_of_expr es)
+    | Some(elseE) -> TSIf(to_tsexpr e1, to_tsexpr e2, Some(to_tsexpr elseE))
+    | None -> TSIf(to_tsexpr e1, to_tsexpr e2, None))
+  | Array(es) -> TSArray(List.map to_tsexpr_or_spread es)
   | String(s) -> TSString(s)
-  | Assignment(v, e) -> TSAssignment(TSIden({iname=Printf.sprintf "this.%s" v;itype=None}), tsexpr_of_expr e)
+  | Assignment(v, e) -> TSAssignment(TSIden({iname=Printf.sprintf "%s" v;itype=None}), to_tsexpr e)
 
   (* Unsure about this - why doesn't Access have an expr on the right hand side? *)
-  | Access(e, accessor) -> TSAccess(tsexpr_of_expr e, TSIden({iname=accessor; itype=None}))
+  | Access(e, accessor) -> TSAccess(to_tsexpr e, TSIden({iname=accessor; itype=None}))
 
   (* Unsure if this should be StmtList *)
   | TS(tses) -> TSStmtList(tses)
 
   (* Let the Codegen engine handle calls for now, because of UCS hard to tell if func or method call*)
-  | Call(name, args) -> TSFuncCall(name, List.map tsexpr_of_expr args)
+  | Call(name, args) ->
+    if List.exists (fun n -> n = name) Interpreter.builtin_funcs then
+      tsexpr_of_builtin_call name args env
+    else
+      TSFuncCall(name, List.map to_tsexpr args)
 
-  (* Not handling these, but should *)
-  | FuncDef(_) -> failwith "Not handling FuncDef to TS"
+  | Plus(e1, e2) -> TSPlus(to_tsexpr e1, to_tsexpr e2)
+  | FuncDef({fdname; fdargs; fdbody}) ->
+    let last_expr = List.rev fdbody |> List.hd in
+    let other_exprs = List.rev fdbody |> List.tl |> List.rev in
+
+    let body_with_return = List.concat [
+      List.map to_tsexpr other_exprs;
+      List.map to_tsexpr [last_expr]
+    ] in
+
+    TSLet(fdname, TSClosure(List.map tstyped_attr_of_typed_attr fdargs, body_with_return, false))
+
+    (* Not handling these, but should *)
   | Case(_, _) -> failwith "Not handling Case to TS"
-  | Plus(_, _) -> failwith "Not handling Plus to TS"
+
   
   (* Not handling these, and probably should never *)
   | Effect(_) -> failwith "Not handling Effect to TS"
@@ -357,3 +387,123 @@ let rec tsexpr_of_expr e = match e with
   | Process(_, _) -> failwith "Not handling Process to TS - maybe convert to class"
   | Entity(_, _) -> failwith "Not handling Entity to TS"
   | Variant(_, _) -> failwith "Not handling Variant to TS"
+
+and tstyped_attr_of_typed_attr ta =
+  TSPTypedAttr({tsname=ta.name; tstyp=tstype_of_sltype (Some(ta.typ)) |> Option.get})
+
+and tsexpr_or_spread_of_expr env e =
+  TSEOSExpr(tsexpr_of_expr env e)
+
+and tsexpr_of_builtin_call n args env =
+  match n with
+  | "new" ->
+    (* More hassle than necessary to get schema definitions.  *)
+    let schema_name = expr_as_str (List.nth args 0) [] env in
+    let schema_names = Env.SchemaEnv.find schema_name env.schemas |> List.map (fun ta -> ta.name) in
+    let bound_pairs = List.combine schema_names (List.tl args) in
+    
+    TSObject(
+      List.map 
+        (fun (attr, e) -> {oname=attr; oval=tsexpr_of_expr env e })
+        bound_pairs
+    )
+  | "append" -> 
+    let arr = List.nth args 0 in
+    let elem = List.nth args 1 in
+
+    TSImmediateInvoke(TSClosure(
+      [], 
+      [
+        TSLet("a", TSArray([TSEOSSpread(string_of_expr arr [] env)]));
+        TSMethodCall("a", "push", [tsexpr_of_expr env elem]);
+        TSReturn(TSIden({iname="a"; itype=None}))
+      ],
+      false
+    ))
+
+  | "delete" ->
+    let arr = List.nth args 0 in
+    let elem = List.nth args 1 in
+
+    (* Delete should probably take in a finder function, checking ID is too rigid *)
+    TSMethodCall(string_of_expr arr [] env, "filter", [TSClosure(
+      [TSPTypedAttr({tsname="e"; tstyp=TSTCustom("any")})],
+      [TSEqual(TSIden({iname="e.id"; itype=None}), tsexpr_of_expr env elem)],
+      false
+    )])
+  | "map" ->
+    let arr =  string_of_expr (List.nth args 0) [] env in
+    let map_func = expr_as_str (List.nth args 1) [] env in
+    let map_call = TSFuncCall(map_func, [
+      TSIden({iname="a"; itype=None})
+    ]) in
+
+    TSMethodCall(
+      arr,
+      "map",
+      [TSClosure(
+        [TSPTypedAttr({tsname="a"; tstyp=TSTCustom("any")})],
+        [TSReturn(map_call)],
+        false
+      )]
+    )
+  | "update" ->
+    let arr = expr_as_str (List.nth args 0) [] env in
+    let finder = expr_as_str (List.nth args 1) [] env in
+    let updater = expr_as_str (List.nth args 2) [] env in
+
+    let finder_call = TSClosure(
+      [TSPTypedAttr({tsname="a"; tstyp=TSTCustom("any")})],
+      [TSFuncCall(finder, [
+        TSIden({iname="a"; itype=None})
+      ])],
+      false
+    ) in
+
+    let find_idx = TSLet("index", TSMethodCall(arr, "findIndex", [finder_call])) in
+    let ret_val = TSLet("ret", TSArray([TSEOSSpread(arr)])) in
+    let update_idx = TSAssignment(
+      TSIndex(TSIden({iname="ret"; itype=None}), TSIden({iname="index"; itype=None})),
+      TSFuncCall(updater, [TSIndex(TSIden({iname="ret"; itype=None}), TSIden({iname="index"; itype=None}))])
+    ) in
+    let return_ret = TSReturn(TSIden({iname="ret"; itype=None})) in
+
+    TSImmediateInvoke(TSClosure(
+      [],
+      [
+        find_idx;
+        ret_val;
+        update_idx;
+        return_ret;
+      ],
+      false
+    ))
+  | "equalsStr" ->
+    let larg = List.nth args 0 in
+    let rarg = List.nth args 1 in
+
+    TSEqual(tsexpr_of_expr env larg, tsexpr_of_expr env rarg)
+  | "notEqualsStr" ->
+    let larg = List.nth args 0 in
+    let rarg = List.nth args 1 in
+
+    TSNotEqual(tsexpr_of_expr env larg, tsexpr_of_expr env rarg)
+  | "index" ->
+    let larg = tsexpr_of_expr env (List.nth args 0) in
+    let rarg = tsexpr_of_expr env (List.nth args 1) in
+
+    TSIndex(larg, rarg)
+  | "filter" ->
+    let larg = expr_as_str (List.nth args 0) [] env in
+    let rarg = tsexpr_of_expr env (List.nth args 1) in
+
+    TSMethodCall(larg, "filter", [rarg])
+(*    
+  | "equals" ->
+    let larg = string_of_expr (List.nth args 0) attrs env in
+    let rarg = string_of_expr (List.nth args 1) attrs env in
+
+    Printf.sprintf {|
+    %s === %s
+    |} larg rarg    *)
+  | _ -> failwith (Printf.sprintf "Attempted to compile unknown builtin func: %s" n)    
