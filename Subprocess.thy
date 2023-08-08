@@ -55,7 +55,7 @@ definition compose_local_actions :: "('e, 's, 'a) action_mapping \<Rightarrow> (
 text "'Action Simulation' is where each local implementation action simulates its corresponding
     action in the model."
 
-definition "action_simulates am_i am_m e s t = (
+definition "local_simulates am_i am_m e s t = (
   let proc_i = step (am_i e) in
   let proc_m = step (am_m e) in
   let impl_start = (Get (lens (am_i e))) s in
@@ -79,42 +79,44 @@ theorem
     and "am_i = (\<lambda>e. \<lparr>lens=li, step=sti\<rparr> )"
     and "model_proc \<equiv> compose_local_actions am_m"
     and "impl_proc \<equiv> compose_local_actions am_i"
-    and "action_simulates am_i am_m e s t"
+    and "local_simulates am_i am_m e s t"
   shows "simulates impl_proc model_proc e s t"
   using assms
-  unfolding simulates_def action_simulates_def compose_local_actions_def well_behaved_def
+  unfolding simulates_def local_simulates_def compose_local_actions_def well_behaved_def
   by (metis local_action.select_convs(1))
 
-theorem local_action_simulates:
+theorem local_sim_imp_sim:
   assumes "well_behaved (lens (am_m e))"
     and "well_behaved (lens (am_i e))"
     and "action_simulates am_i am_m e s t"
   shows "simulates (compose_local_actions am_m) (compose_local_actions am_i) e s t"
   using assms
-  unfolding simulates_def action_simulates_def compose_local_actions_def well_behaved_def
+  unfolding simulates_def local_simulates_def compose_local_actions_def well_behaved_def
   by metis
 
 type_synonym ('s) invariant_func = "'s \<Rightarrow> bool"
 
-definition invariant :: "('s \<Rightarrow> bool) \<Rightarrow> 's \<Rightarrow> bool" where 
-"invariant i s = i s"
-
 (* Invariant: Unauthenticated users are always denied access" *)
 
-definition action_invariant :: "('e, 's, 'a) action_mapping \<Rightarrow> 'a invariant_func \<Rightarrow> 'e \<Rightarrow> 's \<Rightarrow> bool" where
-"action_invariant am inv e s = (
-  let step = sastep (am e) in
-  (inv s \<and> inv (step s))
+definition "local_invariant am inv_f e s = (
+  let step_f = step (am e) in
+  let local_state = Get (lens (am e)) s in
+  let put = Put (lens (am e)) in
+
+
+   inv_f s \<and> inv_f (put (step_f local_state) s)
 )"
 
-theorem local_action_invariant:
-  assumes "well_behaved (salens (am_i e))"
-    and "action_invariant am_i inv e s"
-    and "invariant s (compose_subactions am_i)"
-  shows "invariant t (compose_subactions am_i)"
+theorem local_inv_imp_inv:
+  assumes "well_behaved (lens (am_i e))"
+    and "local_invariant am_i inv_f e s"
+  shows "inv_f ((compose_local_actions am_i) e s)"
+  using assms
+  unfolding well_behaved_def local_invariant_def compose_local_actions_def
+  by metis
 
 definition exec :: "('e, 's) process \<Rightarrow> 'e list \<Rightarrow> 's \<Rightarrow> 's" where
-"exec step es i = foldl (\<lambda>s e. step e s) i es"
+"exec stp es i = foldl (\<lambda>s e. stp e s) i es"
 
 definition "refines I M es s s' = (exec I es s = s' \<longrightarrow> exec M es s = s')"
 
