@@ -8,7 +8,7 @@ text "A simpler version of assume-guarantee reasoning that focuses on non-interf
       updates alone, e.g. https://arxiv.org/pdf/2103.13743.pdf"
 text "Goes back to Lamport & Abadi: https://lamport.azurewebsites.net/pubs/abadi-conjoining.pdf"
 
-text "Each action operates on its own state, which is defined as a 'v view type. The relationship
+text "Each action operates on its own local state, which is defined as a 'v view type. The relationship
      between 'v and 's is definable by a lens. This is different than the seL4 process model,
       since that effectively only has a single lens whereas multiple lenses are required for
       each action here."
@@ -61,7 +61,7 @@ definition "local_simulates am_i am_m e s t = (
   let impl_start = (Get (lens (am_i e))) s in
   let model_start = (Get (lens (am_m e))) s in
 
-  (proc_i impl_start = t) \<longrightarrow> (proc_m model_start = t))"
+  proc_i impl_start = t \<longrightarrow> proc_m model_start = t)"
 
 text "Basic notion of simulation."
 
@@ -103,13 +103,15 @@ definition "local_invariant am inv_f e s = (
   let local_state = Get (lens (am e)) s in
   let put = Put (lens (am e)) in
 
-
    inv_f s \<and> inv_f (put (step_f local_state) s)
 )"
 
+text "Local invariance implies global invariance.
+
+     Note how well-behavedness of the lens isn't a required assumption, because all that matters
+     is that the invariant holds before and after the action completes."
 theorem local_inv_imp_inv:
-  assumes "well_behaved (lens (am_i e))"
-    and "local_invariant am_i inv_f e s"
+  assumes "local_invariant am_i inv_f e s"
   shows "inv_f ((compose_local_actions am_i) e s)"
   using assms
   unfolding well_behaved_def local_invariant_def compose_local_actions_def
