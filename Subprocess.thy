@@ -26,28 +26,28 @@ text "A process is a representation of a program that proceeds through a sequenc
       response to actions (inputs) of type 'e, i.e. a state machine."
 type_synonym ('e, 's) process = "'e \<Rightarrow> 's \<Rightarrow> 's"
 
-text "A subaction is a step function on its own local state type 'a, where 'a is defineable as a lens
+text "A local action is a step function on its own local state type 'a, where 'a is defineable as a lens
       on some global state type 's"
 
-record ('s, 'a) subaction =
-  salens :: "('s, 'a) lens"
-  sastep :: "'a \<Rightarrow> 'a"
+record ('s, 'a) local_action =
+  lens :: "('s, 'a) lens"
+  step :: "'a \<Rightarrow> 'a"
 
-text "An action mapping maps an action 'e to its corresponding subaction"
+text "An action mapping maps an action 'e to its corresponding local action"
 
-type_synonym ('e, 's, 'a) action_mapping = "'e \<Rightarrow> ('s, 'a) subaction"
+type_synonym ('e, 's, 'a) action_mapping = "'e \<Rightarrow> ('s, 'a) local_action"
 
-text "compose_subactions defines how a global process can be defined from a set of subactions.
-      It uses the lens defined in the subaction for each action type to get the local action state
-      from the global state, execute the local action step function, and write the result back into
+text "compose_local_actions defines how a global process can be defined from a set of local actions.
+      It uses the lens defined in the local action for each action type to get the local action state
+      from the global state, execute the local step function, and write the result back into
       the global state."
 
-definition compose_subactions :: "('e, 's, 'a) action_mapping \<Rightarrow> ('e, 's) process"  where
-"compose_subactions samap = (\<lambda>e s.(
-  let subact = samap e;
-  lns = (salens subact);
-  subact_v = (Get lns) s;
-  res = (sastep subact) subact_v in
+definition compose_local_actions :: "('e, 's, 'a) action_mapping \<Rightarrow> ('e, 's) process"  where
+"compose_local_actions am = (\<lambda>e s.(
+  let locact = am e;
+  lns = (lens locact);
+  locact_s = (Get lns) s;
+  res = (step locact) locact_s in
   
   (Put lns) res s
 ))"
@@ -56,10 +56,10 @@ text "'Action Simulation' is where each local implementation action simulates it
     action in the model."
 
 definition "action_simulates am_i am_m e s t = (
-  let proc_i = sastep (am_i e) in
-  let proc_m = sastep (am_m e) in
-  let impl_start = (Get (salens (am_i e))) s in
-  let model_start = (Get (salens (am_m e))) s in
+  let proc_i = step (am_i e) in
+  let proc_m = step (am_m e) in
+  let impl_start = (Get (lens (am_i e))) s in
+  let model_start = (Get (lens (am_m e))) s in
 
   (proc_i impl_start = t) \<longrightarrow> (proc_m model_start = t))"
 
@@ -74,24 +74,24 @@ text "We want to show that in order to prove that an implementation process simu
 
 theorem
   assumes "well_behaved lm"
-    and "am_m = (\<lambda>e. \<lparr>salens=lm, sastep=stm\<rparr>)"
+    and "am_m = (\<lambda>e. \<lparr>lens=lm, step=stm\<rparr>)"
     and "well_behaved li"
-    and "am_i = (\<lambda>e. \<lparr>salens=li, sastep=sti\<rparr> )"
-    and "model_proc \<equiv> compose_subactions am_m"
-    and "impl_proc \<equiv> compose_subactions am_i"
+    and "am_i = (\<lambda>e. \<lparr>lens=li, step=sti\<rparr> )"
+    and "model_proc \<equiv> compose_local_actions am_m"
+    and "impl_proc \<equiv> compose_local_actions am_i"
     and "action_simulates am_i am_m e s t"
   shows "simulates impl_proc model_proc e s t"
   using assms
-  unfolding simulates_def action_simulates_def compose_subactions_def well_behaved_def
-  by (metis subaction.select_convs(1))
+  unfolding simulates_def action_simulates_def compose_local_actions_def well_behaved_def
+  by (metis local_action.select_convs(1))
 
 theorem local_action_simulates:
-  assumes "well_behaved (salens (am_m e))"
-    and "well_behaved (salens (am_i e))"
+  assumes "well_behaved (lens (am_m e))"
+    and "well_behaved (lens (am_i e))"
     and "action_simulates am_i am_m e s t"
-  shows "simulates (compose_subactions am_m) (compose_subactions am_i) e s t"
+  shows "simulates (compose_local_actions am_m) (compose_local_actions am_i) e s t"
   using assms
-  unfolding simulates_def action_simulates_def compose_subactions_def well_behaved_def
+  unfolding simulates_def action_simulates_def compose_local_actions_def well_behaved_def
   by metis
 
 type_synonym ('s) invariant_func = "'s \<Rightarrow> bool"
