@@ -52,13 +52,16 @@ definition compose_subactions :: "('e, 's, 'a) action_mapping \<Rightarrow> ('e,
   (Put lns) res s
 ))"
 
-text "'Action Simulation' is where each local implementation action refines its corresponding
+text "'Action Simulation' is where each local implementation action simulates its corresponding
     action in the model."
 
 definition "action_simulates am_i am_m e s t = (
-  let proc_i = sastep (am_i e); proc_m = sastep (am_m e) in
+  let proc_i = sastep (am_i e) in
+  let proc_m = sastep (am_m e) in
+  let impl_start = (Get (salens (am_i e))) s in
+  let model_start = (Get (salens (am_m e))) s in
 
-  proc_i s = t \<longrightarrow> proc_m s = t)"
+  (proc_i impl_start = t) \<longrightarrow> (proc_m model_start = t))"
 
 text "Basic notion of simulation."
 
@@ -68,11 +71,12 @@ text "We want to show that in order to prove that an implementation process simu
       process, we can instead decompose both processes each into a set of local actions. If the
       local actions simulate each other, and the lenses used to define the local action states are
       well-behaved, then the global implementation process simulates the global model."
+
 theorem
   assumes "well_behaved lm"
     and "am_m = (\<lambda>e. \<lparr>salens=lm, sastep=stm\<rparr>)"
     and "well_behaved li"
-    and "am_i = (\<lambda>e. \<lparr>salens=li, sastep=stm\<rparr> )"
+    and "am_i = (\<lambda>e. \<lparr>salens=li, sastep=sti\<rparr> )"
     and "model_proc \<equiv> compose_subactions am_m"
     and "impl_proc \<equiv> compose_subactions am_i"
     and "action_simulates am_i am_m e s t"
@@ -81,8 +85,42 @@ theorem
   unfolding simulates_def action_simulates_def compose_subactions_def well_behaved_def
   by (metis subaction.select_convs(1))
 
+theorem local_action_simulates:
+  assumes "well_behaved (salens (am_m e))"
+    and "well_behaved (salens (am_i e))"
+    and "action_simulates am_i am_m e s t"
+  shows "simulates (compose_subactions am_m) (compose_subactions am_i) e s t"
+  using assms
+  unfolding simulates_def action_simulates_def compose_subactions_def well_behaved_def
+  by metis
+
+type_synonym ('s) invariant_func = "'s \<Rightarrow> bool"
+
+definition invariant :: "('s \<Rightarrow> bool) \<Rightarrow> 's \<Rightarrow> bool" where 
+"invariant i s = i s"
+
+(* Invariant: Unauthenticated users are always denied access" *)
+
+definition action_invariant :: "('e, 's, 'a) action_mapping \<Rightarrow> 'a invariant_func \<Rightarrow> 'e \<Rightarrow> 's \<Rightarrow> bool" where
+"action_invariant am inv e s = (
+  let step = sastep (am e) in
+  (inv s \<and> inv (step s))
+)"
+
+theorem local_action_invariant:
+  assumes "well_behaved (salens (am_i e))"
+    and "action_invariant am_i inv e s"
+    and "invariant s (compose_subactions am_i)"
+  shows "invariant t (compose_subactions am_i)"
+
 definition exec :: "('e, 's) process \<Rightarrow> 'e list \<Rightarrow> 's \<Rightarrow> 's" where
 "exec step es i = foldl (\<lambda>s e. step e s) i es"
+
+definition "refines I M es s s' = (exec I es s = s' \<longrightarrow> exec M es s = s')"
+
+theorem assumes "simulates impl_proc model_proc e s t"
+  shows "refines impl_proc model_proc es s t"
+oops
 
 section "Subprocs for banking"
 
