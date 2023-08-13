@@ -1,4 +1,5 @@
 open Edsl
+open Draw
 
 (* 
   TODO: 
@@ -17,7 +18,7 @@ open Edsl
 
 (* Idea: Collector - add custom model analyses *)
 
-let usage_msg = {|| Certifying model transformation:
+(* let usage_msg = {|| Certifying model transformation:
     sligh <model_spec> -cert <cert_out> -impl <impl_out>
 
 | Model transformation:
@@ -42,9 +43,10 @@ let args = [
   ("-transform", Arg.Set_string transform_script, "The transformation script to run");
   ("-out", Arg.Set_string out_file, "The output file to write a transformation to");
   ("-include", Arg.Set_string impl_in, "Implementation include file name");
-]
+] *)
 
 let main = begin
+  (*
   Arg.parse args set_input usage_msg;  
 
   if !transform_script <> "" then
@@ -56,6 +58,15 @@ let main = begin
   else
     let out_file_name = if !out_file = "" then "model" else !out_file in
     Compiler.compile_model !input_file out_file_name
+    *)
+
+  let program = Duplicate(Segment(
+    {x=0; y=0},
+    {x=10; y=10}
+  )) in
+
+
+  Printf.printf "%s" (Draw_codegen.compile program)
 end
 
 let () = main

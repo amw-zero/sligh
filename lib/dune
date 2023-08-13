@@ -6,7 +6,7 @@
 
 (library
  (name edsl)
- (modules compiler certification implementation effects env parse parser lexer interpreter process file codegen util core)
+ (modules draw_codegen draw compiler certification implementation effects env parse parser lexer interpreter process file codegen util core)
  (inline_tests)
  (preprocess (pps ppx_inline_test)))
 
