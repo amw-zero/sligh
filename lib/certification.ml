@@ -127,18 +127,17 @@ let assert_state_var attr =
 let to_db_setup attr =
   Core.({oname=attr.name; oval=to_db_access attr})
 
-let to_args_setup attr =
+let to_client_state_setup attr =
   Core.({oname=attr.name; oval=to_state_access attr})  
 
 let to_impl_arg attr =
-  (* object propr *)
   Core.({oname=attr.name; oval=TSAccess(TSIden({iname="state"; itype=None}), TSIden({iname=attr.name; itype=None}))})
 
 let model_action_name act =
   Printf.sprintf "%sModel" act.action_ast.aname
 
 let model_action_in_state act =
-  List.concat [act.action_ast.args; act.state_vars]  
+  List.concat [act.action_ast.args; act.state_vars]
 
   (* The property-based test body - the actual test logic lives here*)
   (* Note about cache coherence - the client state can start out incoherent, since any client can modify the server state
@@ -149,10 +148,10 @@ let test_body act =
   let impl_set_state_args = List.map to_impl_arg act.state_vars in
   let set_impl_state_client = TSMethodCall("impl", "setState", [TSObject(impl_set_state_args)]) in
 
-  let set_impl_state_server = TSMethodCall("impl", "setDBState", [TSObject(List.map to_db_setup act.state_vars)]) in
+  let set_impl_state_server = TSAwait(TSMethodCall("impl.getState()", "setDBState", [TSObject(List.map to_db_setup act.state_vars)])) in
 
   let model_action_props = List.map to_db_setup act.state_vars in
-  let model_state_props = List.map to_args_setup act.action_ast.args in
+  let model_state_props = List.map to_client_state_setup act.action_ast.args in
   let model_action_in_props = List.concat [
     model_action_props;
     model_state_props;
@@ -278,6 +277,8 @@ let to_model_action act env =
    * Support invoking the action
    * Support asserting on the resulting state, with refinement mapping
 *)
+
+(* Trying out witness approach
 let generate_spec _ model_proc _ cert_out env =
   (* Add DB types to env so they can be generated *)
   let db_types = List.map (fun a -> Entity(db_type_name a, (List.map convert_type a.state_vars))) model_proc.actions in
@@ -296,7 +297,6 @@ let generate_spec _ model_proc _ cert_out env =
 
   let imports = {|import { expect, test } from 'vitest';
   import { makeStore } from '../lib/state';
-  import { CounterApp } from './model';
   import fc from 'fast-check';
   |} in
 
@@ -307,6 +307,94 @@ let generate_spec _ model_proc _ cert_out env =
     model_action_out_types;
     model_actions; 
     action_tests
+  ] in
+  
+  File.output_tsexpr_list_imports cert_out env everything imports
+*)
+
+let to_expectation act ta =
+  Core.(
+  TSEOSExpr(TSClosure(
+    [
+      TSPTypedAttr({tsname="modelResult"; tstyp=TSTCustom(model_action_out_type_name act)});
+      TSPTypedAttr({tsname="implState"; tstyp=TSTCustom("ClientState")})
+    ],
+    [TSReturn(TSObject([
+      {oname="modelExpectation"; oval=TSObject([
+        {oname=ta.name; oval=TSIden({iname=Printf.sprintf "modelResult.%s" ta.name; itype=None})}
+      ])};
+      {oname="implExpectation"; oval=TSObject([
+        {oname=ta.name; oval=TSIden({iname=Printf.sprintf "implState.%s" ta.name; itype=None})}
+      ])}
+    ]))],
+    false
+  )))
+
+let to_witness_element env act =
+  let name = TSString(act.action_ast.aname) in
+  let state_gen = state_gen_from_action env act in
+  let impl_setup = TSClosure(
+    [TSPTypedAttr({ tsname="state"; tstyp=TSTCustom(action_type_name act)})],
+    [TSReturn(TSObject(List.map to_client_state_setup act.state_vars))],
+    false
+  ) in
+  let db_setup = TSClosure(
+    [TSPTypedAttr({ tsname="state"; tstyp=TSTCustom(action_type_name act)})],
+    [TSReturn(TSObject(List.map to_db_setup act.state_vars))],
+    false
+  ) in
+  let action_args = List.map to_state_access act.action_ast.args in
+  let run_impl = TSClosure(
+    [
+      TSPTypedAttr({ tsname="impl"; tstyp=TSTCustom("ClientState")});
+      TSPTypedAttr({ tsname="state"; tstyp=TSTCustom(action_type_name act)})
+    ],
+    [TSReturn(TSMethodCall("impl", act.action_ast.aname, action_args))],
+    false
+  ) in
+  let to_expectation_f = to_expectation act in
+  let expectations = TSArray(List.map to_expectation_f act.state_vars) in
+
+    let witness_props = [
+    {oname="name"; oval=name};
+    {oname="stateGen"; oval=state_gen};
+    {oname="implSetup"; oval=impl_setup};
+    {oname="dbSetup"; oval=db_setup};
+    {oname="model"; oval=TSIden({iname=model_action_name act; itype=None})};
+    {oname="modelArg"; oval=db_setup};
+    {oname="runImpl"; oval=run_impl};
+    {oname="expectations"; oval=expectations}
+  ] in
+
+  TSEOSExpr(TSObject(witness_props))
+
+let generate_spec _ model_proc _ cert_out env =
+  let db_types = List.map (fun a -> Entity(db_type_name a, (List.map convert_type a.state_vars))) model_proc.actions in
+  let env = List.fold_left (fun e s -> Env.add_stmt_to_env s e) env db_types in
+
+  let schema_names = List.map fst (Env.SchemaEnv.bindings env.schemas) in
+  let env_types = List.map (fun s -> schema_to_interface s (Env.SchemaEnv.find s env.schemas)) schema_names in
+  let action_types = List.map action_type model_proc.actions in
+
+  let model_action_in_types = List.map model_action_in_type model_proc.actions in
+  let model_action_out_types = List.map model_action_out_type model_proc.actions in
+  let model_actions = List.map (fun a -> to_model_action a env) model_proc.actions in
+
+  let to_witness = to_witness_element env.schemas in
+  let witness = TSArray(List.map to_witness model_proc.actions) in
+  let witness_decl = [TSExport(TSLet("witness", witness))] in
+
+  let imports = {|import { ClientState } from '../lib/state';
+  import fc from 'fast-check';
+  |} in  
+
+  let everything = List.concat [
+    env_types; 
+    action_types;
+    model_action_in_types;
+    model_action_out_types;
+    model_actions; 
+    witness_decl;
   ] in
   
   File.output_tsexpr_list_imports cert_out env everything imports

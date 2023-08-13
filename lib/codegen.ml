@@ -371,7 +371,7 @@ let rec tsexpr_of_expr env e  =
 
     let body_with_return = List.concat [
       List.map to_tsexpr other_exprs;
-      List.map to_tsexpr [last_expr]
+      [TSReturn(to_tsexpr last_expr)]
     ] in
 
     TSLet(fdname, TSClosure(List.map tstyped_attr_of_typed_attr fdargs, body_with_return, false))
