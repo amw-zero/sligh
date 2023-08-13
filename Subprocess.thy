@@ -20,7 +20,7 @@ record ('s, 'v) lens  =
 text "Well-behaved lenses must follow the 'lens laws' which ensure that they retrieve and update
       the same part of the source state."
 
-definition "well_behaved l \<equiv> (\<forall>ls lv. (Put l) ((Get l) ls) ls = ls \<and> (Get l) ((Put l) lv ls) = ls)"
+definition "well_behaved l \<equiv> (\<forall>ls lv. (Put l) ((Get l) ls) ls = ls \<and> (Get l) ((Put l) lv ls) = lv)"
 
 text "A process is a representation of a program that proceeds through a sequence of states in 
       response to actions (inputs) of type 'e, i.e. a state machine."
@@ -79,7 +79,7 @@ theorem
     and "am_i = (\<lambda>e. \<lparr>lens=li, step=sti\<rparr> )"
     and "model_proc \<equiv> compose_local_actions am_m"
     and "impl_proc \<equiv> compose_local_actions am_i"
-    and "local_simulates am_i am_m e s t"
+   (* and "local_simulates am_i am_m e s t"*)
   shows "simulates impl_proc model_proc e s t"
   using assms
   unfolding simulates_def local_simulates_def compose_local_actions_def well_behaved_def
@@ -88,7 +88,8 @@ theorem
 theorem local_sim_imp_sim:
   assumes "well_behaved (lens (am_m e))"
     and "well_behaved (lens (am_i e))"
-    and "action_simulates am_i am_m e s t"
+(* Don't even need this assumption, which is suspect *)
+    and "action_simulates am_i am_m e s t" 
   shows "simulates (compose_local_actions am_m) (compose_local_actions am_i) e s t"
   using assms
   unfolding simulates_def local_simulates_def compose_local_actions_def well_behaved_def
@@ -110,6 +111,10 @@ text "Local invariance implies global invariance.
 
      Note how well-behavedness of the lens isn't a required assumption, because all that matters
      is that the invariant holds before and after the action completes."
+
+text "An improvement would be to also define a selector (just the read part of a lens) on the global
+      state so that the invariant only needs to operate on the data that it cares about."
+
 theorem local_inv_imp_inv:
   assumes "local_invariant am_i inv_f e s"
   shows "inv_f ((compose_local_actions am_i) e s)"
@@ -124,7 +129,16 @@ definition "refines I M es s s' = (exec I es s = s' \<longrightarrow> exec M es 
 
 theorem assumes "simulates impl_proc model_proc e s t"
   shows "refines impl_proc model_proc es s t"
-oops
+  oops
+
+section "Test"
+
+record data = x :: nat y :: nat
+
+definition "data_lens = \<lparr> Get= (\<lambda>d. x d), Put = (\<lambda>n d. d\<lparr>x := n\<rparr>) \<rparr>"
+
+theorem "well_behaved data_lens"
+  by (simp add: data_lens_def well_behaved_def)
 
 section "Subprocs for banking"
 
