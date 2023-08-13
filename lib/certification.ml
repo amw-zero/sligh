@@ -54,6 +54,24 @@ let generate _ _ _ cert_out interp_env env =
 let action_type_name act =
   Printf.sprintf "%sType" act.action_ast.aname  
 
+let uniq_selector_from_type env typ =
+  match typ with
+  | STCustom(n) ->
+    let attrs = Env.SchemaEnv.find n env in
+    let id_attr = List.find (fun a -> match a.typ with 
+      | STGeneric(n, _) -> n = "Id"
+      | _ -> false )
+      attrs in
+
+    Some(TSObject([{oname="selector"; oval=TSClosure(
+      [TSPTypedAttr({tsname="e"; tstyp=TSTCustom("any")})],
+      [TSReturn(
+        TSIden({iname=Printf.sprintf "e.%s" id_attr.name; itype=None})
+      )],
+      false
+    )}]))
+  | _ -> None
+
 let rec gen_type env t = match t with
 | STInt -> TSMethodCall("fc", "integer", [])
 | STString -> TSMethodCall("fc", "string", [])
@@ -74,11 +92,18 @@ and gen_generic name typs env =
   | "Set"  -> 
     let typ = List.nth typs 0 in 
     let typ_gen = gen_type env typ in
-    TSMethodCall("fc", "array", [typ_gen])
+    (match uniq_selector_from_type env typ with
+    | Some(selector) -> TSMethodCall("fc", "uniqueArray", [typ_gen; selector])
+    | None -> TSMethodCall("fc", "uniqueArray", [typ_gen]))
   | "Array" ->
     let typ = List.nth typs 0 in 
     let typ_gen = gen_type env typ in
     TSMethodCall("fc", "array", [typ_gen])
+  | "Id" ->
+    (* Pass through ID type - it's just there to add information to an existing type, and has
+       no semantics of its own. *)
+    let typ = List.nth typs 0 in 
+    gen_type env typ
   | _ -> TSMethodCall("fc", "generic", [])  
 
 let db_type_name act =
@@ -196,16 +221,8 @@ let action_test env act =
   let test_name = Printf.sprintf "Test local action refinement: %s" act.action_ast.aname in
   TSFuncCall("test", [TSString(test_name); TSClosure([], [state_gen; assertion], true)])
 
-
-(* This probably shouldn't exist. But Sligh Sets get compiled to TS Arrays in Codegen, and
-    that has to happen here too or the test doesn't typecheck. *)
-    let convert_type attr = 
-    match attr.typ with
-    | STGeneric(n, typs) -> if n = "Set" then {name=attr.name; typ=STGeneric("Array", typs)} else attr
-    | _ -> attr  
-
 let schema_to_interface name attrs =
-  let schema_properties = List.map (fun a -> to_tstyped_attr (convert_type a)) attrs in
+  let schema_properties = List.map (fun a -> Codegen.tstyped_attr_of_typed_attr a) attrs in
 
   TSInterface(name, schema_properties)
 
@@ -214,7 +231,7 @@ let schema_to_interface name attrs =
      such as database state and infrastructure errors. *)
 let action_type action =
   let action_type_name = action_type_name action in
-  let properties = List.map (fun attr -> to_tstyped_attr (convert_type attr)) (action_state action) in
+  let properties = List.map (fun attr -> Codegen.tstyped_attr_of_typed_attr attr) (action_state action) in
 
   TSInterface(action_type_name, properties)
 
@@ -238,13 +255,13 @@ let model_action_out_state act =
 
 let model_action_in_type act =
   let action_type_name = model_action_in_type_name act in
-  let properties = List.map (fun attr -> to_tstyped_attr (convert_type attr)) (model_action_in_state act) in
+  let properties = List.map (fun attr -> Codegen.tstyped_attr_of_typed_attr attr) (model_action_in_state act) in
 
   TSInterface(action_type_name, properties)
 
 let model_action_out_type act =
   let action_type_name = model_action_out_type_name act in
-  let properties = List.map (fun attr -> to_tstyped_attr (convert_type attr)) (model_action_out_state act) in
+  let properties = List.map (fun attr -> Codegen.tstyped_attr_of_typed_attr attr) (model_action_out_state act) in
 
   TSInterface(action_type_name, properties) 
 
@@ -369,7 +386,7 @@ let to_witness_element env act =
   TSEOSExpr(TSObject(witness_props))
 
 let generate_spec _ model_proc _ cert_out env =
-  let db_types = List.map (fun a -> Entity(db_type_name a, (List.map convert_type a.state_vars))) model_proc.actions in
+  let db_types = List.map (fun a -> Entity(db_type_name a, a.state_vars)) model_proc.actions in
   let env = List.fold_left (fun e s -> Env.add_stmt_to_env s e) env db_types in
 
   let schema_names = List.map fst (Env.SchemaEnv.bindings env.schemas) in
@@ -386,7 +403,7 @@ let generate_spec _ model_proc _ cert_out env =
 
   let imports = {|import { ClientState } from '../lib/state';
   import fc from 'fast-check';
-  |} in  
+  |} in
 
   let everything = List.concat [
     env_types; 

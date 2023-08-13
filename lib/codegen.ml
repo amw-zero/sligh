@@ -4,7 +4,7 @@ let print_list delim  l = String.concat delim l
 
 let string_of_generic_type n = match n with
   | "Set" -> "Array"
-  | _ -> failwith (Printf.sprintf "Unknown generic type mapping: %s" n)
+  | _ -> n
 
 let rec string_of_type t = match t with
   | STInt -> "number"
@@ -13,7 +13,9 @@ let rec string_of_type t = match t with
   | STDecimal -> "number"
   | STBool -> "boolean"
   | STVariant(n, _) -> Printf.sprintf "Variant: %s" n
-  | STGeneric(n, ts) -> Printf.sprintf "%s<%s>" (string_of_generic_type n) (String.concat ", " (List.map string_of_type ts))
+  | STGeneric(n, ts) -> (match n with
+    | "Id" -> string_of_type (List.nth ts 0)
+    | _ -> Printf.sprintf "%s<%s>" (string_of_generic_type n) (String.concat ", " (List.map string_of_type ts)))
 
 let string_of_typed_attr ta =
   Printf.sprintf "%s: %s" ta.name (string_of_type ta.typ)
@@ -331,10 +333,13 @@ let rec tstype_of_sltype typ = match typ with
     | STCustom(c) -> Some(TSTCustom(c))
     | STBool -> Some(TSTBool)
     | STVariant(n, _) -> Some(TSTCustom(n))
-    | STGeneric(n, types) -> Some(TSTGeneric(n, List.filter_map (fun t -> tstype_of_sltype (Some(t))) types)))
+    | STGeneric(n, types) -> (match n with      
+      | "Id" ->
+        let typ = List.nth types 0 in
+        tstype_of_sltype (Some(typ))
+      | _ -> Some(TSTGeneric(string_of_generic_type n, List.filter_map (fun t -> tstype_of_sltype (Some(t))) types))))
   | None -> None
 
-(* Currently unused, but converts a Sligh expression to a TS one *)
 let rec tsexpr_of_expr env e  = 
   let to_tsexpr = tsexpr_of_expr env in
   let to_tsexpr_or_spread = tsexpr_or_spread_of_expr env in
@@ -357,7 +362,6 @@ let rec tsexpr_of_expr env e  =
   (* Unsure if this should be StmtList *)
   | TS(tses) -> TSStmtList(tses)
 
-  (* Let the Codegen engine handle calls for now, because of UCS hard to tell if func or method call*)
   | Call(name, args) ->
     if List.exists (fun n -> n = name) Interpreter.builtin_funcs then
       tsexpr_of_builtin_call name args env
@@ -374,7 +378,7 @@ let rec tsexpr_of_expr env e  =
       [TSReturn(to_tsexpr last_expr)]
     ] in
 
-    TSLet(fdname, TSClosure(List.map tstyped_attr_of_typed_attr fdargs, body_with_return, false))
+    TSLet(fdname, TSClosure(List.map (fun a -> TSPTypedAttr(tstyped_attr_of_typed_attr a)) fdargs, body_with_return, false))
 
     (* Not handling these, but should *)
   | Case(_, _) -> failwith "Not handling Case to TS"
@@ -389,7 +393,7 @@ let rec tsexpr_of_expr env e  =
   | Variant(_, _) -> failwith "Not handling Variant to TS"
 
 and tstyped_attr_of_typed_attr ta =
-  TSPTypedAttr({tsname=ta.name; tstyp=tstype_of_sltype (Some(ta.typ)) |> Option.get})
+  {tsname=ta.name; tstyp=tstype_of_sltype (Some(ta.typ)) |> Option.get}
 
 and tsexpr_or_spread_of_expr env e =
   TSEOSExpr(tsexpr_of_expr env e)
