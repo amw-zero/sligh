@@ -50,7 +50,7 @@ let compile lexbuf impl_out cert_out =
   Certification.generate model_proc "model.ts" "impl.ts" cert_out interp_env env
 
 (* Compilers certifying specification *)
-let compile_cert_test input_file impl_in cert_out out_file =
+let compile_cert_test input_file cert_out =
   let fh = open_in input_file in
   let lex = Lexing.from_channel fh in
   lex.Lexing.lex_curr_p <- {lex.Lexing.lex_curr_p with Lexing.pos_fname = input_file};
@@ -61,10 +61,8 @@ let compile_cert_test input_file impl_in cert_out out_file =
   let model_proc = List.fold_left Process.analyze_model init_process model_ast in
   let env = List.fold_left (fun e s -> Env.add_stmt_to_env s e) Env.empty_env model_ast in
 
-  File.output_str out_file (Codegen.string_of_model model_ast env);
-
   close_in fh;
-  Certification.generate_spec "model.ts" model_proc impl_in cert_out env
+  Certification.generate_spec model_proc cert_out env
 
 let compile_str expr =
   compile (Lexing.from_string expr) "impl.ts" "refine_cert.ts"
