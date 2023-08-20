@@ -1,6 +1,6 @@
 # Description
 
-Sligh is a language and toolchain for model-based testing. With Sligh, you write a simplified model of a system, and the compiler uses it to generate a test suite for an implementation system. The model becomes an executable specification that the test uses to determine correct behavior.
+Sligh is a language and toolchain for model-based testing. With Sligh, you write a simplified model of a system, and the compiler generates a test suite from it. The model becomes an executable specification that the test uses to determine correct behavior. This workflow is intended to handle real-world implementations, such as typical database-backed web applications.
 
 Here's a Sligh model of a simple counter application:
 
