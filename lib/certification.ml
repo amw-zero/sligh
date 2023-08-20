@@ -347,19 +347,33 @@ let to_expectation act ta =
     false
   )))
 
+let is_read_action act =
+  List.length act.assignments = 0
+
 let to_witness_element env act =
   let name = TSString(act.action_ast.aname) in
+  let type_val = TSString(if is_read_action act then "read" else "write") in
   let state_gen = state_gen_from_action env act in
   let impl_setup = TSClosure(
     [TSPTypedAttr({ tsname="state"; tstyp=TSTCustom(action_type_name act)})],
     [TSReturn(TSObject(List.map to_client_state_setup act.state_vars))],
     false
   ) in
+  let db_params = List.map to_db_setup act.state_vars @ List.map to_client_state_setup act.action_ast.args in
+  let client_params = List.map to_client_state_setup act.state_vars @ List.map to_client_state_setup act.action_ast.args in
+
   let db_setup = TSClosure(
     [TSPTypedAttr({ tsname="state"; tstyp=TSTCustom(action_type_name act)})],
-    [TSReturn(TSObject(List.map to_db_setup act.state_vars))],
+    [TSReturn(TSObject(db_params))],
     false
   ) in
+  let client_model_arg = if not (is_read_action act) then
+    TSClosure(
+      [TSPTypedAttr({ tsname="state"; tstyp=TSTCustom(action_type_name act)})],
+      [TSReturn(TSObject(client_params))],
+      false
+    ) else 
+    TSIden({iname="null"; itype=None}) in
   let action_args = List.map to_state_access act.action_ast.args in
   let run_impl = TSClosure(
     [
@@ -374,12 +388,26 @@ let to_witness_element env act =
 
     let witness_props = [
     {oname="name"; oval=name};
+    {oname="type"; oval=type_val};
     {oname="stateGen"; oval=state_gen};
     {oname="implSetup"; oval=impl_setup};
     {oname="dbSetup"; oval=db_setup};
     {oname="model"; oval=TSIden({iname=model_action_name act; itype=None})};
     {oname="modelArg"; oval=db_setup};
+    {oname="clientModelArg"; oval=client_model_arg};
     {oname="runImpl"; oval=run_impl};
+
+    (* Neeed to check DB state as well - action is of type: (ClientState, DBState) -> (ClientState, DBState)
+    expectations: [
+      (modelResult: CreateCounterModelOut, implState: ClientState/*, state: CreateCounterType*/) => {
+        return {
+          modelExpectation: { counters: modelResult.counters },
+          implExpectation: { counters: implState.counters },
+//          dbExpectation: { counters: state.db.counters }
+        };
+      },
+    ],
+    *)
     {oname="expectations"; oval=expectations}
   ] in
 
