@@ -174,12 +174,15 @@ and string_of_builtin n args attrs (env: Env.env) =
     Printf.sprintf {|
     (() => {
       const index = %s.findIndex((a) => %s(a));
+      if (index === -1) {
+        return %s
+      }
       let ret = [...%s];
       ret[index] = %s(ret[index]);
 
       return ret;
     })();
-    |} arr finder arr updater
+    |} arr finder arr arr updater
   | "equals" ->
     let larg = string_of_expr (List.nth args 0) attrs env in
     let rarg = string_of_expr (List.nth args 1) attrs env in
@@ -465,6 +468,11 @@ and tsexpr_of_builtin_call n args env =
     ) in
 
     let find_idx = TSLet("index", TSMethodCall(arr, "findIndex", [finder_call])) in
+    let return_if_not_found = TSIf(
+      TSEqual(TSIden({iname="index"; itype=None}), TSNum(-1)),
+      TSReturn(TSIden({iname=arr; itype=None})),
+      None
+    ) in
     let ret_val = TSLet("ret", TSArray([TSEOSSpread(arr)])) in
     let update_idx = TSAssignment(
       TSIndex(TSIden({iname="ret"; itype=None}), TSIden({iname="index"; itype=None})),
@@ -476,6 +484,7 @@ and tsexpr_of_builtin_call n args env =
       [],
       [
         find_idx;
+        return_if_not_found;
         ret_val;
         update_idx;
         return_ret;
