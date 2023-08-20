@@ -10,6 +10,7 @@ type env = {
 }
 
 let empty_env = {
+  (* Need variants too *)
   schemas=SchemaEnv.empty
 }
 

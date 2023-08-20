@@ -45,6 +45,7 @@ type expr =
   | Bool of bool
   | Iden of string * sligh_type option
   | Num of int
+  | Plus of expr * expr
   | Array of expr list
   | If of expr * expr * expr option
   | StmtList of expr list
@@ -113,13 +114,19 @@ and tsexpr =
 | TSFuncCall of string * tsexpr list
 | TSClass of string * tsclassdef list
 | TSIf of tsexpr * tsexpr * tsexpr option
-| TSArray of tsexpr list
+| TSArray of tsexpr_or_spread list
 | TSString of string
+| TSPlus of tsexpr * tsexpr
 | TSReturn of tsexpr
 | TSAccess of tsexpr * tsexpr
+| TSIndex of tsexpr * tsexpr
 | TSAssignment of tsexpr * tsexpr
 | TSInterface of string * tstyped_attr list
+| TSEqual of tsexpr * tsexpr
+| TSNotEqual of tsexpr * tsexpr
 | TSClosure of tsparam list * tsexpr list * bool
+(* Can only immediately invoke a closure *)
+| TSImmediateInvoke of tsexpr
 | TSObject of obj_prop list
 | TSNew of string * tsexpr list
 | TSAwait of tsexpr
@@ -129,6 +136,10 @@ and tsexpr =
 | TSDefaultImport of string * string
 | SLExpr of expr
 | SLSpliceExpr of expr
+
+and tsexpr_or_spread = 
+  | TSEOSExpr of tsexpr
+  | TSEOSSpread of string
 
 and obj_prop = {
   oname: string;
@@ -166,10 +177,15 @@ and ts_type =
   | TSTCustom of string
   | TSTGeneric of string * ts_type list
 
+and ts_func_decl_arg = {
+  tattr: tstyped_attr;
+  default_val: tsexpr option;
+}
+
 and tsclassdef =
   | CDSLExpr of expr
   | TSClassProp of string * ts_type
-  | TSClassMethod of string * tstyped_attr list * tsexpr list * bool
+  | TSClassMethod of string * ts_func_decl_arg list * tsexpr list * bool
 
 let tsClassProp name typ = TSClassProp(name, typ)
 

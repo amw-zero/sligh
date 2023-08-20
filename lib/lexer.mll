@@ -48,11 +48,12 @@ rule read ctx = parse
   | "="               { EQUALS }
   | "|"               { BAR }
   | "_"               { UNDERSCORE }
+  | "+"               { PLUS }
   | "let"             { LET }
   | "end"             { END }
   | "def"             { DEF }
   | "process"         { PROCESS }
-  | "entity"          { ENTITY }
+  | "record"          { ENTITY }
   | "file"            { FILE }
   | "implementation"  { IMPLEMENTATION }
   | "rewrite"          { EFFECT }

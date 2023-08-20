@@ -49,6 +49,7 @@ open Interpreter
 %token RSQBRACKET
 %token ASSIGNMENT
 %token SEMICOLON
+%token PLUS
 
 // %left ASSIGNMENT
 // %right LPAREN
@@ -112,6 +113,7 @@ expression:
   | assignment                                    { $1 }
   | n = NUMBER                                    { Num(n) }
   | variable                                      { $1 }
+  | e1 = expression PLUS e2 = expression          { Plus(e1, e2) }
   | func_call                                     { $1 }
   | s = STRING                                    { String(s) }
   | LSQBRACKET es = separated_list(COMMA, expression) RSQBRACKET

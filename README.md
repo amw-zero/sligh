@@ -1,100 +1,60 @@
-# Model-driven Implementation Derivation and Test Generation
+# Description
 
-This is a pivot on the idea in [Sligh](https://github.com/amw-zero/sligh). The same general goal applies: the language should enable a [model-driven workflow](https://concerningquality.com/model-based-testing/) that automates as much of the implementation and test generation and possible.
+Sligh is a language and toolchain for model-based testing. With Sligh, you write a simplified model of a system, and the compiler uses it to generate a test suite for an implementation system. The model becomes an executable specification that the test uses to determine correct behavior.
 
-The main difference of this approach is that here, implementation derivation happens via metaprogramming vs. being compiled without any intervention. This places more burden of work on the programmer, but there's basically infinite control on the generated output.
-
-As an example (this won't fully compile today, but is the overall goal):
-
-**Model**:
+Here's a Sligh model of a simple counter application:
 
 ```
-entity Todo:
-  name: String
+record Counter:
+    name: Id(String)
+    value: Int
 end
 
-domain Test:
-  todos: Todo[]
+process CounterApp:
+  counters: Set(Counter)
 
-  def addTodo(t: Todo.Create):
-    todos.create!(t)
-  end
-end
-```
-
-This is a simple model of a todo app. `create!` now denotes an _effect_ which is an operation that has different definitions in the model and implementation. Effects are hand-implemented via metaprogramming:
-
-**Effects**:
-```
-// Effect definition - how is an effect executed
-// across implementation components?
-effect create!<'a>(state: SystemState<'a>, val: 'a):
-  model: 
-    state.push(val)
+  def GetCounters():
+      counters
   end
 
-  // Client code generated from model definitions
-  client:
-    typescript:
-      let resp = fetch({{ state.name }}, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({{ val }}),
-      });
-      let data = await resp.json();
+  def CreateCounter(name: String):
+      counters := counters.append(Counter.new(name, 0))
+  end
 
-      client.todos.push(data);
+  def Increment(name: String):
+    def findCounter(counter: Counter):
+        counter.name.equalsStr(name)
     end
-  end
 
-  server:
-    // Generate endpoint code in same way
+    def updateCounter(counter: Counter):
+        Counter.new(counter.name, counter.value + 1)
+    end
+
+    counters := counters.update(findCounter, updateCounter)
   end
 end
 ```
 
-Here we generated the client implementation of a `create!` effect, which simply sends a POST request to the proper endpoint. The key here is that we're defining the client definition in a `typescript` block, which is a quasi-quotation block for defining TypeScript code. `{{ ... }}` unquotes / splices, so the TS client can be generated from definitions in the model.
+The language itself is meant to be simple, since it's intended to only describe the high-level logic of a system. 
 
-And putting it all together, we need to define the top-level application processes that are the entry point for each system component:
+# Status
 
-**Processes**:
+Sligh is an experiment and a prototype. The test compiler does function, but it currently assumes a very specific implementation setup: a [Next.js](https://nextjs.org/) application that uses [Zustand](https://github.com/pmndrs/zustand) for state management, and is tested via [fast-check](https://github.com/dubzzz/fast-check). The hope is to generalize the compiler so that different backends can be built to target different implementation architectures / patterns.
+
+# Setup
+
 ```
-// Helpers to convert model definitions to TS
-def toTsTypedIden(var: Variable)
-  typescript:
-    {{ var.name }}: {{ var.type }}
-  end
-end
+brew install ocaml
+brew install opam
+opam install dune
 
-def toTsAction(act: Action)
-  typescript:
-    async {{ act.name }}({{ act.args.map(toTsTypedIden) }}) {
-      {{ act.body }}
-    }
-  end
-end
-
-// Generates a client.ts file.
-//
-// This is a stateful class which holds all of the state variables
-// declared the model, and since toTsAction is called in a client block 
-// here, the client effect definition is used as the action body.
-process client:
-  typescript:
-    class Client {
-      {{ Model.variables.map(toTsTypedIden) }}
-
-      {{ Model.actions.map(toTsAction) }}
-    }
-  end
-end
-
-// Generates a server.ts file
-process server:
-  // generate web server bootstrap
-end
+dune build && dune install
 ```
 
-I omitted the server code for brevity, but that can all be generated from the Model in the same way.
+# Usage
 
-We didn't cover test generation, but with even less help, a model-based test can be generated here since we have all of the definitions that we need to compare actions in the implementation and model.
+Generates a witness object intended to be used in a test generator.
+
+```
+sligh model.sl -cert <output file>
+```

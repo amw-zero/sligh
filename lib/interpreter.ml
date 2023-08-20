@@ -423,6 +423,16 @@ let all_builtins = [
     fdargs=[{name="s1";typ=STString}; {name="s2";typ=STString}];
     fdbody=[];
   }};
+  {bname="notEqualsStr"; bdef={
+    fdname="notEqualsStr";
+    fdargs=[{name="s1";typ=STString}; {name="s2";typ=STString}];
+    fdbody=[];
+  }};
+  {bname="update"; bdef={
+    fdname="update";
+    fdargs=[{name="finder";typ=STString}; {name="updater";typ=STString}];
+    fdbody=[];
+  }};
   {bname="and"; bdef={
     fdname="and";
     fdargs=[{name="b1";typ=STString}; {name="b2";typ=STString}];
@@ -921,8 +931,8 @@ and eval_builtin_func name args env =
           | VType(tv) -> ts_type_of_type_val tv
           | _ -> failwith "not a type val" in
 
-        {tsname=name; tstyp= typ}
-      | VTSTypedAttr(ta) -> ta
+        {tattr={tsname=name; tstyp= typ}; default_val=None}
+      | VTSTypedAttr(ta) -> {tattr=ta; default_val=None}
       | _ -> failwith (Printf.sprintf "Calling tsClassMethod, args not array of instances %s" (string_of_value arg))) args_arg in
 
     let body_arg = List.nth args 2 |> val_as_tsexpr_list in
@@ -1066,6 +1076,7 @@ and eval_ts ts_expr env = match ts_expr with
   let res: value = eval e env |> fst in
   (tsexpr_of_val_splice res, env)
 | TSLet(var, exp) -> ([TSLet(var, eval_ts exp env |> fst |> List.hd)], env)
+| TSPlus(e1, e2) -> ([TSPlus(eval_ts e1 env |> fst |> List.hd, eval_ts e2 env |> fst |> List.hd)], env)
 | TSMethodCall(recv, call, args) ->
     let reduced_args = List.concat_map (fun a -> eval_ts a env |> fst) args in
     ([TSMethodCall(recv, call, reduced_args)], env)
@@ -1096,11 +1107,15 @@ and eval_ts ts_expr env = match ts_expr with
 | TSIden _ -> ([ts_expr], env)
 | TSNum _ ->  ([ts_expr], env)
 | TSBool(_) -> ([ts_expr], env)
+| TSEqual(_, _) -> ([ts_expr], env)
+| TSNotEqual(_, _) -> ([ts_expr], env)
+
 | TSClass (_, _) -> ([ts_expr], env) 
 | TSArray _ -> ([ts_expr], env) 
 | TSString _ -> ([ts_expr], env)
 | TSAccess (_, _) -> ([ts_expr], env)
 | TSAssignment (_, _) -> ([ts_expr], env)
+| TSIndex(_, _) -> ([ts_expr], env)
 | TSInterface (_, _) -> ([ts_expr], env)
 | TSClosure (_, _, _) -> ([ts_expr], env)
 | TSAwait _ -> ([ts_expr], env)
@@ -1109,10 +1124,13 @@ and eval_ts ts_expr env = match ts_expr with
 | TSDefaultImport(_, _) -> ([ts_expr], env)
 | TSNew(_, _) -> ([ts_expr], env)
 
+(* Idk about this one *)
+| TSImmediateInvoke(_) -> ([ts_expr], env)
+
 and tsexpr_of_val (v: value) = match v with
 | VNum(n) -> TSNum(n)
 | VTS(tss) -> TSStmtList(tss)
-| VArray(vs) -> TSArray(List.map tsexpr_of_val vs)
+| VArray(vs) -> TSArray(List.map (fun v -> TSEOSExpr(tsexpr_of_val v)) vs)
 | VString(s) -> TSString(s)
 | VTSExpr(e) -> e
 | VSLExpr(e) -> SLExpr(e)

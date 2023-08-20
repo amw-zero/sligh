@@ -117,6 +117,13 @@ and apply_tsexpr proc_name effect_env interp_env tse =
   | TSNew(_, _) -> Some(tse)
   | TSReturn(_) -> Some(tse)
   | TSCast(_) -> Some(tse)
+  | TSPlus(_) -> Some(tse)
+  | TSImmediateInvoke(_) -> Some(tse)
+  | TSEqual(_, _) -> Some(tse)
+  | TSNotEqual(_, _) -> Some(tse)
+
+  | TSIndex(_, _) -> Some(tse)
+
 and apply_tsclassdef proc_name effect_env interp_env cd = match cd with
   | TSClassMethod(nm, args, body, ia) -> TSClassMethod(nm, args, List.filter_map (fun tse -> apply_tsexpr proc_name effect_env interp_env tse) body, ia)
   | _ -> cd

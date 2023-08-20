@@ -4,81 +4,141 @@ imports Main
 
 begin
 
+text "A simpler version of assume-guarantee reasoning that focuses on non-interference of state 
+      updates alone, e.g. https://arxiv.org/pdf/2103.13743.pdf"
+text "Goes back to Lamport & Abadi: https://lamport.azurewebsites.net/pubs/abadi-conjoining.pdf"
+
+text "Each action operates on its own local state, which is defined as a 'v view type. The relationship
+     between 'v and 's is definable by a lens. This is different than the seL4 process model,
+      since that effectively only has a single lens whereas multiple lenses are required for
+      each action here."
+
 record ('s, 'v) lens  = 
   Get :: "'s \<Rightarrow> 'v"
   Put :: "'v \<Rightarrow> 's \<Rightarrow> 's"
 
-record ('s, 'e) dt =
-  state :: 's
-  step :: "'e \<Rightarrow> 's \<Rightarrow> 's"
+text "Well-behaved lenses must follow the 'lens laws' which ensure that they retrieve and update
+      the same part of the source state."
 
-definition exec_dt :: "('s, 'e) dt \<Rightarrow> 'e list \<Rightarrow> 's" where
-"exec_dt dt es = foldl (\<lambda>s e. (step dt) e s) (state dt) es"
+definition "well_behaved l \<equiv> (\<forall>ls lv. (Put l) ((Get l) ls) ls = ls \<and> (Get l) ((Put l) lv ls) = lv)"
 
-type_synonym ('e, 's) dt_step = "'e \<Rightarrow> 's \<Rightarrow> 's"
+text "A process is a representation of a program that proceeds through a sequence of states in 
+      response to actions (inputs) of type 'e, i.e. a state machine."
+type_synonym ('e, 's) process = "'e \<Rightarrow> 's \<Rightarrow> 's"
 
-section "Substate Mapping"
+text "A local action is a step function on its own local state type 'a, where 'a is defineable as a lens
+      on some global state type 's"
 
-text "A subprocess consists of a lens on the global state and
-      a function that modifies the view that's projected from the 
-      lens. This view is meant to have one variant per event in 
-      the original data type, where each variant represents the 
-      subset of the state that that event needs to carry out its
-      operation."
-      
-record ('s, 'v) subproc =
-  splens :: "('s, 'v) lens"
-  spstep :: "'v \<Rightarrow> 'v"
+record ('s, 'a) local_action =
+  lens :: "('s, 'a) lens"
+  step :: "'a \<Rightarrow> 'a"
 
-text "The subproc_mapping generates a sub data type given an event"
+text "An action mapping maps an action 'e to its corresponding local action"
 
-type_synonym ('e, 's, 'v) subproc_mapping = "'e \<Rightarrow> ('s, 'v) subproc"
+type_synonym ('e, 's, 'a) action_mapping = "'e \<Rightarrow> ('s, 'a) local_action"
 
-definition compose_subprocs :: "('e, 's, 'v) subproc_mapping \<Rightarrow> ('e, 's) dt_step"  where
-"compose_subprocs spmap = (\<lambda>e s.(
-  let subproc = spmap e in
-  let lns = (splens subproc) in
-  let stp = (spstep subproc) in
-  let v = (Get lns) s in
-  let res = stp v in
+text "compose_local_actions defines how a global process can be defined from a set of local actions.
+      It uses the lens defined in the local action for each action type to get the local action state
+      from the global state, execute the local step function, and write the result back into
+      the global state."
+
+definition compose_local_actions :: "('e, 's, 'a) action_mapping \<Rightarrow> ('e, 's) process"  where
+"compose_local_actions am = (\<lambda>e s.(
+  let locact = am e;
+  lns = (lens locact);
+  locact_s = (Get lns) s;
+  res = (step locact) locact_s in
   
   (Put lns) res s
 ))"
 
-text "'Action Refinement' is where each isolated implementation action refines its corresponding
-    action in the model. The state type of the step function vfn is local to the action and does
-    not refer to the global state in any way."
+text "'Action Simulation' is where each local implementation action simulates its corresponding
+    action in the model."
 
-definition "single_action_refines stp_i stp_m = (\<forall>ss ss'. stp_i ss = ss' \<longrightarrow> stp_m ss = ss')"
+definition "local_simulates am_i am_m e s t = (
+  let proc_i = step (am_i e) in
+  let proc_m = step (am_m e) in
+  let impl_start = (Get (lens (am_i e))) s in
+  let model_start = (Get (lens (am_m e))) s in
 
-definition "action_refines spmi spmm = (\<forall>e.
-  let stp_i = spstep (spmi e) in 
-  let stp_m = spstep (spmm e) in
+  proc_i impl_start = t \<longrightarrow> proc_m model_start = t)"
 
-  single_action_refines stp_i stp_m)"
+text "Basic notion of simulation."
 
-text "Action refinement implies refinement of the processes with global state, provided that 
-    each process at the global level's step function is defined via the 'compose_subprocs' 
-    function"
+definition "simulates impl_proc model_proc e s t = (impl_proc e s = t \<longrightarrow> model_proc e s = t)"
 
-definition "refines_dt C M = (\<forall>s s' es. exec_dt C s es = s' \<longrightarrow> exec_dt M s es = s')"
+text "We want to show that in order to prove that an implementation process simulates another 
+      process, we can instead decompose both processes each into a set of local actions. If the
+      local actions simulate each other, and the lenses used to define the local action states are
+      well-behaved, then the global implementation process simulates the global model."
 
-theorem "\<lbrakk>
-  model_proc = \<lparr> state=s, step=compose_subprocs spmm \<rparr>;
-  impl_proc = \<lparr> state=s, step=compose_subprocs spmi \<rparr>;
-  action_refines spmi spmm
-\<rbrakk> \<Longrightarrow> exec_dt impl_proc es = s' \<longrightarrow> exec_dt model_proc es = s'"
-proof(induction es arbitrary: s s' spmm spmi)
-  case Nil
-  then show ?case unfolding exec_dt_def by auto
-next
-  case (Cons e es)
-  then show ?case
-    apply (clarsimp simp: compose_subprocs_def action_refines_def single_action_refines_def exec_dt_def)
-    unfolding compose_subprocs_def action_refines_def single_action_refines_def refines_dt_def 
-      exec_dt_def Let_def
-    sorry
-qed
+theorem
+  assumes "well_behaved lm"
+    and "am_m = (\<lambda>e. \<lparr>lens=lm, step=stm\<rparr>)"
+    and "well_behaved li"
+    and "am_i = (\<lambda>e. \<lparr>lens=li, step=sti\<rparr> )"
+    and "model_proc \<equiv> compose_local_actions am_m"
+    and "impl_proc \<equiv> compose_local_actions am_i"
+   (* and "local_simulates am_i am_m e s t"*)
+  shows "simulates impl_proc model_proc e s t"
+  using assms
+  unfolding simulates_def local_simulates_def compose_local_actions_def well_behaved_def
+  by (metis local_action.select_convs(1))
+
+theorem local_sim_imp_sim:
+  assumes "well_behaved (lens (am_m e))"
+    and "well_behaved (lens (am_i e))"
+(* Don't even need this assumption, which is suspect *)
+    and "action_simulates am_i am_m e s t" 
+  shows "simulates (compose_local_actions am_m) (compose_local_actions am_i) e s t"
+  using assms
+  unfolding simulates_def local_simulates_def compose_local_actions_def well_behaved_def
+  by metis
+
+type_synonym ('s) invariant_func = "'s \<Rightarrow> bool"
+
+(* Invariant: Unauthenticated users are always denied access" *)
+
+definition "local_invariant am inv_f e s = (
+  let step_f = step (am e) in
+  let local_state = Get (lens (am e)) s in
+  let put = Put (lens (am e)) in
+
+   inv_f s \<and> inv_f (put (step_f local_state) s)
+)"
+
+text "Local invariance implies global invariance.
+
+     Note how well-behavedness of the lens isn't a required assumption, because all that matters
+     is that the invariant holds before and after the action completes."
+
+text "An improvement would be to also define a selector (just the read part of a lens) on the global
+      state so that the invariant only needs to operate on the data that it cares about."
+
+theorem local_inv_imp_inv:
+  assumes "local_invariant am_i inv_f e s"
+  shows "inv_f ((compose_local_actions am_i) e s)"
+  using assms
+  unfolding well_behaved_def local_invariant_def compose_local_actions_def
+  by metis
+
+definition exec :: "('e, 's) process \<Rightarrow> 'e list \<Rightarrow> 's \<Rightarrow> 's" where
+"exec stp es i = foldl (\<lambda>s e. stp e s) i es"
+
+definition "refines I M es s s' = (exec I es s = s' \<longrightarrow> exec M es s = s')"
+
+theorem assumes "simulates impl_proc model_proc e s t"
+  shows "refines impl_proc model_proc es s t"
+  oops
+
+section "Test"
+
+record data = x :: nat y :: nat
+
+definition "data_lens = \<lparr> Get= (\<lambda>d. x d), Put = (\<lambda>n d. d\<lparr>x := n\<rparr>) \<rparr>"
+
+theorem "well_behaved data_lens"
+  by (simp add: data_lens_def well_behaved_def)
 
 section "Subprocs for banking"
 
