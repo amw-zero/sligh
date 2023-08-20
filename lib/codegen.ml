@@ -157,7 +157,7 @@ and string_of_builtin n args attrs (env: Env.env) =
     let elem = string_of_expr (List.nth args 1) attrs env in
 
     Printf.sprintf {|
-    %s.filter((e) => e.id === %s)
+    %s.filter((e) => e.id !== %s)
     |} arr elem
   | "map" ->
     let arr = string_of_expr (List.nth args 0) attrs env in
@@ -228,7 +228,7 @@ and string_of_ts_expr e env = match e with
   | TSNum(n) -> string_of_int n
   | TSBool(b) -> string_of_bool b
   | TSEqual(e1, e2) -> Printf.sprintf "%s === %s" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
-  | TSNotEqual(e1, e2) -> Printf.sprintf "%s === %s" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
+  | TSNotEqual(e1, e2) -> Printf.sprintf "%s !== %s" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env)
   | TSIf(e1, e2, e3) -> (match e3 with
     | Some(elseE) -> Printf.sprintf "if (%s) {\n %s}\nelse {\n%s\n}" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env) (string_of_ts_expr elseE env)
     | None -> Printf.sprintf "if (%s) {\n %s\n}" (string_of_ts_expr e1 env) (string_of_ts_expr e2 env))
@@ -429,15 +429,43 @@ and tsexpr_of_builtin_call n args env =
     ))
 
   | "delete" ->
-    let arr = List.nth args 0 in
-    let elem = List.nth args 1 in
+    let arr = expr_as_str (List.nth args 0) [] env in
+    let finder = expr_as_str (List.nth args 1) [] env in
 
-    (* Delete should probably take in a finder function, checking ID is too rigid *)
-    TSMethodCall(string_of_expr arr [] env, "filter", [TSClosure(
-      [TSPTypedAttr({tsname="e"; tstyp=TSTCustom("any")})],
-      [TSEqual(TSIden({iname="e.id"; itype=None}), tsexpr_of_expr env elem)],
+    let finder_call = TSClosure(
+      [TSPTypedAttr({tsname="a"; tstyp=TSTCustom("any")})],
+      [TSReturn(TSFuncCall(finder, [
+        TSIden({iname="a"; itype=None})
+      ]))],
       false
-    )])
+    ) in
+
+    let find_idx = TSLet("index", TSMethodCall(arr, "findIndex", [finder_call])) in
+    let return_if_not_found = TSIf(
+      TSEqual(TSIden({iname="index"; itype=None}), TSNum(-1)),
+      TSReturn(TSIden({iname=arr; itype=None})),
+      None
+    ) in
+    let ret_val = TSLet("ret", TSArray([TSEOSSpread(arr)])) in
+    let filter_arr = TSMethodCall(
+      "ret",
+      "splice",
+      [TSIden({iname="index"; itype=None}); TSNum(1)]
+    ) in
+
+    let return_ret = TSReturn(TSIden({iname="ret"; itype=None})) in
+
+    TSImmediateInvoke(TSClosure(
+      [],
+      [
+        find_idx;
+        return_if_not_found;
+        ret_val;
+        filter_arr;
+        return_ret;
+      ],
+      false
+    ))
   | "map" ->
     let arr =  string_of_expr (List.nth args 0) [] env in
     let map_func = expr_as_str (List.nth args 1) [] env in
@@ -461,9 +489,9 @@ and tsexpr_of_builtin_call n args env =
 
     let finder_call = TSClosure(
       [TSPTypedAttr({tsname="a"; tstyp=TSTCustom("any")})],
-      [TSFuncCall(finder, [
+      [TSReturn(TSFuncCall(finder, [
         TSIden({iname="a"; itype=None})
-      ])],
+      ]))],
       false
     ) in
 
