@@ -53,7 +53,7 @@ rule read ctx = parse
   | "end"             { END }
   | "def"             { DEF }
   | "process"         { PROCESS }
-  | "entity"          { ENTITY }
+  | "record"          { ENTITY }
   | "file"            { FILE }
   | "implementation"  { IMPLEMENTATION }
   | "rewrite"          { EFFECT }
