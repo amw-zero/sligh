@@ -39,7 +39,7 @@ The language itself is meant to be simple, since it's intended to only describe 
 
 # Status
 
-Sligh is an experiment and a prototype. The test compiler does function, but it currently assumes a very specific implementation setup: a Next.js application that uses Zustand for state management. The hope is to generalize the compiler so that different backends can be built to target different implementation architectures / patterns.
+Sligh is an experiment and a prototype. The test compiler does function, but it currently assumes a very specific implementation setup: a Next.js application that uses Zustand for state management, and is tested via fast-check. The hope is to generalize the compiler so that different backends can be built to target different implementation architectures / patterns.
 
 # Setup
 
