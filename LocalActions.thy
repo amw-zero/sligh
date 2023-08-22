@@ -118,11 +118,7 @@ theorem local_inv_imp_inv:
 
 section "Example"
 
-definition "read s v = { snd var | var. var \<in> s \<and> fst var = v }"
-
 datatype PointEvt = TranslateX int | TranslateY int
-
-definition "initial_state = {(''x'', 0), (''y'', 0)}"
 
 (* f is an update function *)
 definition "write s n f =
