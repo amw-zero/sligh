@@ -159,9 +159,6 @@ definition "impl_action_mapping e = (case e of
 
     \<lparr> lens=lens, step=step \<rparr>)"
 
-lemma ex_sub: "extract_subvars s v \<subseteq> s"
-  by (simp add: extract_subvars_def)
-
 lemma get_subset_mod: "Get (lens (model_action_mapping e)) s \<subseteq> s"
   unfolding model_action_mapping_def
   apply (case_tac e)
