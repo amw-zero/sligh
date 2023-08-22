@@ -24,12 +24,9 @@ definition "extract_subvars s vs = {v | v. v \<in> s \<and> (fst v) \<in> vs }"
 
 definition "restore_subvars s vs = s - {v | v. v \<in> s \<and> (fst v) \<in> var_names vs } \<union> vs"
 
-definition "local_lens l s lv \<equiv>
-  ((Get l s) \<subseteq> s
+definition "local_lens l s \<equiv> (\<forall>lv.
+  (Get l s) \<subseteq> s
   \<and> (Put l) lv s = restore_subvars s lv)"
-
-definition "well_behaved l \<equiv> (\<forall>ls lv.
-  local_lens l ls lv)"
 
 text "A process is a representation of a program that proceeds through a sequence of states in 
       response to actions (inputs) of type 'e, i.e. a state machine."
@@ -82,12 +79,12 @@ text "We want to show that in order to prove that an implementation process simu
       well-behaved, then the global implementation process simulates the global model."
 
 theorem local_sim_imp_sim:
-  assumes "well_behaved (lens (am_i e))"
-  and "well_behaved (lens (am_m e))"
+  assumes "local_lens (lens (am_i e)) s"
+  and "local_lens (lens (am_m e)) s"
   and "local_simulates am_i am_m e s"
   shows "simulates (compose_local_actions am_i) (compose_local_actions am_m) e s t"
   using assms
-  unfolding simulates_def local_simulates_def compose_local_actions_def well_behaved_def
+  unfolding simulates_def local_simulates_def compose_local_actions_def
     local_lens_def restore_subvars_def var_names_def
   by metis
 
@@ -194,30 +191,21 @@ lemma put_restores_impl:
   done
 
 lemma 
-  shows mod_loc_lens: "local_lens (lens (model_action_mapping e)) s lv"
+  shows mod_loc_lens: "local_lens (lens (model_action_mapping e)) s"
   unfolding local_lens_def
+  apply(rule allI)
   apply(rule conjI)
    apply(simp add: get_subset_mod)
   apply(simp add: put_restores_mod)
   done
 
 lemma 
-  shows impl_loc_lens: "local_lens (lens (impl_action_mapping e)) s lv"
+  shows impl_loc_lens: "local_lens (lens (impl_action_mapping e)) s"
   unfolding local_lens_def
+  apply(rule allI)
   apply(rule conjI)
    apply(simp add: get_subset_impl)
   apply(simp add: put_restores_impl)
-  done
-
-
-lemma mod_well_b: "well_behaved (lens (model_action_mapping e))"
-  apply (unfold well_behaved_def)
-  apply (simp add: mod_loc_lens)
-  done
-
-lemma impl_well_b: "well_behaved (lens (impl_action_mapping e))"
-  apply (unfold well_behaved_def)
-  apply (simp add: impl_loc_lens)
   done
 
 lemma loc_sim: "local_simulates impl_action_mapping model_action_mapping e s"
@@ -226,8 +214,8 @@ lemma loc_sim: "local_simulates impl_action_mapping model_action_mapping e s"
 theorem "simulates (compose_local_actions impl_action_mapping)
   (compose_local_actions model_action_mapping) e s t"
   apply (rule local_sim_imp_sim)
-    apply(simp add: impl_well_b)
-   apply(simp add: mod_well_b)
+    apply(simp add: impl_loc_lens)
+   apply(simp add: mod_loc_lens)
   apply(simp add: loc_sim)
   done
 
