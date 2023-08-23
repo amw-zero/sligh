@@ -37,7 +37,7 @@ let set_input filename = input_file := filename
 
 (* Possibly create toml config file for build config, like multiple transforms *)
 let args = [
-  ("-cert", Arg.Set_string cert_out, "Certificate test output file name");
+  ("-w", Arg.Set_string cert_out, "Output file for witness");
   ("-impl", Arg.Set_string impl_out, "Implementation output file name");
   ("-transform", Arg.Set_string transform_script, "The transformation script to run");
   ("-out", Arg.Set_string out_file, "The output file to write a transformation to");
