@@ -1,5 +1,5 @@
 (* Compiles and performs certifying model transformation *)
-let compile lexbuf impl_out cert_out =
+let compile lexbuf impl_out =
   let init_files = File.new_files () in
   let init_process = Process.new_process () in
   let init_interp_env = Interpreter.new_environment_with_builtins () in
@@ -44,10 +44,7 @@ let compile lexbuf impl_out cert_out =
   (* apply effects to files too *)
   let file_map = List.fold_left File.build_files init_files stmts in
   (* File.print file_map; *)
-  File.output file_map interp_env effect_env env;
-
-  (* To improve: return generated filenames in previous steps *)
-  Certification.generate model_proc "model.ts" "impl.ts" cert_out interp_env env
+  File.output file_map interp_env effect_env env
 
 (* Compilers certifying specification *)
 let compile_cert_test input_file cert_out =
@@ -65,14 +62,14 @@ let compile_cert_test input_file cert_out =
   Certification.generate_spec model_proc cert_out env
 
 let compile_str expr =
-  compile (Lexing.from_string expr) "impl.ts" "refine_cert.ts"
+  compile (Lexing.from_string expr) "impl.ts"
 
-let compile_file fn impl_out cert_out =
+let compile_file fn impl_out =
   let fh = open_in fn in
   let lex = Lexing.from_channel fh in
   lex.Lexing.lex_curr_p <- {lex.Lexing.lex_curr_p with Lexing.pos_fname = fn};
 
-  let res = compile lex impl_out cert_out in
+  let res = compile lex impl_out in
   close_in fh;
 
   res
