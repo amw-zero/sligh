@@ -59,7 +59,7 @@ let compile_cert_test input_file cert_out =
   let env = List.fold_left (fun e s -> Env.add_stmt_to_env s e) Env.empty_env model_ast in
 
   close_in fh;
-  Certification.generate_spec model_proc cert_out env
+  Witness.generate model_proc cert_out env
 
 let compile_str expr =
   compile (Lexing.from_string expr) "impl.ts"

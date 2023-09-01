@@ -363,7 +363,7 @@ let to_witness_element env act =
 
   TSEOSExpr(TSObject(witness_props))
 
-let generate_spec model_proc cert_out env =
+let generate model_proc cert_out env =
   let db_types = List.map (fun a -> Entity(db_type_name a, a.state_vars)) model_proc.actions in
   let env = List.fold_left (fun e s -> Env.add_stmt_to_env s e) env db_types in
 
