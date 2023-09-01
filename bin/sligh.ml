@@ -24,7 +24,7 @@ let usage_msg = {|| Certifying model transformation:
     sligh <model_spec> -transform <transformation_script> -out <out_file>
 
 | Certifying specifcation:
-    sligh <model_spec> -cert <cert_out> -include <impl_file>
+    sligh <model_spec> -w <cert_out>
 |}
 let cert_out = ref ""
 let impl_out = ref ""
