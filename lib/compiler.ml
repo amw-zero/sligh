@@ -47,7 +47,7 @@ let compile lexbuf impl_out =
   File.output file_map interp_env effect_env env
 
 (* Compilers certifying specification *)
-let compile_cert_test input_file cert_out =
+let compile_witness input_file cert_out =
   let fh = open_in input_file in
   let lex = Lexing.from_channel fh in
   lex.Lexing.lex_curr_p <- {lex.Lexing.lex_curr_p with Lexing.pos_fname = input_file};

@@ -31,7 +31,7 @@ let main = begin
   Arg.parse args set_input usage_msg;  
 
   if !cert_out <> "" then
-    Compiler.compile_cert_test !input_file !cert_out
+    Compiler.compile_witness !input_file !cert_out
   else if !transform_script <> "" then
     Compiler.compile_model_transform !input_file !transform_script !out_file
   else if !impl_out <> "" then
