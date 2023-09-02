@@ -21,12 +21,14 @@ let fresh_context () = new lexer_context
 exception SyntaxError of string
 }
 
-let whitespace = [' ' '\t' '\r' '\n']
+let whitespace = [' ' '\t']
+let newline = ['\r' '\n']
 let iden = ['_' 'a'-'z' 'A'-'Z'] ['_' 'a'-'z' 'A'-'Z' '0'-'9' '!' '-']*
 let num = ['0'-'9']
 
 rule read ctx = parse
   | eof               { EOF }
+  | newline           { Lexing.new_line lexbuf; read ctx lexbuf }
   | whitespace+       { read ctx lexbuf }
   | "}}"              { ctx#pop_lexer; UNQUOTEEND }
   | '"'               { read_string (Buffer.create 16) lexbuf}
