@@ -238,47 +238,6 @@ let to_model_action act env =
   
   TSLet(model_action_name act, TSClosure([new_args], new_body, false))
 
-(* Should ultimately be parameterizable by different infra / architecture 'backends'. A backend should:
-   * Create a model configured at a specific state
-   * Produce an implementation configured at a specific state
-   * Support invoking the action
-   * Support asserting on the resulting state, with refinement mapping
-*)
-
-(* Trying out witness approach
-let generate_spec _ model_proc _ cert_out env =
-  (* Add DB types to env so they can be generated *)
-  let db_types = List.map (fun a -> Entity(db_type_name a, (List.map convert_type a.state_vars))) model_proc.actions in
-  let env = List.fold_left (fun e s -> Env.add_stmt_to_env s e) env db_types in
-
-  let to_action_test = action_test Env.(env.schemas) in
-  let schema_names = List.map fst (Env.SchemaEnv.bindings Env.(env.schemas)) in
-  let env_types = List.map (fun s -> schema_to_interface s (Env.SchemaEnv.find s env.schemas)) schema_names in
-  let action_types = List.map action_type model_proc.actions in
-
-  let model_action_in_types = List.map model_action_in_type model_proc.actions in
-  let model_action_out_types = List.map model_action_out_type model_proc.actions in
-  let model_actions = List.map (fun a -> to_model_action a env) model_proc.actions in
-
-  let action_tests = List.map to_action_test model_proc.actions in
-
-  let imports = {|import { expect, test } from 'vitest';
-  import { makeStore } from '../lib/state';
-  import fc from 'fast-check';
-  |} in
-
-  let everything = List.concat [
-    env_types; 
-    action_types;
-    model_action_in_types;
-    model_action_out_types;
-    model_actions; 
-    action_tests
-  ] in
-  
-  File.output_tsexpr_list_imports cert_out env everything imports
-*)
-
 let to_expectation act ta =
   Core.(
   TSEOSExpr(TSClosure(

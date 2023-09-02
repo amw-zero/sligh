@@ -1,7 +1,55 @@
+* The model should get compiled to a set of functions, one for each action. It should be of the form:
+
+  function Action_Model(state_vars, action_args) {
+    // action impl
+  }
+
+  where this represents the action in question as a function. State variables modified in the action become
+  return values.
+
+* Work on error messages. They should be of the form:
+
+ In starting state: "S", when taking action A with these params: "P", the implementation does not conform to the model.
+
+ A path to starting state S is: [A0, A1, A2... ] 
+
+  Finding a path to the starting state is not absolutely necessary, though it might be very helpful for debugging.
+
+* Integrate js_of_ocaml and use it for AST definitions and codegen - maybe not codegen, because
+   there are some idiosyncrasies of Sligh.
+
+* Design external system interfaces, i.e. Stripe API or another internal service. Probably 
+  algebraic effects or monads?
+
+* Formalize property compiliation? Some slightly tricky things go on during compilation, and it's important to 
+  know that the generated properties actually say what we want them to. The correctness statement would be:
+
+  "When properties are generated with the formalized compilation procedure, they imply correctness of the whole system."
+
+* Design "Distributed State Protocol." To test distributed systems, we need a way to deterministically
+  write and read system state. This is currently done via simple 'setup', 'read', and 'teardown' endpoints, where
+  the required state to read or create is sent as a single object payload, a la graphql.
+
+* Build out 'model explorer', interpreter + debugging tools
+   * Generate template for action sequence - for example, select 3 actions, show a template for an initial state.
+    then provide params for each action input in the sequence
+   * Browse actions - observe what can be done in the system
+
 * Separate concrete from abstract syntax. Example: state variables are just identifiers
   in concrete syntax, but can be elaborated to a separate state var node in abstract syntax.
   This gives more semantic information to identifiers so that all usages of them are aware if
   they're a state variable or not.
+
+* Idea: Collector - add custom model analyses
+
+* Support custom data generators, probably per-action, and using something like Luck or 
+  or combinatorial testing with sparse regular tree expressions: https://link.springer.com/content/pdf/10.1007/978-3-030-72019-3_10.pdf 
+
+* Support swarms, i.e. limiting tests to groups of actions. i.e.:
+  action_sets:
+    completion: [TodoMvc.AddTodo, TodoMvc.MarkComplete] end
+    uncompletion: [TodoMvc.AddTodo, TodoMvc.Somethin]
+  end
 
 * Documentation. What builtins are available and what the schema is of the syntax type hierarchy
   is totally opaque right now. 

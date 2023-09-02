@@ -1,22 +1,5 @@
 open Edsl
 
-(* 
-  TODO: 
-    * Effect system. Algebraic effects?
-      - Convenient syntax for inlining a handler in the model, so model functionality
-        is apparent without looking anywhere else, i.e. handle todos.create!(t) with todos.push(t)
-      - Handle effects at thte process level, i.e. process client: handle create! with clientCreate
-        this is how effects are "overridden" per each process
-    * Model conformance test
-      - This requires marking Actions in the implementation. Otherwise, how to create test?
-
-    * 2 open questions:
-      1. Are effect macros OK for model effect definitions? Goes against value of simplest possible logic for model
-      2. what do do with non-effect logic in Actions? Aka how to solve tier-splitting of logic
-*)
-
-(* Idea: Collector - add custom model analyses *)
-
 let usage_msg = {|| Certifying specifcation:
     sligh <model_spec> -w <cert_out>
 
