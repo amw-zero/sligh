@@ -1,12 +1,3 @@
-* The model should get compiled to a set of functions, one for each action. It should be of the form:
-
-  function Action_Model(state_vars, action_args) {
-    // action impl
-  }
-
-  where this represents the action in question as a function. State variables modified in the action become
-  return values.
-
 * Work on error messages. They should be of the form:
 
  In starting state: "S", when taking action A with these params: "P", the implementation does not conform to the model.
