@@ -9,11 +9,11 @@ text "Each action operates on its own local state, which is defined as a 'v view
       since that effectively only has a single lens whereas multiple lenses are required for
       each action here."
 
-type_synonym ('n, 's) state = "('n * 's) set"
+type_synonym ('s) state = "string \<rightharpoonup> 's"
 
-record ('n, 's) lens  = 
-  Get :: "('n, 's) state \<Rightarrow> ('n, 's) state"
-  Put :: "('n, 's) state \<Rightarrow> ('n, 's) state \<Rightarrow> ('n, 's) state"
+record ('s) lens  = 
+  Get :: "('s) state \<Rightarrow> ('s) state"
+  Put :: "('s) state \<Rightarrow> ('s) state \<Rightarrow> ('s) state"
 
 text "Well-behaved lenses must follow the 'lens laws' which ensure that they retrieve and update
       the same part of the source state."
@@ -24,31 +24,31 @@ definition "extract_subvars s vs = {v | v. v \<in> s \<and> (fst v) \<in> vs }"
 
 definition "restore_subvars s vs = s - {v | v. v \<in> s \<and> (fst v) \<in> var_names vs } \<union> vs"
 
-definition "local_lens l s \<equiv> (\<forall>lv.
-  (Get l s) \<subseteq> s
-  \<and> (Put l) lv s = restore_subvars s lv)"
+definition "local_lens l s \<equiv> (\<forall>ls.
+  map_le (Get l s) s
+  \<and> (Put l) ls s = map_add s ls)"
 
 text "A process is a representation of a program that proceeds through a sequence of states in 
       response to actions (inputs) of type 'e, i.e. a state machine."
-type_synonym ('e, 'n, 's) process = "'e \<Rightarrow> ('n, 's) state \<Rightarrow> ('n, 's) state"
+type_synonym ('e, 's) process = "'e \<Rightarrow> ('s) state \<Rightarrow> ('s) state"
 
 text "A local action is a step function on its own local state type 'a, where 'a is defineable as a lens
       on some global state type 's"
 
-record ('n, 's) local_action =
-  lens :: "('n, 's) lens"
-  step :: "('n, 's) state \<Rightarrow> ('n, 's) state"
+record ('s) local_action =
+  lens :: "('s) lens"
+  step :: "('s) state \<Rightarrow> ('s) state"
 
 text "An action mapping maps an action 'e to its corresponding local action"
 
-type_synonym ('e, 'n, 's) action_mapping = "'e \<Rightarrow> ('n, 's) local_action"
+type_synonym ('e, 's) action_mapping = "'e \<Rightarrow> ('s) local_action"
 
 text "compose_local_actions defines how a global process can be defined from a set of local actions.
       It uses the lens defined in the local action for each action type to get the local action state
       from the global state, execute the local step function, and write the result back into
       the global state."
 
-definition compose_local_actions :: "('e, 'n, 's) action_mapping \<Rightarrow> ('e, 'n, 's) process"  where
+definition compose_local_actions :: "('e, 's) action_mapping \<Rightarrow> ('e, 's) process"  where
 "compose_local_actions am = (\<lambda>e s.(
   let locact = am e;
   lns = (lens locact);
@@ -61,17 +61,27 @@ definition compose_local_actions :: "('e, 'n, 's) action_mapping \<Rightarrow> (
 text "'Local simulation' is where each local action simulates its corresponding
     action in the model."
 
-definition "local_simulates am_i am_m e s = (\<forall>v.
+definition "local_simulates am_i am_m e s = (
   let proc_i = step (am_i e) in
   let proc_m = step (am_m e) in
   let impl_start = (Get (lens (am_i e))) s in
   let model_start = (Get (lens (am_m e))) s in
   
-  proc_i impl_start = v \<longrightarrow> proc_m model_start = v)"
+  proc_i impl_start = proc_m model_start)"
 
 text "Basic notion of simulation."
 
-definition "simulates impl_proc model_proc e s t = (impl_proc e s = t \<longrightarrow> model_proc e s = t)"
+definition "simulates impl_proc model_proc e s = (impl_proc e s =  model_proc e s)"
+
+text "Vacuous check"
+
+lemma
+assumes "local_lens (lens (am_i e)) s"
+  and "local_lens (lens (am_m e)) s"
+  and "local_simulates am_i am_m e s"
+  shows False
+  nitpick
+  oops
 
 text "We want to show that in order to prove that an implementation process simulates another 
       process, we can instead decompose both processes each into a set of local actions. If the
@@ -82,7 +92,7 @@ theorem local_sim_imp_sim:
   assumes "local_lens (lens (am_i e)) s"
   and "local_lens (lens (am_m e)) s"
   and "local_simulates am_i am_m e s"
-  shows "simulates (compose_local_actions am_i) (compose_local_actions am_m) e s t"
+  shows "simulates (compose_local_actions am_i) (compose_local_actions am_m) e s"
   using assms
   unfolding simulates_def local_simulates_def compose_local_actions_def
     local_lens_def restore_subvars_def var_names_def
