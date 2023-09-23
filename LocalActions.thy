@@ -4,6 +4,24 @@ imports Main
 
 begin
 
+(*
+
+* A lens from global to local state for each proc
+* A local step function for each proc
+  * step \<subseteq>
+* A way to build a global proc from the lens and step function
+
+
+
+  O       O
+    *   * 
+
+    *   *
+  O       O
+
+
+*)
+
 text "Each action operates on its own local state, which is defined as a 'v view type. The relationship
      between 'v and 's is definable by a lens. This is different than the seL4 process model,
       since that effectively only has a single lens whereas multiple lenses are required for
@@ -11,7 +29,7 @@ text "Each action operates on its own local state, which is defined as a 'v view
 
 type_synonym ('s) state = "string \<rightharpoonup> 's"
                                 
-record ('s) lens  = 
+record ('s) lens = 
   Get :: "('s) state \<Rightarrow> ('s) state"
   Put :: "('s) state \<Rightarrow> ('s) state \<Rightarrow> ('s) state"
 
@@ -38,11 +56,9 @@ shows "(Get l) ((Put l) ls s) = ls"
 text "Well-behaved lenses must follow the 'lens laws' which ensure that they retrieve and update
       the same part of the source state."
 
-definition "var_names s = {(fst v) | v. v \<in> s}"
+definition "var_names s = {dom v | v. v \<in> s}"
 
 definition "extract_subvars s vs = {v | v. v \<in> s \<and> (fst v) \<in> vs }"
-
-definition "restore_subvars s vs = s - {v | v. v \<in> s \<and> (fst v) \<in> var_names vs } \<union> vs"
 
 text "This might still need to check for well-formedness?"
 
@@ -73,14 +89,31 @@ s ={a=0,b=1}
 text "A process is a representation of a program that proceeds through a sequence of states in 
       response to actions (inputs) of type 'e, i.e. a state machine."
 
-type_synonym ('e, 's) process = "'e \<Rightarrow> ('s) state \<Rightarrow> ('s) state"
+type_synonym ('e, 's) proc = "'e \<Rightarrow> 's state \<rightharpoonup> 's state"
+
+definition "well_typed_rel pr V = (\<forall>s s'. (s, s') \<in> pr \<longrightarrow> (dom s = V \<and> dom s' = V))"
+
+definition "well_typed p V = (well_typed_rel (Map.graph p) V)"  
+
+definition "well_formed_rel p S = (\<forall>e s s'. (e, s, s') \<in> p \<longrightarrow> (s \<in> S \<and> s' \<in> S))"
+
+lemma 
+  fixes p :: "('e, 's) proc"
+  assumes "well_typed (p e) V"
+  and "V \<noteq> {}"
+  and "card V = 2"
+shows  False
+  nitpick
+  oops
+
+type_synonym ('e, 's) process = "'e \<Rightarrow> (('s) state \<rightharpoonup> ('s) state)"
 
 text "A local action is a step function on its own local state type 'a, where 'a is defineable as a lens
       on some global state type 's"
 
 record ('s) local_action =
   lens :: "('s) lens"
-  step :: "('s) state \<Rightarrow> ('s) state"
+  step :: "('s) state \<rightharpoonup> ('s) state"
 
 text "An action mapping maps an action 'e to its corresponding local action"
 
@@ -91,35 +124,92 @@ text "compose_local_actions defines how a global process can be defined from a s
       from the global state, execute the local step function, and write the result back into
       the global state."
 
+definition transform_step :: "('s state \<rightharpoonup> 's state) \<Rightarrow> 's state \<Rightarrow> 's state option" where
+"transform_step st s = (
+  let res = st s in res)"
+
+ (* Map version:
+   
+*)
 definition compose_local_actions :: "('e, 's) action_mapping \<Rightarrow> ('e, 's) process"  where
 "compose_local_actions am = (\<lambda>e s.(
   let locact = am e;
   lns = (lens locact);
   locact_s = (Get lns) s;
   res = (step locact) locact_s in
-  
-  (Put lns) res s
-))"
+
+  case res of
+  Some sres \<Rightarrow> Some ((Put lns) sres s) 
+  | None \<Rightarrow> None
+))" 
 
 text "'Local simulation' is where each local action simulates its corresponding
     action in the model."
 
+definition "local_simulates af afl am_i am_m e s = (
+  let proc_i = step (am_i e) in
+  let proc_m = step (am_m e) in
+  let impl_start = (Get (lens (am_i e))) s in
+  let model_start = (Get (lens (am_m e))) (af s) in
 
+  case (proc_i impl_start, proc_m model_start) of
+  (Some si, Some sm) \<Rightarrow> afl si = sm
+  | _ \<Rightarrow> True)"
+  
+text "Basic notion of simulation."
+
+definition "simulates af impl_proc model_proc e s = (
+case (impl_proc e s, model_proc e (af s)) of
+  (Some si, Some sm) \<Rightarrow> af si = sm
+  | _ \<Rightarrow> True)"
+
+text "Vacuous check"
+
+lemma assumes "lm = (lens (am_m e))"
+    and "fm \<subseteq> Vm"
+    and "lm = make_lens fm (af s)"
+    and "well_typed (step (am_m e)) fm"
+
+    and "li = (lens (am_i e))"
+    and "fi \<subseteq> Vi"
+    and "dom s = Vi"
+    and "li = make_lens fi s"
+    and "well_typed (step (am_i e)) fi"
+
+    and "af = (\<lambda>s. (Put lm) (afl (Get li s)) s)"
+
+    and "local_simulates af afl am_i am_m e s"
+  shows False
+  oops
+
+text "We want to show that in order to prove that an implementation process simulates another 
+      process, we can instead decompose both processes each into a set of local actions. If the
+      local actions simulate each other, and the lenses used to define the local action states are
+      well-behaved, then the global implementation process simulates the global model."
+
+lemma assumes "dom s = V"
+      and "f \<subseteq> V"
+      and "l = make_lens f s"
+    shows "False"
+  oops
+
+lemma assumes "f \<subseteq> V"
+  and "well_typed (step (am_i e)) f"
+  and "lens (am_i e) = make_lens f s"
+  and "dom s = V"
+shows "well_typed (compose_local_actions am_i e) V"
+  using assms
+  unfolding well_typed_def compose_local_actions_def well_typed_rel_def
+  oops
+
+text "Written once and for all: make_lens, af, compose_local_actions.
+  Derived from each process in a system: V, f.
+  Hand-written for each system: afl."
+
+definition "well_formed_am f V s stp = \<lparr> lens = make_lens f s, step=stp \<rparr>"
 
 (*
-
-afl: LocalImplState \<Rightarrow> LocalModelState
-
-af:  GlobalImplState \<Rightarrow> GlobalModelState
-
-Can af be constructed from afl? override_on, overide_on f g A overrides f with g for values in A
-
-
-af = (\lm li s. (Put lm) (afl (Get li) s) s) 
-
-af s l = override_on afl (\ls. (Put l) (afl ls) s) (dom afl) 
-
-
+I:
 
   O       O
     *   * 
@@ -127,46 +217,89 @@ af s l = override_on afl (\ls. (Put l) (afl ls) s) (dom afl)
     *   *
   O       O
 
+M:
 
+To prove, we want a path from the current subgoal all the way to a result of no subgoals.
+At each step, we want to transform the current goal into a set of subgoals, each of which are
+provable either directly or using the assumptions.
 *)
 
-definition "local_simulates af afl am_i am_m e s = (
-  let proc_i = step (am_i e) in
-  let proc_m = step (am_m e) in
-  let impl_start = (Get (lens (am_i e))) s in
-  let model_start = (Get (lens (am_m e))) (af s) in
-  
-  afl (proc_i impl_start) = proc_m model_start)"
+lemma gen_sim: 
+  assumes "case (I e s, M e (af s)) of (Some i, Some m) \<Rightarrow> af i = m | _ \<Rightarrow> True"
+  shows "simulates af I M e s"
+  using assms
+  unfolding simulates_def
+  by simp
 
-text "Basic notion of simulation."
 
-definition "simulates af impl_proc model_proc e s = (af (impl_proc e s) =  model_proc e (af s))"
+lemma 
 
-text "Vacuous check"
+shows "simulates af (compose_local_actions am_i) (compose_local_actions am_m) e s"
+  apply(rule gen_sim)
+  oops
 
-text "We want to show that in order to prove that an implementation process simulates another 
-      process, we can instead decompose both processes each into a set of local actions. If the
-      local actions simulate each other, and the lenses used to define the local action states are
-      well-behaved, then the global implementation process simulates the global model."
+lemma loc_glob_step: assumes "l = lens (am e)"
+    and "l = make_lens f s"
+  shows "case ((step (am e)) (Get l s), (compose_local_actions am) e s) of
+    (Some ls,  Some gs) \<Rightarrow>  gs = s ++ ls
+    | _ \<Rightarrow> True"
+  using assms
+  unfolding compose_local_actions_def make_lens_def well_typed_def well_typed_rel_def
+  by (smt (verit, best) case_prodI in_graphI lens.select_convs(2) not_Some_eq option.case(1) option.case(2))
+
+lemma step_equiv: 
+  shows "(Put l) (step (am e) (Get l s)) s = compse_local_actions s"
 
 theorem local_sim_imp_sim:
   assumes "lm = (lens (am_m e))"
-    and "fm \<subseteq> dom (af s)"
+    and "fm \<subseteq> Vm"
     and "lm = make_lens fm (af s)"
+    and "well_typed (step (am_m e)) fm"
 
     and "li = (lens (am_i e))"
-    and "fi \<subseteq> dom s"
+    and "fi \<subseteq> Vi"
+    and "dom s = Vi"
     and "li = make_lens fi s"
+    and "well_typed (step (am_i e)) fi"
 
-    and "af = (\<lambda>s. (Put lm) (afl (Get li s)) s)"
+    and abs_func: "af = (\<lambda>s. (Put lm) (afl (Get li s)) s)"
 
-    and "local_simulates af afl am_i am_m e s"
+    and loc_sim: "local_simulates af afl am_i am_m e s"
   shows "simulates af (compose_local_actions am_i) (compose_local_actions am_m) e s"
-  using assms
+
+  unfolding simulates_def local_simulates_def abs_func
+  apply(case_tac "(compose_local_actions am_i e s, compose_local_actions am_m e (Put lm (afl (Get li s)) s))")
+  apply(simp)
+  apply(case_tac "compose_local_actions am_i e s")
+   apply(auto)
+  apply(case_tac "compose_local_actions am_m e (Put lm (afl (Get li s)) s)")
+   apply(auto)
   nitpick
-  unfolding simulates_def local_simulates_def compose_local_actions_def
-    local_lens_def
   sledgehammer
+  apply(unfold assms)
+
+  apply(simp add: well_typed_def well_typed_rel_def make_lens_def)
+
+
+
+  apply(simp add: abs_func)
+  sledgehammer
+  apply(cases)
+  apply(simp add: loc_glob_step)
+  sledgehammer
+
+  apply(rule gen_sim)
+  apply(cases)
+   apply(simp)
+  apply(auto)
+
+  unfolding simulates_def local_simulates_def compose_local_actions_def
+    local_lens_def make_lens_def well_typed_def well_typed_rel_def 
+  apply(cases)
+
+   apply(auto)
+  sledgehammer
+
 
 theorem local_sim_imp_sim:
   assumes "lm = (lens (am_m e))"
