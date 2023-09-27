@@ -61,24 +61,24 @@ definition compose_local_actions :: "('e, 's) action_mapping \<Rightarrow> ('e, 
 text "'Local simulation' is where each local action simulates its corresponding
     action in the model."
 
-definition "local_simulates am_i am_m e s = (
+definition "local_simulates af am_i am_m e s = (
   let proc_i = step (am_i e) in
   let proc_m = step (am_m e) in
   let impl_start = (Get (lens (am_i e))) s in
-  let model_start = (Get (lens (am_m e))) s in
+  let model_start = (Get (lens (am_m e))) (af s) in
   
-  proc_i impl_start = proc_m model_start)"
+  af ((Put (lens (am_i e))) (proc_i impl_start) s) = (Put (lens (am_m e))) (proc_m model_start) (af s))"
 
 text "Basic notion of simulation."
 
-definition "simulates impl_proc model_proc e s = (impl_proc e s =  model_proc e s)"
+definition "simulates af impl_proc model_proc e s = (af (impl_proc e s) =  model_proc e (af s))"
 
 text "Vacuous check"
 
 lemma
 assumes "local_lens (lens (am_i e)) s"
   and "local_lens (lens (am_m e)) s"
-  and "local_simulates am_i am_m e s"
+  and "local_simulates af am_i am_m e s"
   shows False
   nitpick
   oops
@@ -88,11 +88,20 @@ text "We want to show that in order to prove that an implementation process simu
       local actions simulate each other, and the lenses used to define the local action states are
       well-behaved, then the global implementation process simulates the global model."
 
+(*
+O        O
+  *    *
+
+  *    *
+O        O
+
+*)
+
 theorem local_sim_imp_sim:
   assumes "local_lens (lens (am_i e)) s"
   and "local_lens (lens (am_m e)) s"
-  and "local_simulates am_i am_m e s"
-  shows "simulates (compose_local_actions am_i) (compose_local_actions am_m) e s"
+  and "local_simulates af am_i am_m e s"
+  shows "simulates af (compose_local_actions am_i) (compose_local_actions am_m) e s"
   using assms
   unfolding simulates_def local_simulates_def compose_local_actions_def
     local_lens_def restore_subvars_def var_names_def
